@@ -104,6 +104,10 @@ at the tick the host actually reached, or the log replays to a different state.
 - Record-and-replay tests need a non-triviality guard. Assert the recording has
   inputs and the session reached a meaningful tick count, or a page that
   silently records nothing passes everything.
+- `bun run test` passes `packages/ scripts/ demo/ skill/`. Those are path
+  filters, not directories, so the trailing slash matters: without it, `demo`
+  also matches `e2e/specs/07-demo-controls.spec.ts` and Bun tries to run a
+  Playwright spec.
 - `retries` is 0 in the Playwright config on purpose. For a determinism suite,
   flake is the finding. Rewrite a timing-sensitive test against the virtual
   clock rather than retrying it.

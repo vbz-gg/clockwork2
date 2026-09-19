@@ -25,7 +25,7 @@
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
-    "test": "bun test packages scripts demo skill",
+    "test": "bun test packages/ scripts/ demo/ skill/",
     "test:engines": "bun run scripts/engines.ts",
     "test:e2e": "bun run --cwd e2e test",
     "demo": "bun run --cwd demo dev",
