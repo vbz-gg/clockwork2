@@ -45,11 +45,20 @@ async function recordThroughTheUi(
     await page.fill("#cw2-seed", attempt === 0 ? seed : `${seed}-${attempt}`)
     await page.click('button[data-action="new-game"]')
     await playGreedily(page)
-    // The snake may have died inside the play window, in which case the page
-    // has already disabled Stop and clicking it would wait for an element
-    // that is never going to be enabled again.
-    const stop = page.locator('button[data-action="stop"]')
-    if (await stop.isEnabled()) await stop.click()
+    // The snake may die inside the play window, and it may die between asking
+    // whether Stop is enabled and clicking it - so the click is bounded and
+    // its failure is not the finding. What has to be true either way is that
+    // the session has ended, because a running session has no final
+    // recording, and that is what the wait below asserts. A Stop button wired
+    // to nothing fails there, which is the failure worth catching.
+    await page
+      .click('button[data-action="stop"]', { timeout: 2000 })
+      .catch(() => undefined)
+    await page.waitForFunction(
+      () => window.__cw2test?.state().running === false,
+      undefined,
+      { timeout: 5000 },
+    )
     const session = await page.evaluate(() => ({
       endTick: window.__cw2test?.recording().endTick ?? 0,
       checkpoints: window.__cw2test?.checkpoints() ?? [],
