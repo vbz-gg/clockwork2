@@ -64,6 +64,8 @@ export const ERROR_CODES = {
   E_GLOBALS_TOUCHED: "the bundle touched a forbidden global",
   /** The render bundle failed its smoke check. */
   E_RENDER_SMOKE: "render smoke check failed",
+  /** A check threw while running, which is itself a failure of the subject. */
+  E_CHECK_THREW: "a conformance check threw while running",
 } as const
 
 export type ErrorCode = keyof typeof ERROR_CODES

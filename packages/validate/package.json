@@ -29,8 +29,7 @@
   },
   "dependencies": {
     "@clockwork2/kernel": "workspace:*",
-    "acorn": "^8.14.0",
-    "acorn-walk": "^8.3.4"
+    "typescript": "5.9.3"
   },
   "scripts": {
     "clean": "rm -rf dist *.tsbuildinfo"

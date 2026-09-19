@@ -52,6 +52,15 @@ function buildTraps(): Trap[] {
     ...trap(g, "fetch", "fetch"),
     ...trap(g, "XMLHttpRequest", "XMLHttpRequest"),
     ...trap(g, "sendBeacon", "sendBeacon"),
+    // Present only in a browser, where the simulation runs in a worker and
+    // should never see them. `trap` skips anything that is not there.
+    ...trap(g, "document", "document"),
+    ...trap(g, "window", "window"),
+    ...trap(g, "localStorage", "localStorage"),
+    ...trap(g, "sessionStorage", "sessionStorage"),
+    ...trap(g, "indexedDB", "indexedDB"),
+    ...trap(g, "navigator", "navigator"),
+    ...trap(g, "Image", "Image"),
     ...trap(
       Number.prototype,
       "toLocaleString",
