@@ -11,11 +11,11 @@ Three's `Quaternion` and anything else that is off-limits on the other side.
 
 ## The four arguments
 
-- **`view`** - what `view()` returned after the last tick.
-- **`previousView`** - what it returned the tick before, or `null` on the
+- `view` - what `view()` returned after the last tick.
+- `previousView` - what it returned the tick before, or `null` on the
   first frame.
-- **`alpha`** - how far between them this frame sits, in `[0, 1)`.
-- **`dtMs`** - real milliseconds since the previous frame.
+- `alpha` - how far between them this frame sits, in `[0, 1)`.
+- `dtMs` - real milliseconds since the previous frame.
 
 `alpha` is the one people skip, and skipping it is why a 60 Hz simulation
 looks wrong on a 144 Hz display: two frames in a row draw the same tick, then
@@ -79,10 +79,10 @@ const rocks = new NodeSet<Rock, Mesh>({
 rocks.sync(view.rocks)
 ```
 
-What it is not is Clockwork 1's `AbstractRenderer`, which read a simulation
-object's `needsRepaint` flag and then cleared it. That is the renderer writing
-to the simulation - fine while one frame ran one tick, and wrong the moment
-that stopped being true.
+A renderer that instead reads a flag off a simulation object and clears it is
+writing to the simulation. That holds together while one frame runs exactly one
+tick, and breaks the moment a frame runs two, or a second view of the same world
+appears.
 
 ## Effects
 

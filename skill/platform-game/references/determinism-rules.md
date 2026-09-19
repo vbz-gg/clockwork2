@@ -15,15 +15,15 @@ SpiderMonkey alike. Every rule below follows from that one sentence.
 
 ## Arithmetic
 
-**Allowed**, because ECMAScript specifies them exactly: `+ - * / %`,
+Allowed, because ECMAScript specifies them exactly: `+ - * / %`,
 comparisons, `Math.sqrt`, `Math.floor`, `Math.ceil`, `Math.round`,
 `Math.trunc`, `Math.abs`, `Math.min`, `Math.max`, `Math.sign`, `Math.fround`,
 `Math.imul`, `Math.clz32`, and typed-array bit manipulation.
 
-**Banned outright**: `Math.pow` and the `**` operator. Use `dmath.pow`, or
+Banned outright: `Math.pow` and the `**` operator. Use `dmath.pow`, or
 better `dmath.ipow` for an integer exponent, which is exact.
 
-**Banned, use `dmath`**: `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`,
+Banned, with `dmath` in their place: `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`,
 `exp`, `log`, `log2`, `log10`, `cbrt`, `hypot`, `sinh`, `cosh`, `tanh`.
 
 These are not theoretical differences. `Math.cos(0.1)` is

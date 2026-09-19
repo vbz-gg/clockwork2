@@ -29,19 +29,19 @@ What the browser sends and the server replays:
 
 Two things are worth noticing.
 
-**There is no delta array.** Clockwork 1's recordings carried one entry per
-update with the number of ticks that update ran, because the step size varied.
-Here it does not, so a replay is fully determined by the seed, the config, the
-inputs and `endTick`.
+There is no per-frame delta array. A variable-step engine has to record how
+much time each frame simulated; a fixed-step one has nothing to record, so a
+replay is determined by the seed, the config, the inputs and `endTick`.
 
-**Checkpoints are evidence, not input.** A replay does not read them; it
+Checkpoints are evidence rather than input. A replay does not read them; it
 produces its own and compares. Their only job is to localise a divergence to
 the second it happened, which turns "this recording does not replay" into
 "this recording stopped matching at tick 1380".
 
-An input's `tick` is the tick the simulation is *about to run*, stamped by the
-host. Not the tick of whichever update happened to drain the queue - that is
-what made Clockwork 1's stamps move with the player's frame rate.
+An input's `tick` is the tick the simulation is about to run, stamped by the
+host when the input arrives. Stamping instead at the moment a frame drains the
+queue would tie the stamp to the frame rate, and the same keystroke would land
+on different ticks on different machines.
 
 ## What is verified
 

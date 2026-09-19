@@ -67,33 +67,33 @@ in `kernel-api.md`, which is generated from the declarations.
 
 ## The fields worth thinking about
 
-**`id`** is immutable. Change it and it is a different game with a different
+`id` is immutable. Change it and it is a different game with a different
 leaderboard. `scripts/new.ts` sets it from the directory name once, at
 creation, rather than leaving it to be edited later and forgotten.
 
-**`counters` and `rankBy`.** Objectives are `counters[name] >= threshold`,
+`counters` and `rankBy` replace an objective system. An objective is `counters[name] >= threshold`,
 computed by the platform, not by the game. A game that wants a new kind of
 objective declares a new counter; it does not ship an operator. Everything in
 `rankBy` must be declared in `counters`.
 
-**`monotonic`** is a promise the suite checks every tick. A score that can go
+`monotonic` is a promise the suite checks every tick. A score that can go
 down is not monotonic, and saying it is will fail rather than round.
 
-**`session.maxTicks`** is what the platform pays to replay. It is a hard cap:
+`session.maxTicks` is what the platform pays to replay. It is a hard cap:
 the kernel ends the run there whatever `isOver()` says. Make it the longest
 session you actually intend, not the largest number you can imagine.
 
-**`params`** are typed (`color`, `string`, `enum`, `int`, `bool`) with ranges
+`params` are typed (`color`, `string`, `enum`, `int`, `bool`) with ranges
 and defaults, and the platform validates a supplied value against them before
 the game sees it. `mergeParamDefaults` fills the rest. The values arrive as
 the `config` argument to `init`, so they are part of what a recording carries
 and what a replay restores.
 
-**`assets`** is every file you ship, with its sha256 and byte count.
+`assets` is every file you ship, with its sha256 and byte count.
 Undeclared file, wrong hash, or declared-and-missing all fail check 7.
 `scripts/package.ts` prints this array for you.
 
-**`budgets.microsecondsPerTick`** sizes the isolate's CPU allowance. Declaring
+`budgets.microsecondsPerTick` sizes the isolate's CPU allowance. Declaring
 a number you do not meet fails check 8; declaring a huge one costs you at
 submission rather than at validation.
 

@@ -50,62 +50,62 @@ A game implements `GameModule`: `init`, `tick`, `view`, `snapshot`, `restore`,
 Each names the check that enforces it. Run `scripts/validate.sh ./src` to run
 all twelve checks; `--only=name` runs one.
 
-**1. `tick()` advances exactly one tick and takes no delta.**
-A fixed step is what makes a simulation independent of the player's frame
-rate. The host owns an accumulator over `requestAnimationFrame`: a slow frame
-runs more ticks, never a bigger one. Jitter changes *how many* ticks run and
-never *how big* a tick is.
-*Checked by `determinism`; proved end to end by the engine's own frame-rate
-tests, which replay one log at rates from 240 Hz to 5 Hz.*
+1. **`tick()` advances exactly one tick and takes no delta.** A fixed step is
+   what makes a simulation independent of the player's frame rate. The host
+   owns an accumulator over `requestAnimationFrame`, so a slow frame runs more
+   ticks rather than bigger ones. Jitter changes how many ticks run and never
+   how big one is.
+   *Checked by `determinism`, and end to end by the engine's frame-rate tests,
+   which replay one log at rates from 240 Hz to 5 Hz.*
 
-**2. Randomness comes from a seeded `Prng`, in labelled sub-streams.**
-`new Prng(seed)` in `init`, then `rng.stream("spawn")`. With one stream, adding
-a draw to the spawn logic shifts every later loot roll and silently changes
-every recorded session.
-*Checked by `banned-apis`, `determinism`.*
+2. **Randomness comes from a seeded `Prng`, in labelled sub-streams.**
+   `new Prng(seed)` in `init`, then `rng.stream("spawn")`. With one stream,
+   adding a draw to the spawn logic shifts every later loot roll and silently
+   changes every session anyone already recorded.
+   *Checked by `banned-apis` and `determinism`.*
 
-**3. Transcendentals come from `dmath`. `Math.pow` and `**` are banned.**
-`Math.cos(0.1)` is `0x3FEFD712F9A817C1` on JavaScriptCore and
-`0x3FEFD712F9A817C0` on V8. One bit, once, and the state hash differs and the
-replay is rejected. Use `dmath.ipow` for integer exponents; it is exact.
-*Checked by `banned-apis`.*
+3. **Transcendentals come from `dmath`. `Math.pow` and `**` are banned.**
+   `Math.cos(0.1)` is `0x3FEFD712F9A817C1` on JavaScriptCore and
+   `0x3FEFD712F9A817C0` on V8. One bit in one cosine moves the state hash, and
+   the replay is rejected. Use `dmath.ipow` for an integer exponent; it is
+   exact.
+   *Checked by `banned-apis`.*
 
-**4. Time is the tick count. `Date`, `performance.now` and the timer functions
-are banned.**
-Scheduled work uses `Timer`, which counts in ticks and snapshots cleanly.
-*Checked by `banned-apis`.*
+4. **Time is the tick count.** `Date`, `performance.now` and the timer
+   functions are banned. Scheduled work uses `Timer`, which counts in ticks and
+   snapshots cleanly.
+   *Checked by `banned-apis`.*
 
-**5. Nothing async.** `tick()` may not be `async` or return a thenable. No
-`await`, no `.then`, no `queueMicrotask`. Anything that needs to wait belongs
-in the host.
-*Checked by `no-async`.*
+5. **Nothing async.** `tick()` may not be `async` or return a thenable. No
+   `await`, no `.then`, no `queueMicrotask`. Anything that has to wait belongs
+   in the host.
+   *Checked by `no-async`.*
 
-**6. `snapshot()` holds everything, and `restore()` puts it all back.**
-The test is not whether it looks complete: it is whether restoring at tick N
-and continuing reaches the same state as never having stopped. Forgotten most
-often, in order: the PRNG state, the timer state, an id counter, a cooldown,
-the config.
-*Checked by `restore`, at several offsets.*
+6. **`snapshot()` holds everything, and `restore()` puts it all back.** The
+   test is whether restoring at tick N and continuing reaches the same state as
+   never having stopped. The fields people leave out, in order: the PRNG state,
+   the timer state, an id counter, a cooldown, the config.
+   *Checked by `restore`, at several offsets.*
 
-**7. The run ends inside `maxTicks`** - under an idle player, under chaos
-input, and under the platform's bot. "The player can quit" is not an ending;
-the idle log is a player who does not.
-*Checked by `bound`.*
+7. **The run ends inside `maxTicks`**, with an idle player, with chaos input,
+   and with the platform's bot. "The player can quit" is not an ending; the
+   idle log is a player who does not.
+   *Checked by `bound`.*
 
-**8. Counters are declared, integer, and honest.** A counter declared
-`monotonic` never moves the wrong way and `isOver()` never goes back to false.
-Objectives are `counters[name] >= threshold`, computed by the platform, so a
-new kind of objective is a new counter rather than new code.
-*Checked by `counters`.*
+8. **Counters are declared, integer, and honest.** A counter declared
+   `monotonic` never moves the wrong way and `isOver()` never goes back to
+   false. Objectives are `counters[name] >= threshold`, computed by the
+   platform, so a new kind of objective is a new counter rather than new code.
+   *Checked by `counters`.*
 
-**9. The renderer reads and never writes**, and `view()` returns
-structured-cloneable plain data - no class instances, no functions - because
-in worker mode it is cloned across a thread boundary.
-*Checked by `headless`, `render-smoke`.*
+9. **The renderer reads and never writes.** `view()` returns
+   structured-cloneable plain data, with no class instances and no functions,
+   because in worker mode it is cloned across a thread boundary.
+   *Checked by `headless` and `render-smoke`.*
 
-**10. No browser inside the simulation.** `init` plus 600 ticks must run with
-no `window`, `document`, WebGL, `AudioContext` or `fetch` present.
-*Checked by `headless`.*
+10. **No browser inside the simulation.** `init` plus 600 ticks must run with
+    no `window`, `document`, WebGL, `AudioContext` or `fetch` present.
+    *Checked by `headless`.*
 
 ## What the renderer may do
 
@@ -151,25 +151,23 @@ The three that account for most failures:
 - `E_RESTORE_MISMATCH` - a field missing from the snapshot.
 - `E_BOUND_NOT_OVER` - the game does not end by itself.
 
-## Do not
+## Never
 
-- Do not add a "deterministic mode" flag. There is one mode.
-- Do not seed a generator from the clock, the URL, or a device property.
-- Do not put a wall-clock timestamp in the state, not even for a log line.
-- Do not sort to paper over an ordering bug. A comparator returning 0 for
-  items that are not equal leaves their order to the engine's sort.
-- Do not iterate a plain object's keys where order matters. Integer-like keys
-  come first in ascending numeric order, whatever the insertion history.
-- Do not hold DOM nodes, sockets, or anything with an identity in simulation
-  state.
-- Do not let the renderer write to the view, or to anything the simulation
-  reads.
-- Do not change simulation behaviour without bumping `version`. Every score
-  already recorded becomes unverifiable, silently.
-- Do not build an input event inside the game. The host builds them; a game
-  that could make its own could do its hit-testing in the renderer and hand
-  the answer to the simulation, which replays perfectly and still decides the
-  result on the client.
+- A "deterministic mode" flag. There is one mode.
+- Seeding a generator from the clock, the URL, or a device property.
+- A wall-clock timestamp in the state, not even for a log line.
+- Sorting to paper over an ordering bug. A comparator that returns 0 for items
+  which are not equal leaves their order to the engine's sort.
+- Iterating a plain object's keys where order matters. Integer-like keys come
+  first in ascending numeric order, whatever the insertion history.
+- DOM nodes, sockets, or anything else with an identity in simulation state.
+- A renderer that writes to the view, or to anything the simulation reads.
+- Changing simulation behaviour without bumping `version`. Every score already
+  recorded becomes unverifiable, and nothing announces it.
+- Building an input event inside the game. The host builds them. A game that
+  could make its own could do its hit-testing in the renderer and hand the
+  answer to the simulation, which replays perfectly while the result was
+  decided on the client.
 
 ## References
 
