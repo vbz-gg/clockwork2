@@ -5,9 +5,12 @@
   "type": "module",
   "description": "Playwright end-to-end tests proving replay determinism",
   "scripts": {
-    "test": "playwright test",
+    "build:demo": "VITE_CW2_TEST=1 bun run --cwd ../demo build",
+    "test": "bun run build:demo && bun run --cwd .. build:replay && playwright test --grep-invert \"@nightly\"",
+    "test:only": "playwright test",
     "test:ui": "playwright test --ui",
-    "report": "playwright show-report"
+    "report": "playwright show-report",
+    "test:nightly": "bun run build:demo && bun run --cwd .. build:replay && playwright test --grep \"@nightly\""
   },
   "devDependencies": {
     "@playwright/test": "1.56.1",
