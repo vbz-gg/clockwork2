@@ -92,6 +92,7 @@ export {
   validateManifest,
   validateParams,
 } from "./manifest/index"
+export { lerp, lerpAngle, NodeSet } from "./presentation/index"
 export { Prng, type PrngState } from "./prng/index"
 export type { Recording } from "./recording/index"
 export {

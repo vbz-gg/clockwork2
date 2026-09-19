@@ -32,6 +32,11 @@
       "types": "./dist/prng/index.d.ts",
       "default": "./dist/prng/index.js"
     },
+    "./presentation": {
+      "development": "./src/presentation/index.ts",
+      "types": "./dist/presentation/index.d.ts",
+      "default": "./dist/presentation/index.js"
+    },
     "./hash": {
       "development": "./src/hash/index.ts",
       "types": "./dist/hash/index.d.ts",
