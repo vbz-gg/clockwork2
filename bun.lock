@@ -6,6 +6,9 @@
       "name": "clockwork2",
       "devDependencies": {
         "@biomejs/biome": "2.5.14",
+        "@clockwork2/compat-clockwork1": "workspace:*",
+        "@clockwork2/host-bridge": "workspace:*",
+        "@clockwork2/kernel": "workspace:*",
         "@commitlint/cli": "^19.8.1",
         "@commitlint/config-conventional": "^19.8.1",
         "@types/bun": "^1.2.21",

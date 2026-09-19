@@ -25,15 +25,21 @@
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
-    "test": "bun test packages scripts",
+    "test": "bun test packages scripts demo",
     "test:engines": "bun run scripts/engines.ts",
     "test:e2e": "bun run --cwd e2e test",
     "demo": "bun run --cwd demo dev",
     "demo:build": "bun run --cwd demo build",
-    "prepare": "husky"
+    "prepare": "husky",
+    "build:replay": "bun run scripts/build-replay.ts",
+    "replay": "bun run scripts/replay.ts",
+    "test:e2e:nightly": "bun run --cwd e2e test:nightly"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
+    "@clockwork2/compat-clockwork1": "workspace:*",
+    "@clockwork2/host-bridge": "workspace:*",
+    "@clockwork2/kernel": "workspace:*",
     "@commitlint/cli": "^19.8.1",
     "@commitlint/config-conventional": "^19.8.1",
     "@types/bun": "^1.2.21",
