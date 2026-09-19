@@ -104,32 +104,101 @@ const ORDER = [
   "namespace",
 ]
 
+/**
+ * What a listed export is called, and what it resolves to.
+ *
+ * The two are kept apart on purpose. `export * as dmath from "./dmath/index"`
+ * resolves to the *module* symbol, whose name is the resolved file path and
+ * whose only declaration is the whole source file. Taking the name from the
+ * resolved symbol therefore wrote an absolute path into the reference - which
+ * is different on every machine, so the committed file could never match a
+ * freshly generated one anywhere but the machine that wrote it.
+ */
+interface Listed {
+  /** The name the module exports it under. Never a path. */
+  readonly name: string
+  readonly symbol: ts.Symbol
+}
+
+function listedExports(
+  checker: ts.TypeChecker,
+  moduleSymbol: ts.Symbol,
+): Listed[] {
+  const listed = checker.getExportsOfModule(moduleSymbol).map((symbol) => ({
+    name: symbol.getName(),
+    symbol:
+      symbol.flags & ts.SymbolFlags.Alias
+        ? checker.getAliasedSymbol(symbol)
+        : symbol,
+  }))
+  return listed.sort((a, b) => {
+    const byKind =
+      ORDER.indexOf(kindOf(a.symbol)) - ORDER.indexOf(kindOf(b.symbol))
+    return byKind !== 0 ? byKind : a.name.localeCompare(b.name)
+  })
+}
+
+/** Where a namespace export's members are already documented, if anywhere. */
+function entryFor(symbol: ts.Symbol): string | undefined {
+  const file = symbol.getDeclarations()?.[0]?.getSourceFile().fileName
+  if (file === undefined) return undefined
+  for (const entry of ENTRIES) {
+    if (file === join(ROOT, entry.file)) return entry.specifier
+  }
+  return undefined
+}
+
+function block(
+  name: string,
+  note: string,
+  text: string,
+  depth: 3 | 4,
+): string[] {
+  const lines = [`${"#".repeat(depth)} ${name}`, ""]
+  if (note !== "") lines.push(note, "")
+  lines.push("```ts", text, "```", "")
+  return lines
+}
+
 function render(
   entry: (typeof ENTRIES)[number],
   checker: ts.TypeChecker,
   moduleSymbol: ts.Symbol,
 ): string {
   const lines: string[] = [`## \`${entry.specifier}\``, "", entry.blurb, ""]
-  const exported = checker
-    .getExportsOfModule(moduleSymbol)
-    .map((symbol) =>
-      symbol.flags & ts.SymbolFlags.Alias
-        ? checker.getAliasedSymbol(symbol)
-        : symbol,
-    )
 
-  const sorted = [...exported].sort((a, b) => {
-    const byKind = ORDER.indexOf(kindOf(a)) - ORDER.indexOf(kindOf(b))
-    return byKind !== 0 ? byKind : a.getName().localeCompare(b.getName())
-  })
+  for (const { name, symbol } of listedExports(checker, moduleSymbol)) {
+    const note = summary(symbol, checker)
 
-  for (const symbol of sorted) {
+    // A namespace is rendered as its members. Printing its declaration would
+    // print the whole file, source map comment and all.
+    if (kindOf(symbol) === "namespace") {
+      lines.push(`### ${name}`, "")
+      if (note !== "") lines.push(note, "")
+      const elsewhere = entryFor(symbol)
+      if (elsewhere !== undefined) {
+        // Expanding it here would repeat that section verbatim.
+        lines.push(`Every member is listed under \`${elsewhere}\` below.`, "")
+        continue
+      }
+      for (const member of listedExports(checker, symbol)) {
+        const text = declarationText(member.symbol)
+        if (text === "") continue
+        lines.push(
+          ...block(
+            `${name}.${member.name}`,
+            summary(member.symbol, checker),
+            text,
+            4,
+          ),
+        )
+      }
+      continue
+    }
+
     const text = declarationText(symbol)
     if (text === "") continue
-    const note = summary(symbol, checker)
-    lines.push(`### ${symbol.getName()}`, "")
-    if (note !== "") lines.push(note, "")
-    lines.push("```ts", text, "```", "")
+    lines.push(...block(name, note, text, 3))
   }
   return lines.join("\n")
 }

@@ -1018,73 +1018,152 @@ export type TimerState = {
 };
 ```
 
-### "/home/user/clockwork2/packages/kernel/dist/dmath/index"
+### dmath
+
+Every member is listed under `@clockwork2/kernel/dmath` below.
+
+### fixed
+
+#### fixed.abs
 
 ```ts
-export { acos, asin, atan, atan2 } from "./atan";
-export { PI, PI_2, PI_4, TWO_PI } from "./constants";
-export { exp } from "./exp";
-export { copysign, scalbn } from "./helpers";
-export { log, log2, log10 } from "./log";
-export { exp2i, f32, f32add, f32div, f32FromBits, f32mul, f32sub, f32ToBits, hypot, isNegative, sign, wrapAngle, } from "./misc";
-export { ipow, pow } from "./pow";
-export { cos, sin, tan } from "./trig";
-/**
- * Re-exported so that a simulation can import every number it needs from one
- * place. `Math.sqrt` has been exactly specified since August 2024 and is safe
- * to call directly; this is here for uniformity at the call site, not because
- * the built-in is a problem.
- */
-export declare const sqrt: (x: number) => number;
-export declare const abs: (x: number) => number;
-export declare const floor: (x: number) => number;
-export declare const ceil: (x: number) => number;
-export declare const round: (x: number) => number;
-export declare const trunc: (x: number) => number;
-export declare const min: (...values: number[]) => number;
-export declare const max: (...values: number[]) => number;
-export declare const fround: (x: number) => number;
-export declare const imul: (x: number, y: number) => number;
-export declare const clz32: (x: number) => number;
-//# sourceMappingURL=index.d.ts.map
+export declare function abs(value: Fixed): Fixed;
 ```
 
-### "/home/user/clockwork2/packages/kernel/dist/fixed"
+#### fixed.add
+
+```ts
+export declare function add(a: Fixed, b: Fixed): Fixed;
+```
+
+#### fixed.ceil
+
+```ts
+export declare function ceil(value: Fixed): Fixed;
+```
+
+#### fixed.clamp
+
+```ts
+export declare function clamp(value: Fixed, low: Fixed, high: Fixed): Fixed;
+```
+
+#### fixed.div
+
+```ts
+export declare function div(a: Fixed, b: Fixed): Fixed;
+```
+
+#### fixed.floor
+
+```ts
+export declare function floor(value: Fixed): Fixed;
+```
+
+#### fixed.fromInt
+
+```ts
+export declare function fromInt(value: number): Fixed;
+```
+
+#### fixed.fromNumber
+
+```ts
+export declare function fromNumber(value: number): Fixed;
+```
+
+#### fixed.lerp
+
+Linear interpolation, with t in [0, FIXED_ONE].
+
+```ts
+export declare function lerp(a: Fixed, b: Fixed, t: Fixed): Fixed;
+```
+
+#### fixed.max
+
+```ts
+export declare function max(a: Fixed, b: Fixed): Fixed;
+```
+
+#### fixed.min
+
+```ts
+export declare function min(a: Fixed, b: Fixed): Fixed;
+```
+
+#### fixed.mul
+
+Multiplication, rounded to nearest.
+
+```ts
+export declare function mul(a: Fixed, b: Fixed): Fixed;
+```
+
+#### fixed.round
+
+```ts
+export declare function round(value: Fixed): Fixed;
+```
+
+#### fixed.sqrt
+
+Square root by Newton's method on integers. Exact and engine-independent.
+
+```ts
+export declare function sqrt(value: Fixed): Fixed;
+```
+
+#### fixed.sub
+
+```ts
+export declare function sub(a: Fixed, b: Fixed): Fixed;
+```
+
+#### fixed.toInt
+
+Truncates towards zero, the way an integer cast does.
+
+```ts
+export declare function toInt(value: Fixed): number;
+```
+
+#### fixed.toNumber
+
+```ts
+export declare function toNumber(value: Fixed): number;
+```
+
+#### fixed.FIXED_MAX
+
+```ts
+FIXED_MAX: Fixed
+```
+
+#### fixed.FIXED_MIN
+
+```ts
+FIXED_MIN: Fixed
+```
+
+#### fixed.FIXED_ONE
+
+```ts
+FIXED_ONE: Fixed
+```
+
+#### fixed.FIXED_SHIFT
+
+```ts
+FIXED_SHIFT = 16
+```
+
+#### fixed.Fixed
+
+The type is a plain number; the brand is a note to the reader.
 
 ```ts
 export type Fixed = number;
-export declare const FIXED_ONE: Fixed;
-export declare const FIXED_SHIFT = 16;
-export declare const FIXED_MAX: Fixed;
-export declare const FIXED_MIN: Fixed;
-export declare function fromNumber(value: number): Fixed;
-export declare function toNumber(value: Fixed): number;
-export declare function fromInt(value: number): Fixed;
-/** Truncates towards zero, the way an integer cast does. */
-export declare function toInt(value: Fixed): number;
-export declare function add(a: Fixed, b: Fixed): Fixed;
-export declare function sub(a: Fixed, b: Fixed): Fixed;
-/**
- * Multiplication, rounded to nearest.
- *
- * The exact product needs 64 bits, so it is taken in two halves: `Math.imul`
- * gives the low 32 bits exactly, and the high part comes from the double
- * product, which is exact because both inputs fit in 32 bits.
- */
-export declare function mul(a: Fixed, b: Fixed): Fixed;
-export declare function div(a: Fixed, b: Fixed): Fixed;
-export declare function floor(value: Fixed): Fixed;
-export declare function ceil(value: Fixed): Fixed;
-export declare function round(value: Fixed): Fixed;
-export declare function abs(value: Fixed): Fixed;
-export declare function min(a: Fixed, b: Fixed): Fixed;
-export declare function max(a: Fixed, b: Fixed): Fixed;
-export declare function clamp(value: Fixed, low: Fixed, high: Fixed): Fixed;
-/** Linear interpolation, with t in [0, FIXED_ONE]. */
-export declare function lerp(a: Fixed, b: Fixed, t: Fixed): Fixed;
-/** Square root by Newton's method on integers. Exact and engine-independent. */
-export declare function sqrt(value: Fixed): Fixed;
-//# sourceMappingURL=fixed.d.ts.map
 ```
 
 ## `@clockwork2/kernel/dmath`

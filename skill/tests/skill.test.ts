@@ -130,6 +130,23 @@ describe("references/kernel-api.md", () => {
         'run "bun run build" then "bun run scripts/gen-skill-api.ts"',
     ).toBe(0)
   })
+
+  test("says nothing about the machine that generated it", () => {
+    // The check above compares generated against committed, so it cannot see
+    // that both are machine-specific: a heading naming a checkout path passes
+    // on the machine that wrote it and fails everywhere else. That is exactly
+    // what a namespace export used to produce, because its symbol resolves to
+    // the module and the module's name is its file path.
+    const source = read("references/kernel-api.md")
+    const offenders = source
+      .split("\n")
+      .map((line, index) => ({ line, at: index + 1 }))
+      .filter(({ line }) =>
+        /\/home\/|\/Users\/|[A-Z]:\\|\/tmp\/|sourceMappingURL/.test(line),
+      )
+      .map(({ line, at }) => `${at}: ${line.trim()}`)
+    expect(offenders).toEqual([])
+  })
 })
 
 describe("the templates", () => {
