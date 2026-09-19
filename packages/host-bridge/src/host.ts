@@ -39,16 +39,28 @@ import { browserScheduler, type Scheduler } from "./clock"
 
 export type HostState = "idle" | "running" | "paused" | "ended"
 
-export interface GameHostOptions<TView = unknown, TContainer = unknown> {
-  readonly module: GameModule<TView>
+export interface GameHostOptions<
+  TView = unknown,
+  TContainer = unknown,
+  TConfig = PlainValue,
+> {
+  readonly module: GameModule<TView, TConfig>
   readonly manifest: Manifest
   readonly seed: string
-  readonly config?: PlainValue
+  readonly config?: TConfig
   readonly presentation?: Presentation<TView, TContainer>
   readonly container?: TContainer
   readonly scheduler?: Scheduler
   /** Ticks between state hashes. Defaults to one second of play. */
   readonly checkpointEvery?: number
+  /**
+   * A cap below the manifest's.
+   *
+   * Replaying a recording that was abandoned mid-run needs one: the log ends
+   * where the player stopped, and without a cap the replay carries on past it
+   * and reports a different end tick for a session that did not diverge.
+   */
+  readonly maxTicks?: number
   /** A multiplier on how fast the session advances. Replay speed lives here. */
   readonly speed?: number
   readonly onCheckpoint?: (checkpoint: Checkpoint) => void
@@ -62,6 +74,11 @@ export interface GameHostOptions<TView = unknown, TContainer = unknown> {
    * replays it - which is the point: replay is not a second code path.
    */
   readonly inputs?: InputSource
+  /** Continues from a snapshot instead of starting fresh. */
+  readonly resumeFrom?: {
+    readonly snapshot: Snapshot
+    readonly tick: number
+  }
   readonly presentationContext?: {
     readonly random: () => number
     readonly assets: ReadonlyMap<string, ArrayBuffer | string>
@@ -84,13 +101,17 @@ export interface LoopStats {
   readonly droppedMs: number
 }
 
-export class GameHost<TView = unknown, TContainer = unknown> {
+export class GameHost<
+  TView = unknown,
+  TContainer = unknown,
+  TConfig = PlainValue,
+> {
   /** Present only for a live session; a replay reads its recorded source. */
   readonly live: LiveInputQueue | null
   private readonly source: InputSource
   private readonly accumulator: Accumulator
   private readonly scheduler: Scheduler
-  private session: Session<TView, PlainValue>
+  private session: Session<TView, TConfig>
   private state: HostState = "idle"
   private handle: number | null = null
   private lastNow = 0
@@ -99,7 +120,9 @@ export class GameHost<TView = unknown, TContainer = unknown> {
   private ticksRun = 0
   private speed: number
 
-  constructor(private readonly options: GameHostOptions<TView, TContainer>) {
+  constructor(
+    private readonly options: GameHostOptions<TView, TContainer, TConfig>,
+  ) {
     this.scheduler = options.scheduler ?? browserScheduler()
     this.accumulator = new Accumulator({
       tickHz: options.manifest.session.tickHz,
@@ -116,13 +139,13 @@ export class GameHost<TView = unknown, TContainer = unknown> {
     this.session = this.createSession()
   }
 
-  private createSession(): Session<TView, PlainValue> {
-    return new Session<TView, PlainValue>({
+  private createSession(): Session<TView, TConfig> {
+    return new Session<TView, TConfig>({
       module: this.options.module,
       seed: this.options.seed,
-      config: (this.options.config ?? {}) as PlainValue,
+      config: (this.options.config ?? {}) as TConfig,
       inputs: this.source,
-      maxTicks: this.options.manifest.session.maxTicks,
+      maxTicks: this.options.maxTicks ?? this.options.manifest.session.maxTicks,
       checkpointEvery:
         this.options.checkpointEvery ?? this.options.manifest.session.tickHz,
       counters: this.options.manifest.counters,
@@ -132,6 +155,9 @@ export class GameHost<TView = unknown, TContainer = unknown> {
       ...(this.options.onEffects === undefined
         ? {}
         : { onEffects: this.options.onEffects }),
+      ...(this.options.resumeFrom === undefined
+        ? {}
+        : { resumeFrom: this.options.resumeFrom }),
     })
   }
 
@@ -307,6 +333,11 @@ export class GameHost<TView = unknown, TContainer = unknown> {
 
   snapshot(): Snapshot {
     return this.options.module.snapshot()
+  }
+
+  /** What the renderer sees. Read it; writing to it is not a supported idea. */
+  view(): TView {
+    return this.options.module.view()
   }
 
   /**
