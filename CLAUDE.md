@@ -14,9 +14,12 @@ bun run build          # tsc -b over project references
 bun run typecheck
 bun run lint           # biome check .
 bun run lint:fix
-bun test               # unit tests, every package
+bun test               # unit tests, the demo's fixtures and the skill
+bun test skill         # the skill's own checks, on their own
 bun run test:engines   # golden vectors under every installed JS engine
 bun run test:e2e       # Playwright against the built demo
+bun run test:e2e:nightly  # the seeded fuzz spec, twenty seeds
+bun run gen:skill-api  # regenerate the skill's API reference after a build
 bun run demo           # the demo dev server - never start this yourself
 bun run demo:build
 ```
@@ -104,6 +107,20 @@ at the tick the host actually reached, or the log replays to a different state.
 - `retries` is 0 in the Playwright config on purpose. For a determinism suite,
   flake is the finding. Rewrite a timing-sensitive test against the virtual
   clock rather than retrying it.
+
+## Working on the skill
+
+`skill/platform-game/` is prose an agent follows literally, so a stale sentence
+is worse than a missing one. Everything in it that can be checked is checked by
+`skill/tests/skill.test.ts`, and a change to the kernel can therefore fail it:
+
+- `references/kernel-api.md` is **generated**. Never edit it. After changing a
+  public type, run `bun run build && bun run gen:skill-api` in the same commit.
+- `references/failure-modes.md` needs a `### E_CODE` section per entry in the
+  kernel's `ERROR_CODES`, and no section for a code that does not exist. Adding
+  a code means adding its section.
+- The two templates' `src/sim.ts` files must stay byte-identical, and both
+  templates must pass the whole conformance suite unmodified.
 
 ## Prose
 

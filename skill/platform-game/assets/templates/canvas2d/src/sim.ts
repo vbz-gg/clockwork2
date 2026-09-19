@@ -83,10 +83,14 @@ export class LaneRunner implements GameModule<View, Config> {
     // other's sequence and quietly change every recorded session.
     this.spawnRng = this.rng.stream("spawn")
     this.timer = new Timer()
+    // A one-shot that re-arms itself, rather than `every`: the interval
+    // shrinks as the run goes on, and `every` would leave the old schedule
+    // running beside the new one. One pending entry at a time, always.
     this.timer.define("spawn", () => {
       this.spawn()
+      this.timer.after("spawn", this.spawnInterval())
     })
-    this.timer.every("spawn", SPAWN_INTERVAL)
+    this.timer.after("spawn", SPAWN_INTERVAL)
     this.lane = Math.min(Math.max(this.config.startingLane, 0), LANES - 1)
     this.rocks = []
     this.motes = []
@@ -131,19 +135,30 @@ export class LaneRunner implements GameModule<View, Config> {
     if (this.ticks >= TIME_LIMIT_TICKS) this.over = true
   }
 
-  /** Rocks arrive faster as the run goes on, so it always ends. */
   private spawn(): void {
     const lane = this.spawnRng.randomInt(0, LANES - 1)
     this.rocks.push({ id: this.nextId++, lane, z: TRACK_LENGTH })
     if (this.spawnRng.randomBoolean(0.5)) {
+      // One of the two lanes the rock is not in, so there is always somewhere
+      // to go.
       const free = (lane + 1 + this.spawnRng.randomInt(0, LANES - 2)) % LANES
       this.motes.push({ id: this.nextId++, lane: free, z: TRACK_LENGTH })
     }
-    const eased = Math.max(
+  }
+
+  /**
+   * Rocks arrive faster as the run goes on.
+   *
+   * Some form of this is not optional: check 3 replays the game with an idle
+   * player, a chaos log and the platform's bot, and every one of them has to
+   * reach an ending. A game that a good player can hold forever is a game the
+   * platform cannot bound what it pays to replay.
+   */
+  private spawnInterval(): number {
+    return Math.max(
       MIN_SPAWN_INTERVAL,
       SPAWN_INTERVAL - Math.floor(this.ticks / 600),
     )
-    this.timer.every("spawn", eased)
   }
 
   view(): View {
