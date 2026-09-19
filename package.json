@@ -1,0 +1,45 @@
+{
+  "name": "clockwork2",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A deterministic, fixed-step game kernel for verifiable browser games",
+  "license": "MIT",
+  "author": "Ramesh Nair",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vbz-gg/clockwork2.git"
+  },
+  "workspaces": [
+    "packages/*",
+    "demo",
+    "e2e"
+  ],
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf packages/*/dist packages/*/*.tsbuildinfo demo/dist e2e/test-results e2e/playwright-report",
+    "typecheck": "tsc -b && tsc -p tsconfig.tests.json && tsc -p demo --noEmit && tsc -p e2e --noEmit",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "test": "bun test packages scripts",
+    "test:engines": "bun run scripts/engines.ts",
+    "test:e2e": "bun run --cwd e2e test",
+    "demo": "bun run --cwd demo dev",
+    "demo:build": "bun run --cwd demo build",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.14",
+    "@commitlint/cli": "^19.8.1",
+    "@commitlint/config-conventional": "^19.8.1",
+    "@types/bun": "^1.2.21",
+    "alea": "1.0.1",
+    "commit-and-tag-version": "^12.6.0",
+    "husky": "^9.1.7",
+    "typescript": "5.9.3"
+  }
+}

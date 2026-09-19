@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["bun"],
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false
+  },
+  "include": ["packages/*/tests/**/*", "scripts/**/*"]
+}

@@ -1,0 +1,16 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.DS_Store
+*.log
+
+# test output
+test-results/
+playwright-report/
+blob-report/
+coverage/
+lcov.info
+
+# local env
+.env
+.env.local

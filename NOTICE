@@ -1,0 +1,41 @@
+Clockwork 2
+Copyright (c) 2026 Ramesh Nair
+
+This product includes software developed as part of the following projects.
+
+--------------------------------------------------------------------------
+Clockwork (Clockwork 1)
+https://github.com/hiddentao/clockwork-engine
+Copyright (c) Ramesh Nair
+MIT License
+
+Clockwork 2 is a clean-room successor to Clockwork 1. It keeps that project's
+architecture - seeded PRNG, tick timers, input-log recording, deterministic
+replay, headless validation - and changes the timing model from variable-step
+to fixed-step. It has a fresh git history and is not a fork.
+
+--------------------------------------------------------------------------
+alea
+https://github.com/coverslide/node-alea
+Copyright (c) 2010 Johannes Baagoe
+MIT License
+
+packages/kernel/src/prng/alea.ts is a vendored TypeScript transcription of
+alea 1.0.1. It is vendored rather than depended upon so that the kernel has
+no runtime dependencies. Its output is proved byte-identical to the published
+package by packages/kernel/tests/prng/alea-parity.test.ts.
+
+--------------------------------------------------------------------------
+fdlibm (Sun Microsystems FreeLY Distributable Math Library)
+https://www.netlib.org/fdlibm/
+Copyright (c) 1993 Sun Microsystems, Inc.
+
+Developed at SunSoft, a Sun Microsystems, Inc. business. Permission to use,
+copy, modify, and distribute this software is freely granted, provided that
+this notice is preserved.
+
+packages/kernel/src/dmath/ is a TypeScript transcription of the fdlibm
+polynomial kernels. It exists because ECMAScript leaves the results of
+Math.sin, Math.cos, Math.pow and the other transcendental functions
+implementation-defined, so a simulation that must replay bit-exactly on
+another engine cannot call them.

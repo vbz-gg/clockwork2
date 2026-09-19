@@ -1,0 +1,40 @@
+{
+  "name": "@clockwork2/adapter-three",
+  "version": "0.1.0",
+  "description": "Read-only presentation adapter for Three.js",
+  "license": "MIT",
+  "author": "Ramesh Nair",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vbz-gg/clockwork2.git",
+    "directory": "packages/adapter-three"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@clockwork2/kernel": "workspace:*"
+  },
+  "peerDependencies": {
+    "three": ">=0.170.0"
+  },
+  "devDependencies": {
+    "three": "0.186.0",
+    "@types/three": "0.186.0"
+  },
+  "scripts": {
+    "clean": "rm -rf dist *.tsbuildinfo"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "name": "demo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The Clockwork 2 Snake demo, ported from Clockwork 1",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 4173 --strictPort",
+    "preview:test": "vite preview --port 4173 --strictPort",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@clockwork2/adapter-pixi": "workspace:*",
+    "@clockwork2/compat-clockwork1": "workspace:*",
+    "@clockwork2/host-bridge": "workspace:*",
+    "@clockwork2/kernel": "workspace:*",
+    "pixi.js": "8.21.0"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vite": "^7.1.0"
+  }
+}
