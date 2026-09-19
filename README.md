@@ -81,14 +81,28 @@ to the second it happened.
 | `@clockwork2/adapter-pixi` | Read-only presentation on PIXI 8. |
 | `@clockwork2/compat-clockwork1` | `GameObject`, `Vector2D`, `CollisionGrid` for ported games. |
 
+Beside them, `skill/platform-game/` is the agent skill: the rules an agent
+writing a game has to follow, each naming the check that enforces it, a section
+per error code, and two starter templates that pass the conformance suite
+before a line of them is changed. Its API reference is generated from the type
+declarations and `bun test skill` fails when the two disagree.
+
 ## Getting started
 
 ```bash
 bun install
 bun run build
-bun test              # unit tests
+bun test              # unit tests, the demo's frozen recordings, and the skill
 bun run test:engines  # the same vectors under every installed JS engine
 bun run demo          # the Snake demo, with record and replay
+bun run test:e2e      # Playwright: record, replay, frame rates, cross-runtime
+```
+
+To start a game:
+
+```bash
+bun run skill/platform-game/scripts/new.ts ./my-game
+cd ./my-game && bun install && bun run validate
 ```
 
 ## Determinism rules

@@ -128,6 +128,16 @@ Old recordings do not replay on this kernel and there is no legacy reader.
 - **`effects()`**, so audio leaves the simulation. Clockwork 1's demo calls
   `playSound()` from inside collision handling, which fires again on replay.
 - **A conformance suite** with stable error codes.
+- **An agent skill** whose every checkable claim is checked: the API reference
+  is generated from the type declarations, the error-code sections are compared
+  with the kernel's table, and the two templates are run through the
+  conformance suite by `bun test skill`. Clockwork 1's equivalent is
+  `game-scaffold/CLAUDE.md`, of whose 1,227 lines about a thousand are
+  techniques copied out of six games; nothing in it is machine-checked, and it
+  contradicts itself: it bans `Math.random()` outright on line 87 and then
+  calls it on line 888 without saying why that one is allowed, and the repaint
+  flag is `needsRepaint` in the heading and `isRepaintNeeded` in every code
+  sample under it.
 - **Fixed-step by construction**, which is what all of the above is for.
 
 ## 6. Tooling
@@ -141,3 +151,17 @@ Old recordings do not replay on this kernel and there is no legacy reader.
 | `biome.json` declares schema 2.1.3 against an installed 1.9.2 | Schema matches the pinned version |
 | CI on every push, no PR trigger, no concurrency group, no caching, browser tests before lint | Push and pull request, concurrency group, cached, cheapest job first |
 | Release publishes behind an interactive OTP prompt | Token-based |
+
+## 7. Two deliberate departures from the plan
+
+`docs/plan.md` lists `assets/manifest.schema.json` in the skill. There is no
+such file. A hand-written JSON Schema beside a runtime validator is a second
+description of one shape, and the one that drifts is always the one nobody
+runs. `assertManifest` in `@clockwork2/kernel` is the schema, and
+`references/manifest-schema.md` says so.
+
+The plan also lists a `submit` script in the skill. The submission endpoint is
+part of the arcade platform, which is a different repository and not built yet,
+so there is nothing for such a script to call. `references/submission.md`
+describes the contract a game is judged against - what a recording contains and
+what the server does with it - which is the part that exists today.
