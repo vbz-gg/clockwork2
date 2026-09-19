@@ -52,7 +52,7 @@ export type InputDevice = (typeof INPUT_DEVICES)[number]
  * `value` is an integer. Analog sources are quantised by the host, with the
  * deadzones in `inputs.ts`, before the simulation ever sees them.
  */
-export interface InputEvent {
+export type InputEvent = {
   readonly tick: number
   readonly device: InputDevice
   readonly code: string
@@ -67,7 +67,7 @@ export interface InputEvent {
  * replay then has nothing to stub, and a sound cannot be played twice because
  * a frame ran two steps.
  */
-export interface Effect {
+export type Effect = {
   readonly type: string
   readonly data?: PlainValue
 }

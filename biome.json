@@ -25,7 +25,8 @@
       "style": {
         "useConst": "error",
         "noNonNullAssertion": "error",
-        "useNodejsImportProtocol": "error"
+        "useNodejsImportProtocol": "error",
+        "useExponentiationOperator": "off"
       },
       "complexity": {
         "noExcessiveCognitiveComplexity": "off"

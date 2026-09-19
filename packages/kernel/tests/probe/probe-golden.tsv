@@ -1,0 +1,26 @@
+# Cross-engine probe digests. Written by scripts/engines.ts --update.
+# A change here means the simulation changed. Say why in the commit body.
+prng/alea-next	1e2a0b220c5dcade
+prng/alea-uint32	25f664710945a3f9
+prng/alea-state	852675ca527ba9e8
+prng/substreams	61f91341bb8ac134
+dmath/sin	a0494e3ad26cb2ad
+dmath/cos	885cbafbceac4a04
+dmath/tan	d2736abac13c3292
+dmath/asin	d8f5ae4588d1d269
+dmath/acos	674a9a2ef900a973
+dmath/atan	42b8e92d3814d545
+dmath/exp	d93ae0810ce61333
+dmath/log	6d25bd8da1b5de13
+dmath/log2	563a7301e0a79a74
+dmath/log10	40a398ca974246ae
+dmath/wrapAngle	f601c763eb87eca3
+dmath/atan2	cc9ad8ca8cfbfcb0
+dmath/hypot	cfce8b8fc7618fcd
+dmath/pow	7d29d395dd223067
+dmath/ipow	888d8880dcc9edd9
+hash/canonical	2104b3c759c64b09
+encoding/number-roundtrip	f004242487b502da
+encoding/collections	ba31ac98cb0cd912
+sim/reference-1000	3c555733d2ceddb1
+sim/reference-full	6481ebab7757d1e0
