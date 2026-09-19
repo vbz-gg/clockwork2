@@ -22,5 +22,5 @@ dmath/ipow	888d8880dcc9edd9
 hash/canonical	2104b3c759c64b09
 encoding/number-roundtrip	f004242487b502da
 encoding/collections	ba31ac98cb0cd912
-sim/reference-1000	3c555733d2ceddb1
-sim/reference-full	6481ebab7757d1e0
+sim/reference-1000	3bb02fcf3261b1b2
+sim/reference-full	e4e535f743f1d85e

@@ -30,6 +30,18 @@ export { createAlea } from "./alea"
 /** Plain data, so it drops straight into a snapshot. */
 export type PrngState = {
   readonly s: AleaState
+  /**
+   * The seed, on the root only.
+   *
+   * It is here because a sub-stream created *after* a snapshot was taken is
+   * seeded from its parent's seed, so restoring the generator positions is not
+   * enough: a restored game that later reaches for a stream it had not used
+   * yet would seed it from whatever the restoring module was constructed with
+   * and draw a different sequence from then on. That failure is invisible in
+   * the snapshot itself, which compares equal, and shows up minutes later as a
+   * replay that does not match.
+   */
+  readonly seed?: string
   /** Sub-streams by label, only those that have been created. */
   readonly k?: { readonly [label: string]: PrngState }
 }
@@ -40,12 +52,19 @@ const LABEL_SEPARATOR = "\u0000"
 export class Prng {
   private readonly alea: Alea
   private readonly children = new Map<string, Prng>()
+  private seedValue: string
 
-  constructor(readonly seed: string) {
+  constructor(seed: string) {
     if (typeof seed !== "string" || seed.length === 0) {
       fail("E_SEED_REQUIRED", { detail: "a seed must be a non-empty string" })
     }
+    this.seedValue = seed
     this.alea = createAlea(seed)
+  }
+
+  /** What this stream was seeded from. Sub-streams derive their own from it. */
+  get seed(): string {
+    return this.seedValue
   }
 
   /** A double in [0, 1). */
@@ -99,20 +118,21 @@ export class Prng {
   stream(label: string): Prng {
     const existing = this.children.get(label)
     if (existing !== undefined) return existing
-    const child = new Prng(`${this.seed}${LABEL_SEPARATOR}${label}`)
+    const child = new Prng(`${this.seedValue}${LABEL_SEPARATOR}${label}`)
     this.children.set(label, child)
     return child
   }
 
   /** The whole tree, as plain data. Put this in your snapshot. */
   exportState(): PrngState {
-    if (this.children.size === 0) return { s: this.alea.exportState() }
+    const base = { s: this.alea.exportState(), seed: this.seedValue }
+    if (this.children.size === 0) return base
     const k: Record<string, PrngState> = {}
     // Sorted so the encoding does not depend on which sub-stream was used first.
     for (const label of [...this.children.keys()].sort()) {
       k[label] = (this.children.get(label) as Prng).exportState()
     }
-    return { s: this.alea.exportState(), k }
+    return { ...base, k }
   }
 
   /**
@@ -122,6 +142,9 @@ export class Prng {
    */
   importState(state: PrngState): void {
     this.alea.importState(state.s)
+    // The seed comes back too, so a sub-stream reached for later is derived
+    // from the same parent it would have been derived from originally.
+    if (state.seed !== undefined) this.seedValue = state.seed
     const k = state.k
     if (k === undefined) return
     for (const label of Object.keys(k)) {
@@ -131,7 +154,7 @@ export class Prng {
 
   /** Back to the start of the stream, sub-streams included. */
   reset(): void {
-    const fresh = createAlea(this.seed)
+    const fresh = createAlea(this.seedValue)
     this.alea.importState(fresh.exportState())
     for (const child of this.children.values()) child.reset()
   }

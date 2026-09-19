@@ -146,6 +146,28 @@ describe("Prng", () => {
       }
     })
 
+    test("a sub-stream reached for after the snapshot is still the right one", () => {
+      // The failure this catches is invisible in the snapshot, which compares
+      // equal, and shows up minutes later as a replay that does not match: a
+      // child created after the snapshot is seeded from its parent's seed, so
+      // restoring positions alone is not enough.
+      const live = new Prng("original")
+      live.random()
+      const state = JSON.parse(JSON.stringify(live.exportState())) as PrngState
+
+      // Restored into a generator built with a different seed, which is what
+      // happens when a game's restore path constructs one before importing.
+      const restored = new Prng("something-else")
+      restored.importState(state)
+      expect(restored.seed).toBe("original")
+
+      for (const label of ["walls", "loot", "fx"]) {
+        expect(toBitsHex(restored.stream(label).random()), label).toBe(
+          toBitsHex(live.stream(label).random()),
+        )
+      }
+    })
+
     test("restores a child the fresh instance has not reached yet", () => {
       // This is the case that matters: the validator restores into a module
       // that has never touched the sub-stream.
