@@ -43,10 +43,22 @@ export class PixiPresentation<TView>
   private application: Application | null = null
   private ready: Promise<void> | null = null
   private started = false
+  /**
+   * Bumped on every mount and unmount.
+   *
+   * `Application.init()` is asynchronous, and a host that starts a new session
+   * unmounts this one while PIXI may still be starting up. Without a way to
+   * tell whether a late `init` callback still belongs to the presentation the
+   * host is using, that callback appends the canvas of an abandoned
+   * application to the stage and marks it started - and the next frame then
+   * renders through a destroyed renderer.
+   */
+  private generation = 0
 
   constructor(private readonly options: PixiPresentationOptions<TView>) {}
 
   mount(container: HTMLElement, context: PresentationContext): void {
+    const generation = ++this.generation
     const application = new Application()
     this.application = application
     this.ready = application
@@ -64,6 +76,10 @@ export class PixiPresentation<TView>
         autoStart: false,
       })
       .then(() => {
+        // Unmounted while PIXI was starting. Nothing here may touch the
+        // container or `started`; `unmount` destroys the application once
+        // this promise settles.
+        if (this.generation !== generation) return
         container.appendChild(application.canvas)
         application.canvas.style.display = "block"
         this.started = true
@@ -90,10 +106,26 @@ export class PixiPresentation<TView>
   }
 
   unmount(): void {
-    this.application?.destroy(true, { children: true })
+    this.generation++
+    const application = this.application
+    const ready = this.ready
     this.application = null
-    this.started = false
     this.ready = null
+    this.started = false
+    if (application === null) return
+    if (ready === null) {
+      application.destroy(true, { children: true })
+      return
+    }
+    // Destroying an application that is still initialising leaves its canvas
+    // and its WebGL context behind, and a browser only grants so many of
+    // those before the next one fails. So the destroy waits for init to
+    // settle - which it does whether init resolved or threw.
+    void ready
+      .catch(() => undefined)
+      .then(() => {
+        application.destroy(true, { children: true })
+      })
   }
 
   get app(): Application | null {

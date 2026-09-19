@@ -60,7 +60,14 @@ function newSession(
     checkpointEvery: 60,
     ...(replay === undefined
       ? {}
-      : { inputs: new RecordedInputSource(replay.inputs) }),
+      : {
+          inputs: new RecordedInputSource(replay.inputs),
+          // A recording of a session the player stopped ends where they
+          // stopped. Without this cap the replay carries on past that point
+          // until the snake dies, reaches a different state, and the panel
+          // reports a mismatch for a recording that never diverged.
+          maxTicks: Math.max(replay.endTick, 1),
+        }),
     onEffects: audio.handle,
     onEnded: (result) => {
       if (mode === "playing") {
