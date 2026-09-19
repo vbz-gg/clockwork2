@@ -9,7 +9,12 @@
 import { execFileSync } from "node:child_process"
 import { readFileSync, writeFileSync } from "node:fs"
 import { expect, test } from "@playwright/test"
-import { payload, playGreedily } from "./support"
+import {
+  MIN_INPUTS,
+  MIN_TICKS,
+  payload,
+  playSubstantialSession,
+} from "./support"
 
 const ROOT = new URL("../../", import.meta.url).pathname
 
@@ -35,17 +40,9 @@ test.describe("a browser recording replays on a server", () => {
   }, testInfo) => {
     await page.goto("/")
     await page.waitForFunction(() => window.__cw2test !== undefined)
-    await page.evaluate(() => {
-      window.__cw2test?.reset("e2e-cross")
-    })
 
     // Real key events, at times nobody controls, from a player that lasts.
-    await playGreedily(page, 8)
-    await page.evaluate(() => {
-      window.__cw2test?.stop()
-    })
-
-    const recording = await page.evaluate(() => window.__cw2test?.recording())
+    const { recording } = await playSubstantialSession(page, "e2e-cross")
     const inBrowser = await page.evaluate(
       (input) =>
         window.__cw2test?.runFixedLog(input as never, {
@@ -54,8 +51,8 @@ test.describe("a browser recording replays on a server", () => {
         }),
       payload(recording),
     )
-    expect(recording?.inputs.length ?? 0).toBeGreaterThan(8)
-    expect(recording?.endTick ?? 0).toBeGreaterThan(200)
+    expect(recording.inputs.length).toBeGreaterThan(MIN_INPUTS)
+    expect(recording.endTick).toBeGreaterThan(MIN_TICKS)
 
     // Somewhere the report can attach it, so a red run is reproducible from
     // one downloaded artifact.

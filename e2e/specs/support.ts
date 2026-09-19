@@ -11,6 +11,7 @@
  * point of spec 01.
  */
 
+import type { Checkpoint, Recording } from "@clockwork2/kernel"
 import type { Page } from "@playwright/test"
 
 interface View {
@@ -68,6 +69,20 @@ function choose(view: View): string | null {
     blocked.add(`${segment.x},${segment.y}`)
   }
 
+  /** How many free cells a square has, ignoring the way we came in. */
+  function exits(from: { x: number; y: number }, camefrom: string): number {
+    let count = 0
+    for (const [code, delta] of Object.entries(DELTAS)) {
+      if (code === OPPOSITE[camefrom]) continue
+      const cell = {
+        x: wrap(from.x + delta.x, size),
+        y: wrap(from.y + delta.y, size),
+      }
+      if (!blocked.has(`${cell.x},${cell.y}`)) count++
+    }
+    return count
+  }
+
   const apple = view.apples[0]
   const options: Array<{ code: string; cost: number }> = []
   for (const [code, delta] of Object.entries(DELTAS)) {
@@ -77,11 +92,15 @@ function choose(view: View): string | null {
       y: wrap(head.y + delta.y, size),
     }
     if (blocked.has(`${next.x},${next.y}`)) continue
-    const cost =
+    const distance =
       apple === undefined
         ? 0
         : toroidal(next.x, apple.x, size) + toroidal(next.y, apple.y, size)
-    options.push({ code, cost })
+    // One ply of lookahead. Without it the player walks into pockets the
+    // walls have closed off and dies in a couple of seconds, which makes the
+    // length of a recorded session a matter of luck.
+    const deadEnd = exits(next, code) === 0 ? size * 4 : 0
+    options.push({ code, cost: distance + deadEnd })
   }
   if (options.length === 0) return null
   options.sort((a, b) => a.cost - b.cost || a.code.localeCompare(b.code))
@@ -89,8 +108,85 @@ function choose(view: View): string | null {
   return best.code === view.direction.toLowerCase() ? null : best.code
 }
 
+/**
+ * How long a scripted session plays before the spec stops it.
+ *
+ * Long enough that the recording is worth replaying, short enough that six
+ * specs doing it do not dominate the suite.
+ */
+export const PLAY_SECONDS = 10
+
+/**
+ * The floor a scripted recording has to clear to count as a real session.
+ *
+ * It is deliberately far below what the player actually produces. The guard's
+ * job is to catch a page that silently recorded nothing - which would satisfy
+ * every "the replay agrees" assertion in the suite - and not to assert how
+ * often a greedy player happens to turn. A tight number here fails on the run
+ * where the snake spends longer already pointing the right way, which is a
+ * fact about the board and not about determinism.
+ */
+export const MIN_INPUTS = 4
+
+/**
+ * The shortest session that still counts, in ticks.
+ *
+ * Two seconds, so there are several checkpoints to compare. How long the
+ * player survives past that is a property of the board and the walls, not of
+ * the replay machinery, and asserting a number closer to the typical run
+ * fails on the run where the snake is boxed in early.
+ */
+export const MIN_TICKS = 120
+
+/**
+ * Plays until there is a session worth replaying, and hands it back.
+ *
+ * A greedy player boxed in by an early wall can die inside two seconds. How
+ * long it survives is a property of the board, not of the replay machinery,
+ * so a spec that asserts a session length is asserting the wrong thing and
+ * will eventually go red on a run that proves nothing.
+ *
+ * The answer is not to retry the test or to lower the floor until any session
+ * passes: it is to play again, on a differently seeded board, until there is a
+ * session of the size the spec needs. Every press is still a real key event at
+ * a time nobody controls, which is the part that matters.
+ */
+export async function playSubstantialSession(
+  page: Page,
+  seed: string,
+  attempts = 4,
+): Promise<{ recording: Recording; checkpoints: readonly Checkpoint[] }> {
+  let shortest = Number.POSITIVE_INFINITY
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const thisSeed = attempt === 0 ? seed : `${seed}-${attempt}`
+    await page.evaluate((value) => {
+      window.__cw2test?.reset(value)
+    }, thisSeed)
+    await playGreedily(page)
+    await page.evaluate(() => {
+      window.__cw2test?.stop()
+    })
+    const session = await page.evaluate(() => ({
+      recording: window.__cw2test?.recording(),
+      checkpoints: window.__cw2test?.checkpoints() ?? [],
+    }))
+    const recording = session.recording
+    if (recording === undefined) throw new Error("the page recorded nothing")
+    if (recording.endTick > MIN_TICKS && recording.inputs.length > MIN_INPUTS) {
+      return { recording, checkpoints: session.checkpoints }
+    }
+    shortest = Math.min(shortest, recording.endTick)
+  }
+  throw new Error(
+    `no session longer than ${MIN_TICKS} ticks in ${attempts} attempts (shortest ${shortest}); the scripted player or the game has changed`,
+  )
+}
+
 /** Plays for at most `seconds`, or until the run ends. */
-export async function playGreedily(page: Page, seconds: number): Promise<void> {
+export async function playGreedily(
+  page: Page,
+  seconds: number = PLAY_SECONDS,
+): Promise<void> {
   const until = Date.now() + seconds * 1000
   while (Date.now() < until) {
     const state = await page.evaluate(() => ({
@@ -100,7 +196,7 @@ export async function playGreedily(page: Page, seconds: number): Promise<void> {
     if (!state.running) return
     const turn = choose(state.view as View)
     if (turn !== null) await page.keyboard.press(KEY_FOR[turn] as string)
-    await page.waitForTimeout(90)
+    await page.waitForTimeout(60)
   }
 }
 

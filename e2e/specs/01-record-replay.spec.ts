@@ -17,33 +17,28 @@
  */
 
 import { expect, test } from "@playwright/test"
-import { payload, playGreedily } from "./support"
+import {
+  MIN_INPUTS,
+  MIN_TICKS,
+  payload,
+  playSubstantialSession,
+} from "./support"
 
 test.describe("record and replay", () => {
   test("a played session replays to the state it reached", async ({ page }) => {
     await page.goto("/")
     await page.waitForFunction(() => window.__cw2test !== undefined)
-    await page.evaluate(() => {
-      window.__cw2test?.reset("e2e-record")
-    })
 
-    await playGreedily(page, 8)
-    await page.evaluate(() => {
-      window.__cw2test?.stop()
-    })
+    const { recording: played, checkpoints } = await playSubstantialSession(
+      page,
+      "e2e-record",
+    )
 
-    const { recording, checkpoints } = await page.evaluate(() => ({
-      recording: window.__cw2test?.recording(),
-      checkpoints: window.__cw2test?.checkpoints(),
-    }))
-    expect(recording).toBeDefined()
-
-    // Without these, a page that silently recorded nothing passes everything
-    // below it.
-    const played = recording as NonNullable<typeof recording>
-    expect(played.inputs.length, "inputs recorded").toBeGreaterThan(10)
-    expect(played.endTick, "ticks simulated").toBeGreaterThan(200)
-    expect((checkpoints ?? []).length, "checkpoints taken").toBeGreaterThan(3)
+    // The helper guarantees these; they are restated here because a page that
+    // silently recorded nothing would satisfy everything below them.
+    expect(played.inputs.length, "inputs recorded").toBeGreaterThan(MIN_INPUTS)
+    expect(played.endTick, "ticks simulated").toBeGreaterThan(MIN_TICKS)
+    expect(checkpoints.length, "checkpoints taken").toBeGreaterThan(1)
 
     const replayed = await page.evaluate(
       (input) =>

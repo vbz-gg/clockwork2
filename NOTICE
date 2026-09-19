@@ -26,7 +26,7 @@ no runtime dependencies. Its output is proved byte-identical to the published
 package by packages/kernel/tests/prng/alea-parity.test.ts.
 
 --------------------------------------------------------------------------
-fdlibm (Sun Microsystems FreeLY Distributable Math Library)
+fdlibm (Sun Microsystems Freely Distributable Math Library)
 https://www.netlib.org/fdlibm/
 Copyright (c) 1993 Sun Microsystems, Inc.
 

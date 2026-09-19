@@ -35,6 +35,15 @@ let recordedFinalHash: string | null = null
 let frames = 0
 let framesAt = performance.now()
 let fps = 0
+/**
+ * Called after every session, by whatever created it.
+ *
+ * Only the test hooks set it, and only in a build that has them. Without it
+ * they stay bound to the host they were installed against, so a spec that
+ * clicks New game or Replay and then reads the hooks is reading the session
+ * before last - which looks exactly like a page that stopped simulating.
+ */
+let afterNewSession: (() => void) | null = null
 
 const audio = new AudioSink({ sounds: SOUNDS })
 const ui = new Ui(container, (action) => {
@@ -111,6 +120,7 @@ function newSession(
   void audio.unlock()
   host.start()
   refresh()
+  afterNewSession?.()
 }
 
 function handle(action: UiAction): void {
@@ -201,10 +211,10 @@ if (import.meta.env.DEV || import.meta.env.VITE_CW2_TEST === "1") {
         },
         reset: (seed) => {
           newSession(seed)
-          install()
         },
       })
     }
+    afterNewSession = install
     install()
   })
 }

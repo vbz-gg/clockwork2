@@ -55,8 +55,8 @@ A fixed step is what makes a simulation independent of the player's frame
 rate. The host owns an accumulator over `requestAnimationFrame`: a slow frame
 runs more ticks, never a bigger one. Jitter changes *how many* ticks run and
 never *how big* a tick is.
-*Checked by `determinism`; proved end to end by the frame-rate spec in this
-repository's e2e suite.*
+*Checked by `determinism`; proved end to end by the engine's own frame-rate
+tests, which replay one log at rates from 240 Hz to 5 Hz.*
 
 **2. Randomness comes from a seeded `Prng`, in labelled sub-streams.**
 `new Prng(seed)` in `init`, then `rng.stream("spawn")`. With one stream, adding
