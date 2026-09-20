@@ -14,6 +14,12 @@ bun run build
 bun run demo          # play Snake, record it, replay it
 ```
 
+## Live demo
+
+<https://vbz-gg.github.io/clockwork2/> is the Snake demo, built from `main`.
+Play a round, download the recording, then load it back: the page replays it and
+puts the replay's state hash beside the one the run recorded.
+
 ## What it gives you
 
 A fixed-step simulation loop. Your game advances one tick at a time and never
