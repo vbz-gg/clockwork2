@@ -5,8 +5,7 @@
     "composite": false,
     "declaration": false,
     "declarationMap": false,
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "types": ["node"]
+    "lib": ["ES2022", "DOM", "DOM.Iterable"]
   },
   "include": ["**/*.ts"],
   "exclude": ["node_modules", "test-results", "playwright-report"]

@@ -1,0 +1,22 @@
+{
+  "name": "lane-runner",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "validate": "clockwork2-validate run ./src",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@clockwork2/adapter-canvas2d": "^0.1.0",
+    "@clockwork2/host-bridge": "^0.1.0",
+    "@clockwork2/kernel": "^0.1.0"
+  },
+  "devDependencies": {
+    "@clockwork2/validate": "^0.1.0",
+    "typescript": "^5.9.0",
+    "vite": "^7.1.0"
+  }
+}

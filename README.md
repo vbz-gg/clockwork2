@@ -1,116 +1,125 @@
 # Clockwork 2
 
-A deterministic, fixed-step game kernel for browser games whose results have to
-be verified rather than trusted.
+A game engine for browser games whose results someone else has to check.
 
-The browser records what the player pressed. The server replays that input log
-and recomputes the result. If the two disagree, the score is not real. That only
-works if the simulation is a pure function of its seed, its config and its
-inputs, on every JavaScript engine a player might be using. Clockwork 2 exists
-to make that property hold and to make it testable.
+The browser records what the player pressed. A server replays that recording and
+computes the score itself. If the two disagree, the score is not real. That works
+only if the game is a pure function of its seed, its configuration and its
+inputs, on every JavaScript engine a player might be using, and most of this
+project is the work of making that true and keeping it true.
 
-Clockwork 2 is a clean-room successor to
-[Clockwork 1](https://github.com/hiddentao/clockwork-engine). It keeps that
-project's architecture and changes the timing model. See
-[docs/differences.md](docs/differences.md).
+```bash
+bun install
+bun run build
+bun run demo          # play Snake, record it, replay it
+```
 
-## How it works
+## What it gives you
 
-The host owns the clock. `requestAnimationFrame` is the pump, not the timebase:
+A fixed-step simulation loop. Your game advances one tick at a time and never
+sees a time delta, so it cannot depend on the player's frame rate. The host
+absorbs uneven frames by running more ticks, never bigger ones.
 
-```js
-const STEP_MS = 1000 / tickHz
-let accumulator = 0, last = performance.now(), tick = 0
+Deterministic maths. `Math.sin`, `Math.pow` and the rest are allowed to give
+different answers in different engines, and they do: `Math.cos(0.1)` is
+`0x3FEFD712F9A817C1` on JavaScriptCore and `0x3FEFD712F9A817C0` on V8. The
+kernel ships `dmath` with the same function names, written from operations
+ECMAScript specifies exactly.
 
-function frame(now) {
-  accumulator += Math.min(now - last, MAX_FRAME_MS)
-  last = now
+Seeded randomness, in labelled sub-streams, with its state in the snapshot.
 
-  let steps = 0
-  while (accumulator >= STEP_MS && steps < MAX_CATCHUP) {
-    game.tick(inputsAt(tick)); tick++; accumulator -= STEP_MS; steps++
-  }
-  if (steps === MAX_CATCHUP) accumulator = 0
+Recordings that replay. A recording is a seed, a configuration, the inputs
+stamped with the tick they run on, a state hash every second, and an end tick.
+Replaying it is the same loop reading inputs from a file instead of a keyboard.
 
-  presentation.render(game.view(), prevView, accumulator / STEP_MS, elapsed)
-  requestAnimationFrame(frame)
+A conformance suite. Twelve checks with stable error codes, run the same way
+locally and by whatever platform accepts the game.
+
+Renderers that cannot cheat. A presentation reads the view and writes nothing,
+so it can use anything the simulation may not: `Math.random`, `performance.now`,
+WebGL, audio.
+
+## A game
+
+Eight methods, no base class, no prescribed shape for your state:
+
+```ts
+interface GameModule<TView, TConfig> {
+  readonly manifest: unknown
+
+  init(seed: string, config: TConfig): void   // deterministic setup, no I/O
+  tick(inputs: readonly InputEvent[]): void   // advance one tick; the only writer
+  view(): TView                               // what the renderer reads
+  snapshot(): Snapshot                        // plain data: hash, save, restore
+  restore(snapshot: Snapshot): void           // restore then continue == continue
+  score(): Counters                           // declared counters, integers
+  isOver(): boolean                           // true once, never false again
+  effects(): readonly Effect[]                // sound and camera cues, host drains
 }
 ```
 
-Frame jitter changes how **many** ticks run in a frame. It never changes how
-**big** a tick is. `tick()` takes no delta at all, so there is nothing for the
-frame rate to get into. The leftover fraction becomes the renderer's
-interpolation factor, and the renderer only reads, so it cannot reach the
-result. The server has no animation frames and no renderer: it runs
-`for (let t = 0; t < endTick; t++) game.tick(inputsAt(t))`.
+To start one:
 
-## The contract
-
-```ts
-GameModule                      // default export
-  manifest                      // JSON the platform validates without running the game
-  init(seed, config)            // deterministic setup, no I/O
-  tick(inputs)                  // advance exactly one tick; the only writer of state
-  view()                        // what the renderer reads
-  snapshot()                    // plain data, for hashing, restore and submission
-  restore(snapshot)             // restore-then-continue must equal continue
-  score()                       // declared counters, integers
-  isOver()                      // true once, never flips back
-  effects()                     // sound and camera cues, drained by the host
-
-Presentation                    // browser only
-  mount(container, context)
-  render(view, previousView, alpha, dtMs)   // reads; never writes
-  unmount()
+```bash
+bun run skill/platform-game/scripts/new.ts ./my-game
+cd ./my-game && bun install
+bun run validate      # the conformance suite; it passes before you change anything
+bun run dev
 ```
 
-A recording is the seed, the config, the inputs stamped with the tick they run
-on, a state hash every second, and the end tick. There is no delta array. The
-checkpoints are not needed to replay; they exist so a divergence can be traced
-to the second it happened.
+The scaffold comes from `skill/platform-game/`, an Agent Skill that carries the
+rules a game has to follow, a section per error code, and two starter templates.
+Coding agents read it; so can you.
 
 ## Packages
 
 | Package | What it is |
 | --- | --- |
-| `@clockwork2/kernel` | The simulation kernel. Zero runtime dependencies. |
-| `@clockwork2/validate` | The conformance suite and its CLI. |
-| `@clockwork2/host-bridge` | Host loop, input capture, iframe and worker protocol. |
+| `@clockwork2/kernel` | The simulation kernel: loop, PRNG, timers, hashing, `dmath`, manifest, recording. Zero runtime dependencies. |
+| `@clockwork2/validate` | The twelve conformance checks and their CLI. |
+| `@clockwork2/host-bridge` | The frame loop, input capture, audio, and the iframe and worker protocol. |
 | `@clockwork2/adapter-canvas2d` | Read-only presentation on a 2D canvas. |
 | `@clockwork2/adapter-three` | Read-only presentation on Three.js. |
 | `@clockwork2/adapter-pixi` | Read-only presentation on PIXI 8. |
-| `@clockwork2/compat-clockwork1` | `GameObject`, `Vector2D`, `CollisionGrid` for ported games. |
+| `@clockwork2/compat-clockwork1` | `GameObject`, `Vector2D`, `CollisionGrid`, for games being ported onto this engine. |
 
-## Getting started
+## What is verified, and how
 
 ```bash
-bun install
-bun run build
-bun test              # unit tests
+bun test              # unit tests, the demo's frozen recordings, and the skill
 bun run test:engines  # the same vectors under every installed JS engine
+bun run test:e2e      # Playwright: record, replay, frame rates, cross-runtime
 bun run demo          # the Snake demo, with record and replay
 ```
 
-## Determinism rules
+CI runs three things that matter more than the rest.
 
-A simulation may use `+ - * / %`, comparisons, `Math.sqrt`,
-`Math.floor/ceil/round/trunc/abs/min/max/sign`, `Math.fround`, `Math.imul`,
-`Math.clz32`, and typed-array bit manipulation. All of those are exactly
-specified by ECMAScript, so they give the same bits everywhere.
+The cross-engine sweep builds one probe bundle and runs those exact bytes under
+Bun (JavaScriptCore), Node (V8), Chromium, Firefox (SpiderMonkey) and WebKit,
+comparing 24 vector groups as hex bit patterns. 300,000 `dmath` evaluations and
+100,000 PRNG draws produce identical digests on all five.
 
-`Math.sin`, `Math.cos`, `Math.pow` and the rest of the transcendental functions
-are not specified, and they really do differ. Measured on 20,000 seeded inputs
-per function between JavaScriptCore and V8: `Math.hypot` disagreed on 32.6% of
-them, `Math.exp` on 10.3%, `Math.pow` on 9.0%, `Math.cos` on 3.2%. `Math.cos(0.1)`
-is `0x3FEFD712F9A817C1` on one and `0x3FEFD712F9A817C0` on the other.
-`Math.sqrt` disagreed on none, which is what "exactly specified" buys.
+The frame-rate suite replays one input log at 240, 144, 60, 30, 20 and 5 Hz,
+under a jitter pattern, and under CPU throttling, and asserts the checkpoint
+hashes are identical, with a guard that the slow runs really did catch up rather
+than quietly simulate less.
 
-So the kernel ships `dmath`, with the same function names, implemented from
-exactly specified operations only. `Math.pow` and the `**` operator are banned
-outright. `@clockwork2/validate` scans for violations and the kernel installs
-runtime traps during `init` and `tick`, because a scan misses aliased globals
-and a trap misses a path that never runs.
+The cross-boundary test plays a session in a real browser with real key events,
+writes the recording to disk, replays it under Bun and under Node, and compares
+all three.
+
+## Documentation
+
+- [docs/engine.md](docs/engine.md) explains the engine from first principles:
+  the loop, the contract, determinism, rendering, recordings, the manifest, and
+  why each choice was made.
+- [skill/platform-game/SKILL.md](skill/platform-game/SKILL.md) is the working
+  guide for writing a game, with the rules and their checks.
+- [failure-modes.md](skill/platform-game/references/failure-modes.md) has one
+  section per error code.
 
 ## Licence
 
-MIT. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+MIT. See [LICENSE](LICENSE). The engine's architecture comes from
+[Clockwork](https://github.com/hiddentao/clockwork-engine), and the attributions
+are in [NOTICE](NOTICE).

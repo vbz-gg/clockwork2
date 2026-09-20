@@ -30,7 +30,7 @@ jobs:
       - run: bun run lint
       - run: bun run build
       - run: bun run typecheck
-      - run: bun test packages
+      - run: bun run test
       - name: simulation purity scan
         run: bun run scripts/lint-sim-purity.ts
 
@@ -100,6 +100,9 @@ jobs:
       - run: bunx playwright install --with-deps chromium firefox webkit
       - run: bun run build
       - run: bun run demo:build
+      # A production build must not carry the test hooks. It is checked here
+      # rather than after the e2e build, which sets the flag on purpose.
+      - run: bun run scripts/check-no-test-hooks.ts
       - run: bun run test:e2e
       - uses: actions/upload-artifact@v4
         if: failure()

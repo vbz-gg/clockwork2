@@ -1,6 +1,10 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.5.14/schema.json",
-  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
   "files": {
     "ignoreUnknown": true,
     "includes": ["**", "!**/dist", "!**/node_modules", "!**/*.tsbuildinfo"]
@@ -15,13 +19,18 @@
     "enabled": true,
     "rules": {
       "preset": "recommended",
-      "suspicious": { "noExplicitAny": "error" },
+      "suspicious": {
+        "noExplicitAny": "error"
+      },
       "style": {
         "useConst": "error",
         "noNonNullAssertion": "error",
-        "useNodejsImportProtocol": "error"
+        "useNodejsImportProtocol": "error",
+        "useExponentiationOperator": "off"
       },
-      "complexity": { "noExcessiveCognitiveComplexity": "off" }
+      "complexity": {
+        "noExcessiveCognitiveComplexity": "off"
+      }
     }
   },
   "javascript": {
@@ -31,5 +40,20 @@
       "trailingCommas": "all",
       "arrowParentheses": "always"
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["packages/kernel/src/dmath/**"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noPrecisionLoss": "off"
+          },
+          "suspicious": {
+            "noApproximativeNumericConstant": "off"
+          }
+        }
+      }
+    }
+  ]
 }

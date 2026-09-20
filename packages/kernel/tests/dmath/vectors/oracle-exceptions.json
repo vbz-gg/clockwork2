@@ -1,0 +1,13 @@
+{
+  "_why": "Inputs where dmath and a host Math legitimately differ. Each entry is a fact about the reference, not a bug to be patched out: changing dmath to match the host would be a divergence from fdlibm, which is what the port is checked against. An entry appearing or disappearing here is a signal worth a look.",
+  "exp": [
+    {
+      "argBits": "3FF0000000000000",
+      "arg": 1,
+      "oursBits": "4005BF0A8B14576A",
+      "hostBits": "4005BF0A8B145769",
+      "ulp": 1,
+      "note": "netlib fdlibm e_exp is one ulp high at x=1. V8 and JavaScriptCore both return the correctly rounded e. Reproduced on both engines here."
+    }
+  ]
+}
