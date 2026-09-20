@@ -24,7 +24,7 @@ import {
 } from "./game/index"
 import { createSnakePresentation } from "./present/pixi"
 import { SOUNDS } from "./present/sounds"
-import { Ui, type UiAction } from "./ui"
+import { type Phase, Ui, type UiAction } from "./ui"
 
 const container = document.querySelector("#app") as HTMLElement
 let host: GameHost<SnakeView, HTMLElement, SnakeConfig> | null = null
@@ -32,9 +32,6 @@ let capture: InputCapture | null = null
 let mode: "playing" | "replaying" | "idle" = "idle"
 let lastRecording: Recording | null = null
 let recordedFinalHash: string | null = null
-let frames = 0
-let framesAt = performance.now()
-let fps = 0
 /**
  * Called after every session, by whatever created it.
  *
@@ -94,13 +91,6 @@ function newSession(
       theme: "dark",
     },
     onFrame: () => {
-      frames++
-      const now = performance.now()
-      if (now - framesAt >= 500) {
-        fps = (frames * 1000) / (now - framesAt)
-        frames = 0
-        framesAt = now
-      }
       refresh()
     },
   })
@@ -139,12 +129,9 @@ function handle(action: UiAction): void {
       newSession(recording.seed, { replay: recording })
       return
     }
-    case "pause":
-      host?.pause()
-      refresh()
-      return
-    case "resume":
-      host?.resume()
+    case "toggle-pause":
+      if (host?.status === "paused") host.resume()
+      else host?.pause()
       refresh()
       return
     case "speed":
@@ -175,25 +162,41 @@ function handle(action: UiAction): void {
   }
 }
 
+/**
+ * Which of the panel's phases the session is in.
+ *
+ * `mode` says whether this session is recording or replaying and `status`
+ * says whether it is moving; the panel wants the two as one word, and this is
+ * the only place that combines them.
+ */
+function phase(): Phase {
+  const status = host?.status
+  if (host === null || status === undefined) return "idle"
+  const replaying = mode === "replaying"
+  if (status === "paused")
+    return replaying ? "replay-paused" : "recording-paused"
+  if (status === "running") return replaying ? "replaying" : "recording"
+  if (status === "ended") return replaying ? "replayed" : "stopped"
+  return "idle"
+}
+
 function refresh(): void {
   const counters = host?.counters() ?? {}
   ui.update({
-    status: host?.status ?? "idle",
+    phase: phase(),
     tick: host?.tick ?? 0,
     apples: (counters.applesEaten as number) ?? 0,
     target: DEFAULT_CONFIG.targetApples,
-    length: (counters.length as number) ?? 0,
-    fps,
-    mode,
     lastHash: host === null ? "-" : hashCanonical(host.snapshot()),
     recordedHash: mode === "replaying" ? recordedFinalHash : null,
-    seed: ui.seed,
+    recording:
+      lastRecording === null
+        ? null
+        : {
+            ticks: lastRecording.endTick,
+            inputs: lastRecording.inputs.length,
+          },
   })
-  ui.setEnabled("replay", lastRecording !== null)
-  ui.setEnabled("download", lastRecording !== null)
-  ui.setEnabled("pause", host?.status === "running")
-  ui.setEnabled("resume", host?.status === "paused")
-  ui.setEnabled("stop", host?.status === "running" || host?.status === "paused")
 }
 
 newSession("demo-1")
