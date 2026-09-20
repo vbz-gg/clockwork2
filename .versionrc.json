@@ -7,8 +7,7 @@
     "packages/host-bridge/package.json",
     "packages/adapter-canvas2d/package.json",
     "packages/adapter-three/package.json",
-    "packages/adapter-pixi/package.json",
-    "packages/compat-clockwork1/package.json"
+    "packages/adapter-pixi/package.json"
   ],
   "infile": "CHANGELOG.md",
   "tagPrefix": "v",

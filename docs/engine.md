@@ -855,6 +855,19 @@ rather than when a frame drains the queue. Draining is frame-shaped, so stamping
 at drain time makes the same keystroke land on different ticks at different
 frame rates.
 
+**The snapshot carries the generator's position.** The seed says where the
+stream began and nothing about how far along it is, and a snapshot is a resume
+point: restoring from the seed alone rewinds the generator to its first draw
+while the rest of the world stays where it was, so the next apple is placed
+from the first two numbers the stream ever produced. Conformance check 6 catches
+it. A draw count would be one number where alea's state is four, but recovering
+a position from it means calling alea that many times on every restore, because
+there is no jump-ahead: 360 times for the demo's longest frozen recording, and a
+game drawing per particle per tick would be into the millions. It also keeps the
+checkpoint hashes sensitive to the generator. Two runs that have drawn a
+different number of times differ at the next checkpoint, instead of at whatever
+later tick a draw first moves something a player can see.
+
 **The generator's seed lives in its exported state.** A sub-stream is derived
 from its parent's seed, so a module that restores a snapshot and then opens a
 sub-stream it had not opened before would otherwise derive it from the restoring
@@ -891,9 +904,11 @@ after a two-machine hash test.
 Memory ceilings for a 3D simulation inside a small isolate are unmeasured, which
 is why the manifest's budget fields are advisory in this release.
 
-The demo is the only substantial game on the engine so far. Porting a larger one
-will test whether the compat library carries enough of the old ergonomics to
-make porting worthwhile.
+The demo is the only substantial game on the engine so far. Games are rewritten
+against this API rather than adapted onto it, so a larger one would answer two
+questions together: what a rewrite of that size costs, and whether the kernel
+asks for the right things. It asks for a `tick()` that is the only writer, state
+plain enough to hash, and a snapshot complete enough to restore.
 
 ## Related documentation
 

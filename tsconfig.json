@@ -2,7 +2,6 @@
   "files": [],
   "references": [
     { "path": "./packages/kernel" },
-    { "path": "./packages/compat-clockwork1" },
     { "path": "./packages/host-bridge" },
     { "path": "./packages/adapter-canvas2d" },
     { "path": "./packages/adapter-pixi" },

@@ -40,7 +40,6 @@
     "@biomejs/biome": "2.5.14",
     "@clockwork2/adapter-canvas2d": "workspace:*",
     "@clockwork2/adapter-three": "workspace:*",
-    "@clockwork2/compat-clockwork1": "workspace:*",
     "@clockwork2/host-bridge": "workspace:*",
     "@clockwork2/kernel": "workspace:*",
     "@clockwork2/validate": "workspace:*",

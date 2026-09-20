@@ -7,7 +7,6 @@ import { $ } from "bun"
 
 const ORDER = [
   "kernel",
-  "compat-clockwork1",
   "host-bridge",
   "adapter-canvas2d",
   "adapter-pixi",
