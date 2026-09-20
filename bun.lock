@@ -8,7 +8,6 @@
         "@biomejs/biome": "2.5.14",
         "@clockwork2/adapter-canvas2d": "workspace:*",
         "@clockwork2/adapter-three": "workspace:*",
-        "@clockwork2/compat-clockwork1": "workspace:*",
         "@clockwork2/host-bridge": "workspace:*",
         "@clockwork2/kernel": "workspace:*",
         "@clockwork2/validate": "workspace:*",
@@ -29,7 +28,6 @@
       "version": "0.1.0",
       "dependencies": {
         "@clockwork2/adapter-pixi": "workspace:*",
-        "@clockwork2/compat-clockwork1": "workspace:*",
         "@clockwork2/host-bridge": "workspace:*",
         "@clockwork2/kernel": "workspace:*",
         "pixi.js": "8.21.0",
@@ -84,13 +82,6 @@
         "three": ">=0.170.0",
       },
     },
-    "packages/compat-clockwork1": {
-      "name": "@clockwork2/compat-clockwork1",
-      "version": "0.1.0",
-      "dependencies": {
-        "@clockwork2/kernel": "workspace:*",
-      },
-    },
     "packages/host-bridge": {
       "name": "@clockwork2/host-bridge",
       "version": "0.1.0",
@@ -142,8 +133,6 @@
     "@clockwork2/adapter-pixi": ["@clockwork2/adapter-pixi@workspace:packages/adapter-pixi"],
 
     "@clockwork2/adapter-three": ["@clockwork2/adapter-three@workspace:packages/adapter-three"],
-
-    "@clockwork2/compat-clockwork1": ["@clockwork2/compat-clockwork1@workspace:packages/compat-clockwork1"],
 
     "@clockwork2/host-bridge": ["@clockwork2/host-bridge@workspace:packages/host-bridge"],
 

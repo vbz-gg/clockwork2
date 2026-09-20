@@ -81,7 +81,6 @@ Coding agents read it; so can you.
 | `@clockwork2/adapter-canvas2d` | Read-only presentation on a 2D canvas. |
 | `@clockwork2/adapter-three` | Read-only presentation on Three.js. |
 | `@clockwork2/adapter-pixi` | Read-only presentation on PIXI 8. |
-| `@clockwork2/compat-clockwork1` | `GameObject`, `Vector2D`, `CollisionGrid`, for games being ported onto this engine. |
 
 ## What is verified, and how
 

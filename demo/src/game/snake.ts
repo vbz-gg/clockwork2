@@ -1,18 +1,15 @@
 /**
  * The Snake demo, as a Clockwork 2 game module.
  *
- * Same game as Clockwork 1's demo: a 25 by 25 grid, a snake that wraps at the
- * edges, apples that expire, walls that keep arriving, one bomb, and fifty
- * apples to win. What changed is everything around it - the loop, where the
- * clock lives, how sound leaves the simulation, and the fact that every piece
- * of state that decides the game is in the snapshot.
+ * A 25 by 25 grid, a snake that wraps at the edges, apples that expire, walls
+ * that keep arriving, one bomb, and fifty apples to win.
+ *
+ * The state is plain records and arrays (see `state.ts`), so `snapshot()`
+ * copies it and `restore()` reads it back. Nothing registers itself anywhere,
+ * nothing is stepped by a pass the game cannot see, and every value that
+ * decides the game is in the snapshot.
  */
 
-import {
-  CollisionGrid,
-  GameObjectGroup,
-  Vector2D,
-} from "@clockwork2/compat-clockwork1"
 import type {
   Counters,
   Effect,
@@ -28,7 +25,26 @@ import {
 } from "@clockwork2/kernel"
 import { Direction, GAME_CONFIG } from "./constants"
 import { MANIFEST } from "./manifest"
-import { Apple, Bomb, Explosion, Snake, Wall } from "./objects"
+import {
+  type Apple,
+  cellKey,
+  createExplosion,
+  createSnake,
+  type Explosion,
+  explosionProgress,
+  moveSnake,
+  nextCell,
+  type Particle,
+  type Point,
+  type Snake,
+  samePoint,
+  snakeHead,
+  snakeOccupies,
+  stepExplosion,
+  turnSnake,
+  type Wall,
+  wallCells,
+} from "./state"
 
 export type SnakeConfig = {
   readonly bombX: number
@@ -76,6 +92,30 @@ export type SnakeView = {
 
 type Terminal = "playing" | "won" | "died"
 
+/** The snapshot's shape, so `restore()` reads fields rather than casts. */
+type Saved = {
+  readonly config: SnakeConfig
+  readonly ticks: number
+  readonly nextId: number
+  readonly applesEaten: number
+  readonly outcome: Terminal
+  readonly snake: {
+    readonly segments: readonly Point[]
+    readonly direction: Direction
+    readonly queued: Direction | null
+    readonly frozen: boolean
+  }
+  readonly apples: readonly Apple[]
+  readonly walls: readonly Wall[]
+  readonly bomb: Point | null
+  readonly explosion: {
+    readonly particles: readonly Particle[]
+    readonly age: number
+  } | null
+  readonly rng: PrngState
+  readonly timer: TimerState
+}
+
 export class SnakeGame implements GameModule<SnakeView, SnakeConfig> {
   readonly manifest = MANIFEST
 
@@ -83,12 +123,18 @@ export class SnakeGame implements GameModule<SnakeView, SnakeConfig> {
   private rng!: Prng
   private timer = new Timer()
   private snake!: Snake
-  private apples = new GameObjectGroup<Apple>("apple")
-  private walls = new GameObjectGroup<Wall>("wall")
-  private bomb: Bomb | null = null
+  private apples: Apple[] = []
+  private walls: Wall[] = []
+  private bomb: Point | null = null
   private explosion: Explosion | null = null
-  /** Walls and the bomb. Apples are checked directly; there are few of them. */
-  private obstacles = new CollisionGrid()
+  /**
+   * The cells walls and the bomb stand on.
+   *
+   * A set of `"x,y"` keys rather than a spatial index, because the grid is
+   * integers and an exact lookup is both cheaper and correct. Apples are
+   * checked against their array; there are never many.
+   */
+  private obstacles = new Set<string>()
   private pending: Effect[] = []
   private ticks = 0
   private nextId = 1
@@ -98,9 +144,9 @@ export class SnakeGame implements GameModule<SnakeView, SnakeConfig> {
   init(seed: string, config: SnakeConfig): void {
     this.config = { ...DEFAULT_CONFIG, ...config }
     this.rng = new Prng(seed)
-    this.apples = new GameObjectGroup<Apple>("apple")
-    this.walls = new GameObjectGroup<Wall>("wall")
-    this.obstacles = new CollisionGrid()
+    this.apples = []
+    this.walls = []
+    this.obstacles = new Set()
     this.pending = []
     this.ticks = 0
     this.nextId = 1
@@ -109,13 +155,10 @@ export class SnakeGame implements GameModule<SnakeView, SnakeConfig> {
     this.explosion = null
 
     const centre = Math.floor(GAME_CONFIG.GRID_SIZE / 2)
-    this.snake = new Snake("snake", new Vector2D(centre, centre))
+    this.snake = createSnake({ x: centre, y: centre })
 
-    this.bomb = new Bomb(
-      "bomb",
-      new Vector2D(this.config.bombX, this.config.bombY),
-    )
-    this.obstacles.add(this.config.bombX, this.config.bombY, { id: "bomb" })
+    this.bomb = { x: this.config.bombX, y: this.config.bombY }
+    this.obstacles.add(cellKey(this.bomb))
 
     this.timer = new Timer()
     this.timer.define("move", () => {
@@ -127,14 +170,9 @@ export class SnakeGame implements GameModule<SnakeView, SnakeConfig> {
     this.timer.define("expireApples", () => {
       this.expireApples()
     })
-    this.timer.define("sweep", () => {
-      this.apples.clearDestroyed()
-      this.walls.clearDestroyed()
-    })
     this.timer.every("move", GAME_CONFIG.SNAKE_MOVE_INTERVAL)
     this.timer.every("spawnWall", GAME_CONFIG.WALL_SPAWN_INTERVAL)
     this.timer.every("expireApples", GAME_CONFIG.APPLE_CLEANUP_INTERVAL)
-    this.timer.every("sweep", GAME_CONFIG.DESTROYED_CLEANUP_INTERVAL)
 
     this.spawnApple()
   }
@@ -144,72 +182,70 @@ export class SnakeGame implements GameModule<SnakeView, SnakeConfig> {
   }
 
   /** A cell nothing is standing on. Null when the board is full. */
-  private freeCell(stream: Prng): Vector2D | null {
+  private freeCell(stream: Prng): Point | null {
     const size = GAME_CONFIG.GRID_SIZE
     for (let attempt = 0; attempt < 100; attempt++) {
-      const point = new Vector2D(
-        stream.randomInt(0, size - 1),
-        stream.randomInt(0, size - 1),
-      )
-      if (this.obstacles.occupied(point.x, point.y)) continue
-      if (this.snake.occupies(point)) continue
-      if (this.apples.active().some((apple) => apple.position.equals(point)))
-        continue
+      const point = {
+        x: stream.randomInt(0, size - 1),
+        y: stream.randomInt(0, size - 1),
+      }
+      if (this.obstacles.has(cellKey(point))) continue
+      if (snakeOccupies(this.snake, point)) continue
+      if (this.apples.some((apple) => samePoint(apple.at, point))) continue
       return point
     }
     return null
   }
 
   private spawnApple(): void {
-    const point = this.freeCell(this.rng.stream("apples"))
-    if (point === null) return
-    this.apples.add(new Apple(this.id("apple"), point, this.ticks))
+    const at = this.freeCell(this.rng.stream("apples"))
+    if (at === null) return
+    this.apples.push({ id: this.id("apple"), at, spawnedAt: this.ticks })
   }
 
   private spawnWall(): void {
     const stream = this.rng.stream("walls")
     const horizontal = stream.randomBoolean()
     for (let attempt = 0; attempt < 40; attempt++) {
-      const point = this.freeCell(stream)
-      if (point === null) return
-      const wall = new Wall(this.id("wall"), point, horizontal)
+      const at = this.freeCell(stream)
+      if (at === null) return
+      const wall: Wall = { id: this.id("wall"), at, horizontal }
       // A wall may not land on the snake, on an apple, or on the bomb; if any
       // of its cells is taken, try somewhere else.
-      const clear = wall
-        .cells()
-        .every(
-          (cell) =>
-            !this.obstacles.occupied(cell.x, cell.y) &&
-            !this.snake.occupies(cell) &&
-            !this.apples.active().some((apple) => apple.position.equals(cell)),
-        )
+      const cells = wallCells(wall)
+      const clear = cells.every(
+        (cell) =>
+          !this.obstacles.has(cellKey(cell)) &&
+          !snakeOccupies(this.snake, cell) &&
+          !this.apples.some((apple) => samePoint(apple.at, cell)),
+      )
       if (!clear) continue
-      this.walls.add(wall)
-      for (const cell of wall.cells())
-        this.obstacles.add(cell.x, cell.y, { id: wall.id })
+      this.walls.push(wall)
+      for (const cell of cells) this.obstacles.add(cellKey(cell))
       return
     }
   }
 
+  /** Drops the apples that have sat there too long, and replaces one of them. */
   private expireApples(): void {
-    let expired = false
-    for (const apple of this.apples.active()) {
-      if (this.ticks - apple.spawnedAt < GAME_CONFIG.APPLE_TIMEOUT) continue
-      apple.destroy()
-      expired = true
-    }
-    if (expired) this.spawnApple()
+    const kept = this.apples.filter(
+      (apple) => this.ticks - apple.spawnedAt < GAME_CONFIG.APPLE_TIMEOUT,
+    )
+    if (kept.length === this.apples.length) return
+    this.apples = kept
+    this.spawnApple()
   }
 
   /** One grid move: the whole of the game's rules, in the order they fire. */
   private step(): void {
     if (this.outcome !== "playing" || this.snake.frozen) return
 
-    const eaten = this.appleUnderNextCell()
-    this.snake.move(eaten !== null)
+    const target = nextCell(this.snake)
+    const eaten = this.apples.findIndex((apple) => samePoint(apple.at, target))
+    moveSnake(this.snake, eaten >= 0)
 
-    if (eaten !== null) {
-      eaten.destroy()
+    if (eaten >= 0) {
+      this.apples.splice(eaten, 1)
       this.applesEaten++
       this.pending.push({ type: "sound", data: "eat" })
       if (this.applesEaten >= this.config.targetApples) {
@@ -219,52 +255,28 @@ export class SnakeGame implements GameModule<SnakeView, SnakeConfig> {
       this.spawnApple()
     }
 
-    const head = this.snake.head
+    const head = snakeHead(this.snake)
 
-    if (this.bomb !== null && head.equals(this.bomb.position)) {
+    if (this.bomb !== null && samePoint(head, this.bomb)) {
       // The snake stops here and the run ends when the explosion finishes, so
       // the effect is part of the game rather than a flourish over the top.
       this.snake.frozen = true
-      this.explosion = new Explosion(
-        this.id("boom"),
-        head,
-        this.rng.stream("fx"),
-      )
+      this.explosion = createExplosion(this.rng.stream("fx"), head)
       this.pending.push({ type: "sound", data: "explosion" })
       return
     }
 
-    if (this.obstacles.occupied(head.x, head.y)) {
+    if (this.obstacles.has(cellKey(head))) {
       this.pending.push({ type: "sound", data: "thud" })
       this.outcome = "died"
       return
     }
 
     // From index 1, because the head is allowed to be where the head is.
-    if (this.snake.occupies(head, 1)) {
+    if (snakeOccupies(this.snake, head, 1)) {
       this.pending.push({ type: "sound", data: "thud" })
       this.outcome = "died"
     }
-  }
-
-  private appleUnderNextCell(): Apple | null {
-    const size = GAME_CONFIG.GRID_SIZE
-    const direction = this.snake.queued ?? this.snake.direction
-    const delta = {
-      UP: { x: 0, y: -1 },
-      DOWN: { x: 0, y: 1 },
-      LEFT: { x: -1, y: 0 },
-      RIGHT: { x: 1, y: 0 },
-    }[direction]
-    const head = this.snake.head
-    const next = new Vector2D(
-      (head.x + delta.x + size) % size,
-      (head.y + delta.y + size) % size,
-    )
-    for (const apple of this.apples.active()) {
-      if (apple.position.equals(next)) return apple
-    }
-    return null
   }
 
   tick(inputs: readonly InputEvent[]): void {
@@ -272,16 +284,16 @@ export class SnakeGame implements GameModule<SnakeView, SnakeConfig> {
       if (input.value !== 1) continue
       switch (input.code) {
         case "up":
-          this.snake.turn(Direction.UP)
+          turnSnake(this.snake, Direction.UP)
           break
         case "down":
-          this.snake.turn(Direction.DOWN)
+          turnSnake(this.snake, Direction.DOWN)
           break
         case "left":
-          this.snake.turn(Direction.LEFT)
+          turnSnake(this.snake, Direction.LEFT)
           break
         case "right":
-          this.snake.turn(Direction.RIGHT)
+          turnSnake(this.snake, Direction.RIGHT)
           break
         default:
           break
@@ -290,12 +302,9 @@ export class SnakeGame implements GameModule<SnakeView, SnakeConfig> {
 
     this.timer.advance()
 
-    if (this.explosion !== null) {
-      this.explosion.update()
-      if (this.explosion.destroyed) {
-        this.explosion = null
-        this.outcome = "died"
-      }
+    if (this.explosion !== null && stepExplosion(this.explosion)) {
+      this.explosion = null
+      this.outcome = "died"
     }
 
     this.ticks++
@@ -309,30 +318,27 @@ export class SnakeGame implements GameModule<SnakeView, SnakeConfig> {
         y: segment.y,
       })),
       direction: this.snake.direction,
-      apples: this.apples.active().map((apple) => ({
+      apples: this.apples.map((apple) => ({
         id: apple.id,
-        x: apple.position.x,
-        y: apple.position.y,
+        x: apple.at.x,
+        y: apple.at.y,
         ripeness: Math.min(
           1,
           (this.ticks - apple.spawnedAt) / GAME_CONFIG.APPLE_TIMEOUT,
         ),
       })),
-      walls: this.walls.active().map((wall) => ({
+      walls: this.walls.map((wall) => ({
         id: wall.id,
-        x: wall.position.x,
-        y: wall.position.y,
+        x: wall.at.x,
+        y: wall.at.y,
         horizontal: wall.horizontal,
       })),
-      bomb:
-        this.bomb === null
-          ? null
-          : { x: this.bomb.position.x, y: this.bomb.position.y },
+      bomb: this.bomb === null ? null : { x: this.bomb.x, y: this.bomb.y },
       explosion:
         this.explosion === null
           ? null
           : {
-              progress: this.explosion.progress,
+              progress: explosionProgress(this.explosion),
               particles: this.explosion.particles.map((particle) => ({
                 x: particle.x,
                 y: particle.y,
@@ -347,116 +353,78 @@ export class SnakeGame implements GameModule<SnakeView, SnakeConfig> {
   }
 
   snapshot(): Snapshot {
-    return {
+    const state: Saved = {
       config: { ...this.config },
       ticks: this.ticks,
       nextId: this.nextId,
       applesEaten: this.applesEaten,
       outcome: this.outcome,
-      snake: this.snake.serialize() as unknown as Snapshot,
-      apples: this.apples.serialize() as unknown as Snapshot,
-      walls: this.walls.serialize() as unknown as Snapshot,
-      bomb:
-        this.bomb === null
-          ? null
-          : (this.bomb.serialize() as unknown as Snapshot),
+      snake: {
+        segments: this.snake.segments.map((segment) => ({ ...segment })),
+        direction: this.snake.direction,
+        queued: this.snake.queued,
+        frozen: this.snake.frozen,
+      },
+      apples: this.apples.map((apple) => ({ ...apple, at: { ...apple.at } })),
+      walls: this.walls.map((wall) => ({ ...wall, at: { ...wall.at } })),
+      bomb: this.bomb === null ? null : { ...this.bomb },
       explosion:
         this.explosion === null
           ? null
-          : (this.explosion.serialize() as unknown as Snapshot),
-      rng: this.rng.exportState() as unknown as Snapshot,
-      timer: this.timer.exportState() as unknown as Snapshot,
+          : {
+              age: this.explosion.age,
+              particles: this.explosion.particles.map((particle) => ({
+                ...particle,
+              })),
+            },
+      rng: this.rng.exportState(),
+      timer: this.timer.exportState(),
     }
+    return state as unknown as Snapshot
   }
 
   restore(snapshot: Snapshot): void {
-    const s = snapshot as unknown as {
-      config: SnakeConfig
-      ticks: number
-      nextId: number
-      applesEaten: number
-      outcome: Terminal
-      snake: Record<string, unknown>
-      apples: Array<Record<string, unknown>>
-      walls: Array<Record<string, unknown>>
-      bomb: Record<string, unknown> | null
-      explosion: Record<string, unknown> | null
-      rng: PrngState
-      timer: TimerState
-    }
+    const s = snapshot as unknown as Saved
 
     // init first, so the timer handlers exist before the schedule is bound
-    // back onto them and every group is fresh.
+    // back onto them and every collection is fresh. The seed it is given here
+    // does not survive: the generator's own seed travels in its state, which
+    // is why a module restored from a snapshot draws the same values as the
+    // run it came from.
     this.init("restored", s.config)
 
     this.ticks = s.ticks
     this.nextId = s.nextId
     this.applesEaten = s.applesEaten
     this.outcome = s.outcome
-    this.snake.restore(s.snake as never)
 
-    this.apples = new GameObjectGroup<Apple>("apple")
-    for (const record of s.apples) {
-      const apple = new Apple(
-        record.id as string,
-        Vector2D.deserialize(record.position as { x: number; y: number }),
-        record.spawnedAt as number,
-      )
-      apple.restoreBase(record as never)
-      apple.spawnedAt = record.spawnedAt as number
-      this.apples.add(apple)
+    this.snake = {
+      segments: s.snake.segments.map((segment) => ({ ...segment })),
+      direction: s.snake.direction,
+      queued: s.snake.queued,
+      frozen: s.snake.frozen,
     }
 
-    this.walls = new GameObjectGroup<Wall>("wall")
-    this.obstacles = new CollisionGrid()
-    for (const record of s.walls) {
-      const wall = new Wall(
-        record.id as string,
-        Vector2D.deserialize(record.position as { x: number; y: number }),
-        record.horizontal as boolean,
-      )
-      wall.restoreBase(record as never)
-      wall.horizontal = record.horizontal as boolean
-      this.walls.add(wall)
-      if (!wall.destroyed) {
-        for (const cell of wall.cells())
-          this.obstacles.add(cell.x, cell.y, { id: wall.id })
-      }
+    this.apples = s.apples.map((apple) => ({ ...apple, at: { ...apple.at } }))
+
+    this.walls = s.walls.map((wall) => ({ ...wall, at: { ...wall.at } }))
+    this.obstacles = new Set()
+    for (const wall of this.walls) {
+      for (const cell of wallCells(wall)) this.obstacles.add(cellKey(cell))
     }
 
-    if (s.bomb === null) {
-      this.bomb = null
-    } else {
-      this.bomb = new Bomb(
-        s.bomb.id as string,
-        Vector2D.deserialize(s.bomb.position as { x: number; y: number }),
-      )
-      this.bomb.restoreBase(s.bomb as never)
-      this.obstacles.add(this.bomb.position.x, this.bomb.position.y, {
-        id: "bomb",
-      })
-    }
+    this.bomb = s.bomb === null ? null : { ...s.bomb }
+    if (this.bomb !== null) this.obstacles.add(cellKey(this.bomb))
 
-    if (s.explosion === null) {
-      this.explosion = null
-    } else {
-      const explosion = new Explosion(
-        s.explosion.id as string,
-        Vector2D.deserialize(s.explosion.position as { x: number; y: number }),
-        this.rng.stream("fx"),
-      )
-      explosion.restoreBase(s.explosion as never)
-      explosion.age = s.explosion.age as number
-      explosion.particles = (
-        s.explosion.particles as Array<{
-          x: number
-          y: number
-          vx: number
-          vy: number
-        }>
-      ).map((particle) => ({ ...particle }))
-      this.explosion = explosion
-    }
+    this.explosion =
+      s.explosion === null
+        ? null
+        : {
+            age: s.explosion.age,
+            particles: s.explosion.particles.map((particle) => ({
+              ...particle,
+            })),
+          }
 
     this.rng.importState(s.rng)
     this.timer.importState(s.timer)

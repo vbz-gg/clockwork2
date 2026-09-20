@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "The Clockwork 2 Snake demo, ported from Clockwork 1",
+  "description": "The Clockwork 2 Snake demo",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -13,7 +13,6 @@
   },
   "dependencies": {
     "@clockwork2/adapter-pixi": "workspace:*",
-    "@clockwork2/compat-clockwork1": "workspace:*",
     "@clockwork2/host-bridge": "workspace:*",
     "@clockwork2/kernel": "workspace:*",
     "pixi.js": "8.21.0"
