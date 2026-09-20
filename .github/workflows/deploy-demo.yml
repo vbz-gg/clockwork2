@@ -1,0 +1,61 @@
+name: Deploy demo
+
+# The published demo is one CI has already checked, built from the commit CI ran
+# on rather than from whatever main has moved to since, so a merge landing
+# mid-deploy cannot put an untested build on the public page.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+# Pages runs one deploy at a time, and a cancelled one leaves the site on its
+# previous version, so this queues rather than cancelling. A separate group from
+# ci.yml, which cancels on purpose.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: build and publish the demo
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # workflow_run checks out the default branch head by default. Pin it
+          # to the commit CI actually tested.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.11
+      - name: Cache bun install
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+      - run: bun install --frozen-lockfile
+      - uses: actions/configure-pages@v4
+      # A production build resolves @clockwork2/* through each package's dist,
+      # not through the "development" condition the dev server uses, so the
+      # packages have to be built first.
+      - run: bun run build
+      - run: bun run demo:build
+      # VITE_CW2_TEST is unset here, so the test hooks should be gone. This
+      # proves it rather than assuming it: the failure being guarded against is
+      # a public page that lets anyone drive the simulation from the console.
+      - run: bun run scripts/check-no-test-hooks.ts
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: demo/dist
+      - id: deployment
+        uses: actions/deploy-pages@v4
