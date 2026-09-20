@@ -98,8 +98,10 @@ describe("Session", () => {
   })
 
   test("maxTicks must be a positive whole number", () => {
-    expect(() => new Session(options({ maxTicks: 0 }))).toThrow(RangeError)
-    expect(() => new Session(options({ maxTicks: 1.5 }))).toThrow(RangeError)
+    expect(() => new Session(options({ maxTicks: 0 }))).toThrow(/E_ARG_INVALID/)
+    expect(() => new Session(options({ maxTicks: 1.5 }))).toThrow(
+      /E_ARG_INVALID/,
+    )
   })
 })
 

@@ -10,6 +10,8 @@
  * is probed once here rather than assumed. Two lines, one branch at load.
  */
 
+import { fail } from "./errors"
+
 const SCRATCH = new Float64Array(1)
 const WORDS = new Uint32Array(SCRATCH.buffer)
 const BYTES = new BigUint64Array(SCRATCH.buffer)
@@ -22,9 +24,10 @@ export const HI: 0 | 1 = WORDS[1] === 0x3ff00000 ? 1 : 0
 export const LO: 0 | 1 = HI === 1 ? 0 : 1
 
 if (WORDS[HI] !== 0x3ff00000 || WORDS[LO] !== 0) {
-  throw new Error(
-    "clockwork2: unexpected IEEE 754 double layout; this build cannot be trusted to be deterministic",
-  )
+  fail("E_ENV_UNSUPPORTED", {
+    detail:
+      "unexpected IEEE 754 double layout; this build cannot be trusted to be deterministic",
+  })
 }
 
 /**

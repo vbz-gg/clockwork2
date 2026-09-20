@@ -97,9 +97,9 @@ export class Session<TView = unknown, TConfig = PlainValue> {
     this.options = options
     this.tracker = new CounterTracker(options.counters ?? [])
     if (!Number.isInteger(options.maxTicks) || options.maxTicks <= 0) {
-      throw new RangeError(
-        `maxTicks must be a positive whole number, got ${options.maxTicks}`,
-      )
+      fail("E_ARG_INVALID", {
+        detail: `maxTicks must be a positive whole number, got ${options.maxTicks}`,
+      })
     }
     this.guarded(() => {
       const returned = options.module.init(
@@ -275,7 +275,9 @@ export class Accumulator {
 
   constructor(options: AccumulatorOptions) {
     if (!Number.isFinite(options.tickHz) || options.tickHz <= 0) {
-      throw new RangeError(`tickHz must be positive, got ${options.tickHz}`)
+      fail("E_ARG_INVALID", {
+        detail: `tickHz must be positive, got ${options.tickHz}`,
+      })
     }
     this.stepMs = 1000 / options.tickHz
     this.maxCatchUpTicks = options.maxCatchUpTicks ?? DEFAULT_MAX_CATCHUP_TICKS

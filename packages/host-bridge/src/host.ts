@@ -18,6 +18,7 @@ import {
   type Checkpoint,
   type Counters,
   type Effect,
+  fail,
   type GameModule,
   hashCanonical,
   type InputEvent,
@@ -186,7 +187,9 @@ export class GameHost<
 
   setSpeed(speed: number): void {
     if (!Number.isFinite(speed) || speed <= 0) {
-      throw new RangeError(`speed must be a positive number, got ${speed}`)
+      fail("E_ARG_INVALID", {
+        detail: `speed must be a positive number, got ${speed}`,
+      })
     }
     // Replay speed belongs here rather than in the renderer. Clockwork 1 set
     // it on PIXI's ticker, which made how fast the game ran a property of the

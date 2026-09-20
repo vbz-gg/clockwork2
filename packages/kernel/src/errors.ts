@@ -37,6 +37,10 @@ export const ERROR_CODES = {
   E_TICK_LIMIT: "session passed maxTicks without ending",
   /** A manifest failed validation. */
   E_MANIFEST_INVALID: "manifest is invalid",
+  /** An argument the caller controls was outside the range the API accepts. */
+  E_ARG_INVALID: "an argument is outside the range this API accepts",
+  /** The host cannot supply something the engine needs to run correctly. */
+  E_ENV_UNSUPPORTED: "this environment cannot run the engine correctly",
 
   // --- conformance suite --------------------------------------------------
   /** Two runs of the same seed, config and inputs reached different states. */
@@ -66,6 +70,8 @@ export const ERROR_CODES = {
   E_RENDER_SMOKE: "render smoke check failed",
   /** A check threw while running, which is itself a failure of the subject. */
   E_CHECK_THREW: "a conformance check threw while running",
+  /** The subject could not be loaded: no entry file, or no module to run. */
+  E_SUBJECT_LOAD: "the subject could not be loaded",
 } as const
 
 export type ErrorCode = keyof typeof ERROR_CODES

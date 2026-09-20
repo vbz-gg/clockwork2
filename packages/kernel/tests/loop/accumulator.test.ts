@@ -69,8 +69,10 @@ describe("Accumulator", () => {
   })
 
   test("an impossible tick rate is refused", () => {
-    expect(() => new Accumulator({ tickHz: 0 })).toThrow(RangeError)
-    expect(() => new Accumulator({ tickHz: Number.NaN })).toThrow(RangeError)
+    expect(() => new Accumulator({ tickHz: 0 })).toThrow(/E_ARG_INVALID/)
+    expect(() => new Accumulator({ tickHz: Number.NaN })).toThrow(
+      /E_ARG_INVALID/,
+    )
   })
 
   test("reset clears the carry and the statistics", () => {

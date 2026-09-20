@@ -53,9 +53,9 @@ describe("Timer", () => {
 
   test("an interval of zero is refused", () => {
     const { timer } = makeTimer()
-    expect(() => timer.every("a", 0)).toThrow(RangeError)
-    expect(() => timer.every("a", -1)).toThrow(RangeError)
-    expect(() => timer.after("a", 1.5)).toThrow(RangeError)
+    expect(() => timer.every("a", 0)).toThrow(/E_ARG_INVALID/)
+    expect(() => timer.every("a", -1)).toThrow(/E_ARG_INVALID/)
+    expect(() => timer.after("a", 1.5)).toThrow(/E_ARG_INVALID/)
   })
 
   test("an unknown handler is refused at scheduling time, not at firing time", () => {

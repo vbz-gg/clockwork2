@@ -531,6 +531,10 @@ ERROR_CODES: {
     readonly E_TICK_LIMIT: "session passed maxTicks without ending";
     /** A manifest failed validation. */
     readonly E_MANIFEST_INVALID: "manifest is invalid";
+    /** An argument the caller controls was outside the range the API accepts. */
+    readonly E_ARG_INVALID: "an argument is outside the range this API accepts";
+    /** The host cannot supply something the engine needs to run correctly. */
+    readonly E_ENV_UNSUPPORTED: "this environment cannot run the engine correctly";
     /** Two runs of the same seed, config and inputs reached different states. */
     readonly E_DETERMINISM_DIVERGED: "two runs of the same session reached different states";
     /** The module threw when loaded or stepped with no browser present. */
@@ -557,6 +561,8 @@ ERROR_CODES: {
     readonly E_RENDER_SMOKE: "render smoke check failed";
     /** A check threw while running, which is itself a failure of the subject. */
     readonly E_CHECK_THREW: "a conformance check threw while running";
+    /** The subject could not be loaded: no entry file, or no module to run. */
+    readonly E_SUBJECT_LOAD: "the subject could not be loaded";
 }
 ```
 

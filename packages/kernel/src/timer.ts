@@ -73,9 +73,9 @@ export class Timer {
   /** Runs `name` every `ticks`, starting `ticks` from now. */
   every(name: string, ticks: number): number {
     if (!Number.isInteger(ticks) || ticks < 1) {
-      throw new RangeError(
-        `every() needs a whole number of ticks above 0, got ${ticks}`,
-      )
+      fail("E_ARG_INVALID", {
+        detail: `every() needs a whole number of ticks above 0, got ${ticks}`,
+      })
     }
     return this.schedule(name, ticks, ticks)
   }
@@ -85,9 +85,9 @@ export class Timer {
       throw new ReferenceError(`no timer handler named ${JSON.stringify(name)}`)
     }
     if (!Number.isInteger(ticks) || ticks < 0) {
-      throw new RangeError(
-        `a delay must be a whole number of ticks, got ${ticks}`,
-      )
+      fail("E_ARG_INVALID", {
+        detail: `a delay must be a whole number of ticks, got ${ticks}`,
+      })
     }
     const id = this.nextId++
     // A zero delay means the next tick, never this one: firing inside the pass
