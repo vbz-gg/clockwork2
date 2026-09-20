@@ -12,6 +12,7 @@ import { existsSync, readFileSync } from "node:fs"
 import { isAbsolute, join, resolve } from "node:path"
 import {
   assertManifest,
+  fail,
   type GameModule,
   type GameModuleSource,
   instantiate,
@@ -29,9 +30,9 @@ export function findEntry(target: string): string {
     if (existsSync(candidate)) return candidate
   }
   if (existsSync(full)) return full
-  throw new Error(
-    `no entry file at ${target}; looked for ${ENTRY_NAMES.join(", ")}`,
-  )
+  fail("E_SUBJECT_LOAD", {
+    detail: `no entry file at ${target}; looked for ${ENTRY_NAMES.join(", ")}`,
+  })
 }
 
 interface Loaded {
@@ -44,9 +45,10 @@ interface Loaded {
 function pickSource(loaded: Loaded): GameModuleSource {
   const candidate = loaded.default ?? loaded.createGame ?? loaded.Game
   if (candidate === undefined) {
-    throw new Error(
-      "the entry has no default export; a bundle exports its GameModule, or a factory for one, as default",
-    )
+    fail("E_SUBJECT_LOAD", {
+      detail:
+        "the entry has no default export; a bundle exports its GameModule, or a factory for one, as default",
+    })
   }
   return candidate as GameModuleSource
 }

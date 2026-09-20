@@ -11,6 +11,8 @@
  * doubles.
  */
 
+import { fail } from "./errors"
+
 const SHIFT = 16
 const ONE = 1 << SHIFT
 const HALF = ONE >> 1
@@ -61,7 +63,9 @@ export function mul(a: Fixed, b: Fixed): Fixed {
 }
 
 export function div(a: Fixed, b: Fixed): Fixed {
-  if (b === 0) throw new RangeError("fixed-point division by zero")
+  if (b === 0) {
+    fail("E_ARG_INVALID", { detail: "fixed-point division by zero" })
+  }
   return Math.round((a * ONE) / b) | 0
 }
 
@@ -100,7 +104,9 @@ export function lerp(a: Fixed, b: Fixed, t: Fixed): Fixed {
 
 /** Square root by Newton's method on integers. Exact and engine-independent. */
 export function sqrt(value: Fixed): Fixed {
-  if (value < 0) throw new RangeError("fixed-point square root of a negative")
+  if (value < 0) {
+    fail("E_ARG_INVALID", { detail: "fixed-point square root of a negative" })
+  }
   if (value === 0) return 0
   // Start from the double result and refine, so the loop is one step.
   let guess = fromNumber(Math.sqrt(toNumber(value)))

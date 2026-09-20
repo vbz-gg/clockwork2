@@ -95,7 +95,7 @@ export class Prng {
   /** One item, uniformly. Throws on an empty list rather than returning undefined. */
   randomChoice<T>(items: readonly T[]): T {
     if (items.length === 0) {
-      throw new RangeError("randomChoice() on an empty array")
+      fail("E_ARG_INVALID", { detail: "randomChoice() on an empty array" })
     }
     return items[Math.floor(this.alea() * items.length)] as T
   }

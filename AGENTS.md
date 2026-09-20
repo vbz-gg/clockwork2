@@ -124,6 +124,35 @@ is worse than a missing one. Everything in it that can be checked is checked by
 - The two templates' `src/sim.ts` files must stay byte-identical, and both
   templates must pass the whole conformance suite unmodified.
 
+## Commit gates
+
+Two hooks run on every commit. `pre-commit` lints, and checks that the skill's
+failure-modes reference still has one section per error code. `commit-msg` runs
+commitlint, and demands a `Docs-Updated:` trailer. Never bypass either with
+`--no-verify`.
+
+The trailer records the pass no test can make. `skill/tests/skill.test.ts`
+measures the two drifts a machine can see, and nothing measures whether a
+paragraph of `docs/engine.md` is still true. Writing the trailer says you
+re-read the pages covering what you changed and brought them back in line.
+
+It is demanded when the commit stages anything under `packages/`, `demo/`,
+`e2e/`, `scripts/`, `skill/`, `docs/` or `.github/`, or `README.md`,
+`package.json`, `tsconfig*.json` or `biome.json`. Merge, revert, fixup, squash
+and `chore(release)` commits are exempt: git and commit-and-tag-version write
+those messages themselves, some with no editor at all.
+
+A value under ten characters is rejected, as is a stamp from the list in
+`scripts/check-docs-updated.ts`. Say what you did, inside the 100 columns
+commitlint allows a trailer line:
+
+    Docs-Updated: regenerated kernel-api.md for the new Session option
+    Docs-Updated: re-read engine.md on recording and replay; no change needed
+    Docs-Updated: internal refactor, no documented behaviour or public type moved
+
+The trailer has to be true. A new path carrying documentation joins
+`BEARING_PATTERNS` in `scripts/check-docs-updated.ts` in the same change.
+
 ## Prose
 
 Run the `humanizer` skill over anything a person reads before you commit it:

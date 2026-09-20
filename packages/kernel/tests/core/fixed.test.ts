@@ -29,7 +29,7 @@ describe("fixed point", () => {
     const b = fixed.fromNumber(2.5)
     expect(fixed.toNumber(fixed.mul(a, b))).toBeCloseTo(3.75, 4)
     expect(fixed.toNumber(fixed.div(a, b))).toBeCloseTo(0.6, 4)
-    expect(() => fixed.div(a, 0)).toThrow(RangeError)
+    expect(() => fixed.div(a, 0)).toThrow(/E_ARG_INVALID/)
   })
 
   test("the same operations give the same bits every time", () => {
@@ -71,6 +71,6 @@ describe("fixed point", () => {
         0.01,
       )
     }
-    expect(() => fixed.sqrt(fixed.fromNumber(-1))).toThrow(RangeError)
+    expect(() => fixed.sqrt(fixed.fromNumber(-1))).toThrow(/E_ARG_INVALID/)
   })
 })

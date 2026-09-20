@@ -4,6 +4,7 @@
  */
 
 import { fromWords, getHighWord } from "../bits"
+import { fail } from "../errors"
 import { PI, PI_2, TWO_PI } from "./constants"
 import { remPio2 } from "./kernel/rem-pio2"
 
@@ -105,7 +106,9 @@ export function sign(x: number): number {
 /** Exposed so a caller can build a power of two without reaching for pow. */
 export function exp2i(k: number): number {
   if (!Number.isInteger(k) || k < -1022 || k > 1023) {
-    throw new RangeError(`exp2i() takes an integer in [-1022, 1023], got ${k}`)
+    fail("E_DMATH_RANGE", {
+      detail: `exp2i() takes an integer in [-1022, 1023], got ${k}`,
+    })
   }
   return fromWords((k + 1023) << 20, 0)
 }

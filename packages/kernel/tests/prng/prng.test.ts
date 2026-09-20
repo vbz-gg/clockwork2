@@ -55,7 +55,7 @@ describe("Prng", () => {
   })
 
   test("randomChoice refuses an empty list rather than returning undefined", () => {
-    expect(() => new Prng("c").randomChoice([])).toThrow(RangeError)
+    expect(() => new Prng("c").randomChoice([])).toThrow(/E_ARG_INVALID/)
   })
 
   test("shuffle is a permutation and draws a fixed number of times", () => {

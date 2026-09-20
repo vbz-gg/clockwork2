@@ -242,9 +242,9 @@ describe("speed", () => {
 
   test("a speed that is not a positive number is refused", () => {
     const host = replayHost([], new ManualScheduler())
-    expect(() => host.setSpeed(0)).toThrow(RangeError)
-    expect(() => host.setSpeed(-1)).toThrow(RangeError)
-    expect(() => host.setSpeed(Number.NaN)).toThrow(RangeError)
+    expect(() => host.setSpeed(0)).toThrow(/E_ARG_INVALID/)
+    expect(() => host.setSpeed(-1)).toThrow(/E_ARG_INVALID/)
+    expect(() => host.setSpeed(Number.NaN)).toThrow(/E_ARG_INVALID/)
   })
 })
 

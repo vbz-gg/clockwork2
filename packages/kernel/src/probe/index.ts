@@ -12,6 +12,7 @@
 
 import { toBitsHex } from "../bits"
 import * as dmath from "../dmath/index"
+import { fail } from "../errors"
 import { encodeCanonical } from "../hash/canonical"
 import { Hash64, hash64 } from "../hash/hash64"
 import { RecordedInputSource } from "../inputs"
@@ -361,7 +362,9 @@ export function probeRange(
   to: number,
 ): { readonly digest: string; readonly count: number } {
   const definition = BY_ID.get(id)
-  if (definition === undefined) throw new Error(`no probe vector named ${id}`)
+  if (definition === undefined) {
+    fail("E_ARG_INVALID", { detail: `no probe vector named ${id}` })
+  }
   const hasher = new Hash64()
   let index = 0
   let count = 0
@@ -383,7 +386,9 @@ export function probeDetail(
   to: number,
 ): ReadonlyArray<{ readonly index: number } & ProbeItem> {
   const definition = BY_ID.get(id)
-  if (definition === undefined) throw new Error(`no probe vector named ${id}`)
+  if (definition === undefined) {
+    fail("E_ARG_INVALID", { detail: `no probe vector named ${id}` })
+  }
   const out: Array<{ index: number } & ProbeItem> = []
   let index = 0
   for (const item of definition.produce()) {

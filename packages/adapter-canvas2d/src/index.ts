@@ -9,7 +9,11 @@
  * and write none of them.
  */
 
-import type { Presentation, PresentationContext } from "@clockwork2/kernel"
+import {
+  fail,
+  type Presentation,
+  type PresentationContext,
+} from "@clockwork2/kernel"
 
 export type Canvas2dDraw<TView> = (
   context: CanvasRenderingContext2D,
@@ -59,7 +63,11 @@ export class Canvas2dPresentation<TView>
     canvas.width = Math.round(this.options.width * this.pixelRatio)
     canvas.height = Math.round(this.options.height * this.pixelRatio)
     const ctx = canvas.getContext("2d")
-    if (ctx === null) throw new Error("this browser gave no 2d canvas context")
+    if (ctx === null) {
+      fail("E_ENV_UNSUPPORTED", {
+        detail: "this browser gave no 2d canvas context",
+      })
+    }
     this.context = ctx
     this.options.onMount?.(canvas)
   }

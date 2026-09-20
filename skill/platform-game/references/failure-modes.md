@@ -55,6 +55,9 @@ of a turn and multiply only when you need it. A sentinel is not returned
 because `NaN & 3` is `0` and the caller would compute a plausible wrong answer
 from it.
 
+`dmath.exp2i()` reports the same code for an exponent outside `[-1022, 1023]`,
+where two to the power of it is not a normal double.
+
 ### E_CANONICAL_UNSUPPORTED
 
 `snapshot()` returned a value with no canonical encoding: `NaN`, `Infinity`,
@@ -131,6 +134,29 @@ file or a truncated upload.
 The manifest failed `assertManifest`. The detail names the field. Common ones:
 a `tickHz` that is not 30, 60 or 120; `rankBy` naming a counter that is not
 declared; `capabilities.deterministic` not `true`.
+
+### E_ARG_INVALID
+
+An argument the caller controls was outside the range the API accepts, and the
+detail names the value and the range. The APIs that report it are `maxTicks`
+and `tickHz` on a session, the tick counts `Timer.every()` and `Timer.after()`
+take, the replay speed on a host, `fixed.div()` by zero, `fixed.sqrt()` of a
+negative, and `randomChoice()` on an empty array.
+
+This is a bug in the calling code, not a state a simulation can reach, so there
+is nothing to catch and nothing to recover. Read the detail and fix the call.
+
+### E_ENV_UNSUPPORTED
+
+The host cannot supply something the engine needs. Two places report it. The
+kernel probes the word order of a double when it loads and refuses a platform
+whose layout it does not recognise, because every hash below it reads those
+bytes directly. The canvas2d adapter reports it for a canvas that returns no
+2d context.
+
+Neither is something a game can fix. A platform that fails the first is not one
+this engine runs on. The second is a browser without canvas support, or a
+canvas already holding a context of another kind.
 
 ## The conformance suite
 
@@ -255,3 +281,13 @@ nothing, or tried to reach a network origin other than the asset CDN.
 A check threw while running. That is a failure of the subject, not of the
 suite - but it is reported separately so the cause is not misattributed to
 whatever the check was about to test. The detail carries the original error.
+
+### E_SUBJECT_LOAD
+
+The subject could not be loaded. Either there is no entry file at the path
+given, and the detail lists the names that were looked for, or the file loaded
+and had no default export.
+
+A bundle exports its `GameModule`, or a factory that returns one, as its
+default export. Check that the build wrote where you pointed the validator, and
+that the entry exports the module itself rather than only its parts.
