@@ -14,9 +14,16 @@ import { probeRange, probeVectorIds, runProbe } from "../../src/probe/index"
 
 const GOLDEN = join(import.meta.dir, "probe-golden.tsv")
 
+const GOLDEN_TEXT = readFileSync(GOLDEN, "utf8")
+
 function readGolden(): Map<string, string> {
   const map = new Map<string, string>()
-  for (const line of readFileSync(GOLDEN, "utf8").split("\n")) {
+  for (const raw of GOLDEN_TEXT.split("\n")) {
+    // A checkout that rewrote LF to CRLF would otherwise leave a carriage
+    // return on the end of every digest, and every vector below would report
+    // that the simulation had changed. `.gitattributes` pins the endings; this
+    // keeps the failure honest if something else gets past it.
+    const line = raw.endsWith("\r") ? raw.slice(0, -1) : raw
     if (line.length === 0 || line.startsWith("#")) continue
     const [id, digest] = line.split("\t")
     if (id !== undefined && digest !== undefined) map.set(id, digest)
@@ -44,6 +51,13 @@ describe("probe golden digests", () => {
       )
     }
     expect(result.vectors.length).toBeGreaterThan(20)
+  })
+
+  test("the file on disk has Unix line endings", () => {
+    // `.gitattributes` pins this. A CRLF checkout leaves a carriage return on
+    // every digest here and changes the bytes the dmath checksum covers, and
+    // the failure it produces accuses the simulation rather than the checkout.
+    expect(GOLDEN_TEXT).not.toContain("\r")
   })
 
   test("every vector produced something", () => {

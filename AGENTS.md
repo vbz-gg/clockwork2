@@ -109,6 +109,12 @@ replays to a different state.
 - `retries` is 0 in the Playwright config on purpose. For a determinism suite,
   flake is the finding. Rewrite a timing-sensitive test against the virtual
   clock rather than retrying it.
+- The golden vector files are compared rather than read: `dmath-golden.tsv`
+  against a recorded SHA-256 of its bytes, `probe-golden.tsv` field by field.
+  `.gitattributes` pins the working tree to LF so a Windows checkout holds the
+  same bytes as a Linux one. Without it `core.autocrlf` rewrote both, and the
+  Windows leg of the cross-engine matrix reported all 24 probe vectors as
+  changed on a commit that had not touched the simulation.
 
 ## Working on the skill
 
