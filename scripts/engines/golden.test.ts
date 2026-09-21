@@ -21,11 +21,11 @@ describe("the golden parser", () => {
   })
 
   test("a CRLF file reads the same as an LF one", () => {
-    // This is the failure the Windows leg of the cross-engine matrix hit.
-    // Git for Windows checks text out with CRLF unless told otherwise, the
-    // carriage return stayed on the end of each digest, and every vector was
-    // reported as no longer matching - `scripts/engines.ts` exiting 1 and
-    // saying the simulation had changed on a commit that had not touched it.
+    // Git for Windows checks text out with CRLF unless told otherwise. Under
+    // the old parser the carriage return stayed on the end of each digest and
+    // every vector read as no longer matching - `scripts/engines.ts` exiting 1
+    // and saying the simulation had changed on a commit that had not touched
+    // it. Measured, not supposed: convert probe-golden.tsv and run it.
     const crlf = LF.replace(/\n/g, "\r\n")
     expect(crlf).not.toBe(LF)
     expect([...parseGolden(crlf)]).toEqual([...parseGolden(LF)])

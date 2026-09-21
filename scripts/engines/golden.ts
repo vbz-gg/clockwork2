@@ -2,13 +2,12 @@
  * The probe's golden digests, on disk.
  *
  * The file is a two-column TSV, so how it is split into lines decides what
- * every reader of it sees. A checkout that rewrote its LF endings to CRLF left
- * a carriage return on the end of each digest, nothing matched, and
- * `scripts/engines.ts` exited 1 reporting that all 24 vectors had changed on a
- * commit that had not touched the simulation. That is what the Windows leg of
- * the cross-engine matrix was failing on: `core.autocrlf` is true on the
- * GitHub Windows runners and the repository had no `.gitattributes` to
- * override it.
+ * every reader of it sees. Convert it to CRLF and the old parser, which split
+ * on `"\n"`, kept a carriage return on the end of each digest: nothing matched,
+ * and `scripts/engines.ts` exited 1 reporting all 23 non-heavy vectors as
+ * changed on a commit that had not touched the simulation. `core.autocrlf` is
+ * true on the GitHub Windows runners, so a Windows checkout produced exactly
+ * that file until `.gitattributes` existed.
  *
  * `.gitattributes` now pins text to LF, which is the fix: `dmath-golden.tsv`
  * is checked against a recorded SHA-256 of its bytes and no amount of parsing
