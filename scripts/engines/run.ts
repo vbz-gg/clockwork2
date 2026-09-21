@@ -2,7 +2,6 @@
  * Running the probe bundle under one engine.
  */
 
-import type { LaunchOptions } from "playwright"
 import type { ProbeBundle } from "./build"
 import type { EngineId } from "./detect"
 
@@ -76,27 +75,13 @@ async function runInRuntime(
   return extract(stdout, engine)
 }
 
-/**
- * Playwright's default headless chromium is a separate headless-shell binary.
- * On the windows-2025-vs2026 runner it starts - a pid is assigned - and never
- * completes the --remote-debugging-pipe handshake, so launch() times out after
- * 180s and the sweep never reaches a digest. `channel: "chromium"` runs the
- * full chromium build with --headless=new instead, which is also the binary
- * detect.ts probes with executablePath().
- */
-const LAUNCH: Record<"chromium" | "firefox" | "webkit", LaunchOptions> = {
-  chromium: { channel: "chromium" },
-  firefox: {},
-  webkit: {},
-}
-
 async function runInBrowser(
   engine: "chromium" | "firefox" | "webkit",
   bundle: ProbeBundle,
   request: ProbeRequest,
 ): Promise<unknown> {
   const playwright = await import("playwright")
-  const browser = await playwright[engine].launch(LAUNCH[engine])
+  const browser = await playwright[engine].launch()
   try {
     const page = await browser.newPage()
     // about:blank is enough. No server, no fixture, nothing else to go wrong.
