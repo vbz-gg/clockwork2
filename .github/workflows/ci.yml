@@ -33,6 +33,8 @@ jobs:
       - run: bun run test
       - name: simulation purity scan
         run: bun run scripts/lint-sim-purity.ts
+      - name: packages would install cleanly
+        run: bun run scripts/check-publishable.ts
 
   engines:
     name: cross-engine determinism

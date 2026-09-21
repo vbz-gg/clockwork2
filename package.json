@@ -34,7 +34,8 @@
     "build:replay": "bun run scripts/build-replay.ts",
     "replay": "bun run scripts/replay.ts",
     "test:e2e:nightly": "bun run --cwd e2e test:nightly",
-    "gen:skill-api": "bun run scripts/gen-skill-api.ts"
+    "gen:skill-api": "bun run scripts/gen-skill-api.ts",
+    "check:publishable": "bun run scripts/check-publishable.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",

@@ -18,6 +18,7 @@ bun run test:engines   # golden vectors under every installed JS engine
 bun run test:e2e       # Playwright against the built demo
 bun run test:e2e:nightly  # the seeded fuzz spec, twenty seeds
 bun run gen:skill-api  # regenerate the skill's API reference after a build
+bun run check:publishable  # pack every package and read what a consumer gets
 bun run demo           # the demo dev server - never start this yourself
 bun run demo:build
 ```
@@ -59,6 +60,16 @@ Iteration order is part of the contract. A `Map` or `Set` iterates in insertion
 order, which is deterministic when the insertion history is. Do not iterate a
 plain object's keys where order matters, and do not sort to paper over an
 ordering bug.
+
+## Releasing
+
+Publish with `bun publish`, which `scripts/publish.ts` does. Never `npm
+publish`: cross-package dependencies are declared `workspace:*`, npm ships that
+string verbatim, and the published version is then uninstallable by anyone and
+cannot be unpublished after 72 hours. Bun replaces the protocol with the
+version being published, and `bun run check:publishable` packs each package and
+reads the tarball's own package.json to prove it still does. CI runs it on
+every push, and the release gate runs it again.
 
 ## Working on the kernel
 
