@@ -81,6 +81,14 @@ test.describe("the demo's controls", () => {
     const recorded = await recordThroughTheUi(page, "e2e-ui")
     expect(recorded.endTick, "the session ran").toBeGreaterThan(MIN_TICKS)
 
+    // The panel must show the hash the run actually ended on, not just the
+    // word "match": a verdict computed from one value compared with itself
+    // would pass the text assertion below and prove nothing.
+    const recordedHash = await page.evaluate(
+      () => window.__cw2test?.stateHash() ?? "",
+    )
+    expect(recordedHash, "the run reported a hash").toMatch(/^[0-9a-f]{16}$/)
+
     await page.click('button[data-action="replay"]')
     // Ten times speed, so a session of any length finishes inside the test.
     await page.locator("#cw2-speed").fill("10")
@@ -91,7 +99,8 @@ test.describe("the demo's controls", () => {
     )
 
     // Read the answer off the page, not out of the API.
-    await expect(page.locator(".cw2-hash")).toContainText("identical")
+    await expect(page.locator(".cw2-hash")).toContainText("Same state")
+    await expect(page.locator(".cw2-hash")).toContainText(recordedHash)
     await expect(page.locator(".cw2-differ")).toHaveCount(0)
   })
 
