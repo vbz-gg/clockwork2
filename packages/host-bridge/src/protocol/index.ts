@@ -16,12 +16,32 @@
 
 import type {
   Counters,
+  InputEvent,
   Snapshot,
   TerminalReason,
   TickRate,
 } from "@clockwork2/kernel"
 
 export const PROTOCOL_VERSION = 1
+
+/**
+ * What the frame reports when the conversation itself goes wrong.
+ *
+ * These are the protocol's codes, not the kernel's `ERROR_CODES`. They say
+ * something about the exchange between a host and a frame rather than about
+ * anything a simulation did, which is why the skill's failure-modes reference
+ * does not carry them: a game author can do nothing about any of them.
+ */
+export const FRAME_ERRORS = {
+  /** `start` arrived before `init`, so there is no session to start. */
+  NOT_INITIALISED: "E_FRAME_NOT_INITIALISED",
+  /** A second `init` arrived. A frame runs one session and is then done. */
+  ALREADY_INITIALISED: "E_FRAME_ALREADY_INITIALISED",
+  /** Building the session from `init` threw. */
+  INIT_FAILED: "E_FRAME_INIT_FAILED",
+  /** The loop threw while running the player's own inputs. */
+  THREW: "E_FRAME_THREW",
+} as const
 
 export type HostToGame =
   | { readonly type: "hello"; readonly protocol: number }
@@ -76,6 +96,21 @@ export type GameToHost =
       readonly finalSnapshot: Snapshot
     }
   | {
+      /**
+       * A slice of the input log, sent while the run is still going.
+       *
+       * `ended` carries the whole recording, but it arrives once the player
+       * knows how they did. These arrive before that, so a host can keep what
+       * the log looked like at a moment it stamped itself. A submitted log
+       * whose past disagrees with a slice already sent is one the host can
+       * refuse without replaying anything.
+       */
+      readonly type: "log-chunk"
+      /** Where this slice starts in the whole log. */
+      readonly fromIndex: number
+      readonly inputs: readonly InputEvent[]
+    }
+  | {
       readonly type: "recording-chunk"
       readonly index: number
       readonly total: number
@@ -115,3 +150,12 @@ export function createDispatcher<T extends { readonly type: string }>(
 
 /** At most this often, so a frame cannot flood the host with progress. */
 export const PROGRESS_INTERVAL_MS = 250
+
+/**
+ * At most this often for a slice of the input log.
+ *
+ * Slower than progress because a slice is bigger and its job is evidence
+ * rather than a live number: what matters is that the host holds part of the
+ * log before the run is over, not how finely it is cut.
+ */
+export const LOG_CHUNK_INTERVAL_MS = 2000

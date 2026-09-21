@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Clockwork 2 - embedding a game</title>
+    <style>
+      :root { color-scheme: dark; }
+      body {
+        margin: 0;
+        padding: 20px;
+        background: #0b0b14;
+        color: #e8e9ee;
+        font-family: ui-sans-serif, system-ui, sans-serif;
+      }
+      #wrap { max-width: 980px; margin: 0 auto; display: grid; gap: 16px; }
+      #stage { aspect-ratio: 1; background: #06060c; border: 1px solid #23242e; }
+      dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; font-size: 14px; }
+      dt { color: #8b8fa3; }
+      dd { margin: 0; font-family: ui-monospace, monospace; word-break: break-all; }
+      #recording { display: none; }
+      button { font: inherit; padding: 8px 14px; }
+    </style>
+  </head>
+  <body>
+    <div id="wrap">
+      <h1 style="margin: 0; font-size: 18px">A game in a sandboxed frame</h1>
+      <div id="stage"></div>
+      <div>
+        <button id="left" type="button">Left</button>
+        <button id="right" type="button">Right</button>
+        <button id="up" type="button">Up</button>
+        <button id="down" type="button">Down</button>
+        <button id="end" type="button">End run</button>
+      </div>
+      <dl>
+        <dt>phase</dt><dd id="phase">idle</dd>
+        <dt>manifest hash</dt><dd id="manifest-hash">-</dd>
+        <dt>kernel</dt><dd id="kernel-version">-</dd>
+        <dt>seed sent</dt><dd id="seed-sent">-</dd>
+        <dt>checkpoints seen</dt><dd id="checkpoint-count">0</dd>
+        <dt>log chunks</dt><dd id="log-chunk-count">0</dd>
+        <dt>inputs via log chunks</dt><dd id="log-input-count">0</dd>
+        <dt>log chunks before ended</dt><dd id="chunks-before-ended">0</dd>
+        <dt>counters claimed</dt><dd id="counters">-</dd>
+        <dt>message order</dt><dd id="order">-</dd>
+      </dl>
+      <pre id="recording"></pre>
+    </div>
+    <script type="module" src="/src/embed.ts"></script>
+  </body>
+</html>

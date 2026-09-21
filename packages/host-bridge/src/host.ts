@@ -166,6 +166,21 @@ export class GameHost<
     return this.session.tick
   }
 
+  /**
+   * The manifest this session runs under.
+   *
+   * Public because the frame bridge needs its hash for the `ready` message,
+   * and reaching into the options object to get it was a cast that would
+   * survive the field being renamed.
+   */
+  get manifest(): Manifest {
+    return this.options.manifest
+  }
+
+  get seed(): string {
+    return this.options.seed
+  }
+
   get status(): HostState {
     return this.state
   }
