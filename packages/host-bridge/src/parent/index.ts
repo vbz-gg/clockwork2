@@ -26,6 +26,17 @@ export interface GameFrameOptions {
   readonly title?: string
   /** Features to grant. Pointer lock only when the manifest asks for it. */
   readonly allow?: string
+  /**
+   * Says hello once the frame document has loaded. On by default.
+   *
+   * A message posted before the frame's script has run reaches the blank
+   * document the iframe starts on, where nothing is listening, and nothing
+   * retries it: the handshake never starts and the frame looks broken with no
+   * error anywhere. Load is the only signal the parent gets, since everything
+   * else about an opaque origin is hidden from it. Turn this off to drive the
+   * handshake by hand.
+   */
+  readonly helloOnLoad?: boolean
   readonly onReady?: (message: Extract<GameToHost, { type: "ready" }>) => void
   readonly onStarted?: () => void
   readonly onProgress?: (
@@ -35,6 +46,16 @@ export interface GameFrameOptions {
     message: Extract<GameToHost, { type: "checkpoint" }>,
   ) => void
   readonly onEnded?: (message: Extract<GameToHost, { type: "ended" }>) => void
+  /**
+   * A slice of the input log, arriving while the run is still going.
+   *
+   * Stamp it with the server's clock and keep it. It is what lets a submitted
+   * recording be checked against what the player had already committed to,
+   * before they knew how the run would end.
+   */
+  readonly onLogChunk?: (
+    message: Extract<GameToHost, { type: "log-chunk" }>,
+  ) => void
   readonly onRecordingChunk?: (
     message: Extract<GameToHost, { type: "recording-chunk" }>,
   ) => void
@@ -47,6 +68,9 @@ export interface GameFrameOptions {
 export class GameFrame {
   private readonly iframe: HTMLIFrameElement
   private readonly onMessage: (event: MessageEvent) => void
+  private readonly onLoad = (): void => {
+    this.hello()
+  }
   private destroyed = false
 
   constructor(private readonly options: GameFrameOptions) {
@@ -58,6 +82,9 @@ export class GameFrame {
     iframe.style.border = "0"
     iframe.style.width = "100%"
     iframe.style.height = "100%"
+    if (options.helloOnLoad !== false) {
+      iframe.addEventListener("load", this.onLoad)
+    }
     iframe.src = options.src
     options.container.appendChild(iframe)
     this.iframe = iframe
@@ -68,6 +95,7 @@ export class GameFrame {
       progress: (message) => options.onProgress?.(message),
       checkpoint: (message) => options.onCheckpoint?.(message),
       ended: (message) => options.onEnded?.(message),
+      "log-chunk": (message) => options.onLogChunk?.(message),
       "recording-chunk": (message) => options.onRecordingChunk?.(message),
       error: (message) => options.onError?.(message),
       heartbeat: (message) => options.onHeartbeat?.(message),
@@ -141,6 +169,7 @@ export class GameFrame {
     if (this.destroyed) return
     this.destroyed = true
     globalThis.removeEventListener("message", this.onMessage)
+    this.iframe.removeEventListener("load", this.onLoad)
     this.iframe.remove()
     void this.options
   }

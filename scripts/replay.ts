@@ -38,7 +38,11 @@ function main(argv: readonly string[]): number {
     config: recording.config as unknown as SnakeConfig,
     inputs: new RecordedInputSource(recording.inputs),
     maxTicks: Math.max(recording.endTick, 1),
-    checkpointEvery: 60,
+    // Where the host checkpointed, which is its manifest's tick rate. A
+    // hardcoded 60 agrees with it only for a 60 Hz game; at 30 or 120 the
+    // replay would checkpoint at different ticks and every comparison would
+    // read as a divergence.
+    checkpointEvery: recording.tickHz,
     counters: MANIFEST.counters,
   })
 

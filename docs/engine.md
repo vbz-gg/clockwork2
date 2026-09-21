@@ -801,12 +801,54 @@ sandbox. An opaque origin is same-origin with nothing, so the parent posts with
 target origin `*` and checks `event.source`, while the frame checks
 `event.origin`. Workers from an opaque origin have to be `blob:` URLs.
 
+The frame document loads before anything about the session has been decided, so
+`FrameBridge` starts with no game at all and builds one when `init` arrives:
+
+```ts
+connectToParent({
+  manifest: MANIFEST,
+  parentOrigin: PLATFORM_ORIGIN,
+  createHost: (init, bridge) =>
+    new GameHost({ ...rest, seed: init.seed, maxTicks: init.maxTicks }),
+})
+```
+
+That ordering is why the seed never travels in the frame's URL, where it would
+be in a referrer, a history entry and every log between the page and the CDN.
+`start` before `init` is answered with an error rather than ignored, and a
+second `init` is refused, because a frame runs one session.
+
 The message table is a fixed vocabulary. Host to game: `hello`, `init`, `start`,
 `pause`, `resume`, `end`, `resize`, `theme`, `virtual-input`. Game to host:
-`ready`, `started`, `progress`, `checkpoint`, `ended`, recording chunks,
-`error`, `heartbeat`. No message carries a token, a balance, a URL, HTML, a
-function or another player's data, and there is no `navigate` row, so adding one
-is a visible diff.
+`ready`, `started`, `progress`, `checkpoint`, `log-chunk`, `ended`, recording
+chunks, `error`, `heartbeat`. No message carries a token, a balance, a URL,
+HTML, a function or another player's data, and there is no `navigate` row, so
+adding one is a visible diff.
+
+`log-chunk` is the one that exists for the platform rather than for the game. It
+carries a slice of the input log every couple of seconds while the run is still
+going, and the tail is flushed before `ended`. A host that keeps those slices,
+stamped with its own clock, can reject a submitted recording whose past
+disagrees with what the player had already committed to, without replaying
+anything.
+
+Two things about this path are easy to get wrong and fail in silence.
+
+The parent says `hello` on the frame's `load` event, not before. A message
+posted earlier reaches the blank document an iframe starts on, where nothing is
+listening, and nothing retries it: no error, no `ready`, a game that never
+starts.
+
+The host serving the game's files needs `Access-Control-Allow-Origin: *`.
+Because the frame has no origin of its own, every script it loads is a
+cross-origin request, including its own bundle from the very server that sent
+the document. A server answering with its own origin instead is answering a
+request from "null", which never matches, and the frame loads nothing.
+
+`demo/embed.html` and `demo/frame.html` are the two halves running against each
+other, and `e2e/specs/08-iframe.spec.ts` drives them in a real browser: the
+handshake, the seed arriving over the bridge, log slices landing before the run
+ends, and the recording that comes back replaying on a server to the same state.
 
 The simulation can also run in a worker with the clock staying on the page. The
 renderer then holds a copy of the view rather than a reference to it, which is

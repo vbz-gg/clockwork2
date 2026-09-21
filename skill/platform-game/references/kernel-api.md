@@ -1639,6 +1639,15 @@ export declare class GameHost<TView = unknown, TContainer = unknown, TConfig = P
     readonly live: LiveInputQueue | null;
     constructor(options: GameHostOptions<TView, TContainer, TConfig>);
     get tick(): number;
+    /**
+     * The manifest this session runs under.
+     *
+     * Public because the frame bridge needs its hash for the `ready` message,
+     * and reaching into the options object to get it was a cast that would
+     * survive the field being renamed.
+     */
+    get manifest(): Manifest;
+    get seed(): string;
     get status(): HostState;
     get stats(): LoopStats;
     /** How far between the last tick and the next, for the renderer. */
@@ -1726,6 +1735,31 @@ Builds a dispatcher from a complete table.
 export declare function createDispatcher<T extends {
     readonly type: string;
 }>(table: HandlerTable<T>): (message: unknown) => boolean;
+```
+
+### FRAME_ERRORS
+
+What the frame reports when the conversation itself goes wrong.
+
+```ts
+FRAME_ERRORS: {
+    /** `start` arrived before `init`, so there is no session to start. */
+    readonly NOT_INITIALISED: "E_FRAME_NOT_INITIALISED";
+    /** A second `init` arrived. A frame runs one session and is then done. */
+    readonly ALREADY_INITIALISED: "E_FRAME_ALREADY_INITIALISED";
+    /** Building the session from `init` threw. */
+    readonly INIT_FAILED: "E_FRAME_INIT_FAILED";
+    /** The loop threw while running the player's own inputs. */
+    readonly THREW: "E_FRAME_THREW";
+}
+```
+
+### LOG_CHUNK_INTERVAL_MS
+
+At most this often for a slice of the input log.
+
+```ts
+LOG_CHUNK_INTERVAL_MS = 2000
 ```
 
 ### PROGRESS_INTERVAL_MS
@@ -1888,6 +1922,20 @@ export type GameToHost = {
     readonly counters: Counters;
     readonly reason: TerminalReason;
     readonly finalSnapshot: Snapshot;
+} | {
+    /**
+     * A slice of the input log, sent while the run is still going.
+     *
+     * `ended` carries the whole recording, but it arrives once the player
+     * knows how they did. These arrive before that, so a host can keep what
+     * the log looked like at a moment it stamped itself. A submitted log
+     * whose past disagrees with a slice already sent is one the host can
+     * refuse without replaying anything.
+     */
+    readonly type: "log-chunk";
+    /** Where this slice starts in the whole log. */
+    readonly fromIndex: number;
+    readonly inputs: readonly InputEvent[];
 } | {
     readonly type: "recording-chunk";
     readonly index: number;

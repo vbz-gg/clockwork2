@@ -24,9 +24,11 @@ export {
 } from "./input"
 export {
   createDispatcher,
+  FRAME_ERRORS,
   type GameToHost,
   type HandlerTable,
   type HostToGame,
+  LOG_CHUNK_INTERVAL_MS,
   PROGRESS_INTERVAL_MS,
   PROTOCOL_VERSION,
 } from "./protocol/index"

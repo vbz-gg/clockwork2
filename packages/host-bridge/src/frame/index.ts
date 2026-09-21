@@ -5,9 +5,20 @@
  * message. The parent cannot do the same in reverse, because the frame is in
  * an opaque origin and reports "null"; it checks the window identity instead.
  * Between them the two halves know who they are talking to.
+ *
+ * The frame document loads before the platform has decided anything about the
+ * session, so the bridge starts with no host at all and builds one when `init`
+ * arrives with the seed. That ordering is the reason the seed never has to
+ * travel in the frame's URL, where it would end up in a referrer, a history
+ * entry and a server log.
  */
 
-import type { Counters, SessionResult } from "@clockwork2/kernel"
+import type {
+  Counters,
+  Manifest,
+  SessionResult,
+  TickRate,
+} from "@clockwork2/kernel"
 import {
   encodeRecording,
   hashCanonical,
@@ -16,14 +27,40 @@ import {
 import type { GameHost } from "../host"
 import {
   createDispatcher,
+  FRAME_ERRORS,
   type GameToHost,
   type HostToGame,
+  LOG_CHUNK_INTERVAL_MS,
   PROGRESS_INTERVAL_MS,
   PROTOCOL_VERSION,
 } from "../protocol/index"
 
+/** What the parent decided about this session, as `init` delivers it. */
+export interface FrameInit {
+  readonly seed: string
+  readonly config: unknown
+  readonly tickHz: TickRate
+  readonly maxTicks: number
+}
+
 export interface FrameBridgeOptions<TView> {
-  readonly host: GameHost<TView, HTMLElement>
+  /**
+   * Builds the session once the parent says what it is.
+   *
+   * Called at most once, from the `init` handler, with the bridge so the host's
+   * callbacks can post back through it. Anything it throws is reported to the
+   * parent as an error rather than left to a console nobody is reading.
+   */
+  readonly createHost: (
+    init: FrameInit,
+    bridge: FrameBridge<TView>,
+  ) => GameHost<TView, HTMLElement>
+  /**
+   * Read for the hash in `ready`, which the parent compares against the
+   * version it pinned. It is needed before a host exists, so it is given here
+   * rather than taken off one.
+   */
+  readonly manifest: Manifest
   /** The platform origin this frame will talk to, and no other. */
   readonly parentOrigin: string
   /** Splitting the recording keeps one postMessage from being enormous. */
@@ -40,38 +77,62 @@ const DEFAULT_CHUNK = 48 * 1024
 
 export class FrameBridge<TView> {
   private readonly onMessage: (event: MessageEvent) => void
+  private host: GameHost<TView, HTMLElement> | null = null
   private lastProgressAt = 0
+  private lastLogChunkAt = 0
+  private logSentUpTo = 0
 
   constructor(private readonly options: FrameBridgeOptions<TView>) {
-    const { host } = options
     const dispatch = createDispatcher<HostToGame>({
       hello: () => {
         this.post({
           type: "ready",
           protocol: PROTOCOL_VERSION,
-          manifestHash: hashCanonical(
-            (host as unknown as { options: { manifest: unknown } }).options
-              .manifest as never,
-          ),
+          manifestHash: hashCanonical(options.manifest as never),
           kernelVersion: KERNEL_VERSION,
         })
       },
-      init: () => {
-        // The host is built with its seed and config already; `init` exists so
-        // a frame that was loaded before the session was decided can wait.
+      init: (message) => {
+        if (this.host !== null) {
+          // A frame runs one session. A second init would either restart a run
+          // in progress or quietly replace the seed under a finished one.
+          this.error(
+            FRAME_ERRORS.ALREADY_INITIALISED,
+            "this frame already has a session",
+          )
+          return
+        }
+        try {
+          this.host = options.createHost(
+            {
+              seed: message.seed,
+              config: message.config,
+              tickHz: message.tickHz,
+              maxTicks: message.maxTicks,
+            },
+            this,
+          )
+        } catch (error) {
+          this.error(
+            FRAME_ERRORS.INIT_FAILED,
+            error instanceof Error ? error.message : String(error),
+          )
+        }
       },
       start: () => {
+        const host = this.require("start")
+        if (host === null) return
         host.start()
         this.post({ type: "started" })
       },
       pause: () => {
-        host.pause()
+        this.host?.pause()
       },
       resume: () => {
-        host.resume()
+        this.host?.resume()
       },
       end: () => {
-        host.stop()
+        this.host?.stop()
       },
       resize: (message) => {
         options.onResize?.(
@@ -85,7 +146,7 @@ export class FrameBridge<TView> {
       },
       "virtual-input": (message) => {
         // The only place a virtual input may enter a session.
-        host.live?.push({
+        this.host?.live?.push({
           device: "virtual",
           code: message.action,
           value: message.value,
@@ -98,6 +159,12 @@ export class FrameBridge<TView> {
       dispatch(event.data)
     }
     globalThis.addEventListener("message", this.onMessage)
+  }
+
+  private require(what: string): GameHost<TView, HTMLElement> | null {
+    if (this.host !== null) return this.host
+    this.error(FRAME_ERRORS.NOT_INITIALISED, `${what} arrived before init`)
+    return null
   }
 
   private post(message: GameToHost): void {
@@ -116,12 +183,32 @@ export class FrameBridge<TView> {
     this.post({ type: "progress", tick, counters })
   }
 
+  /**
+   * Sends whatever the input log has grown since the last slice.
+   *
+   * Call it from the host's onFrame beside `progress`. It sends nothing when
+   * the log has not grown, and nothing at all for a replayed session, which
+   * has no live queue to read.
+   */
+  logChunk(now: number): void {
+    if (now - this.lastLogChunkAt < LOG_CHUNK_INTERVAL_MS) return
+    if (this.flushLog()) this.lastLogChunkAt = now
+  }
+
   heartbeat(tick: number): void {
     this.post({ type: "heartbeat", tick })
   }
 
-  /** Call from the host's onEnded. Sends the result, then the recording. */
+  /**
+   * Call from the host's onEnded. Sends the result, the tail of the log, then
+   * the recording.
+   *
+   * The tail matters: without it the last inputs of a run would only ever
+   * reach the parent inside the recording, and the parent could not tell a log
+   * that grew normally from one rewritten at the end.
+   */
   ended(result: SessionResult, recording: string): void {
+    this.flushLog()
     this.post({
       type: "ended",
       tick: result.endTick,
@@ -141,6 +228,17 @@ export class FrameBridge<TView> {
     }
   }
 
+  /** Posts whatever the log has grown since the last slice. */
+  private flushLog(): boolean {
+    const log = this.host?.live?.recorded()
+    if (log === undefined || log.length <= this.logSentUpTo) return false
+    const fromIndex = this.logSentUpTo
+    const inputs = log.slice(fromIndex)
+    this.logSentUpTo = log.length
+    this.post({ type: "log-chunk", fromIndex, inputs })
+    return true
+  }
+
   error(code: string, detail: string): void {
     this.post({ type: "error", code, detail })
   }
@@ -154,8 +252,7 @@ export class FrameBridge<TView> {
 export function connectToParent<TView>(
   options: FrameBridgeOptions<TView>,
 ): FrameBridge<TView> {
-  const bridge = new FrameBridge(options)
-  return bridge
+  return new FrameBridge(options)
 }
 
 export { encodeRecording }
