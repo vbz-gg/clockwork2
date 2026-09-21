@@ -17,16 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # windows-2022, not windows-latest. On the windows-latest image
-        # (windows-2025-vs2026) every chromium launch measured here times out
-        # after the full 180000ms: runs 35585146006, 35623981277 and
-        # 35666263552 all assign the browser a pid and never finish the
-        # --remote-debugging-pipe handshake. It happens to the headless shell
-        # and to the full chrome.exe alike, so the browser build is not the
-        # variable. This leg has never passed on windows-latest, and ci.yml is
-        # Linux-only, so no Windows browser launch in this repository has ever
-        # worked. Pinning the image is the next variable to move.
-        os: [ubuntu-latest, macos-14, windows-2022]
+        os: [ubuntu-latest, macos-14, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
