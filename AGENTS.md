@@ -109,6 +109,14 @@ replays to a different state.
 - `retries` is 0 in the Playwright config on purpose. For a determinism suite,
   flake is the finding. Rewrite a timing-sensitive test against the virtual
   clock rather than retrying it.
+- The golden vector files are compared rather than read: `dmath-golden.tsv`
+  against a recorded SHA-256 of its bytes, `probe-golden.tsv` field by field.
+  `.gitattributes` pins the working tree to LF so a Windows checkout holds the
+  same bytes as a Linux one. Without it `core.autocrlf` rewrote both: converting
+  `probe-golden.tsv` to CRLF makes `bun run test:engines` report all 23
+  non-heavy vectors as changed and exit 1, and it changes the bytes the dmath
+  checksum covers. No CI run has reached that point, because the Windows sweep
+  fails earlier at chromium launch.
 
 ## Working on the skill
 

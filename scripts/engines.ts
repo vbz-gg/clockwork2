@@ -18,17 +18,16 @@
  * --require-all, 3 the harness itself failed.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
-import { dirname } from "node:path"
+import { mkdirSync, writeFileSync } from "node:fs"
 import { buildProbeBundle, type ProbeBundle } from "./engines/build"
 import {
   detectEngines,
   type EngineAvailability,
   type EngineId,
 } from "./engines/detect"
+import { GOLDEN, readGolden, writeGolden } from "./engines/golden"
 import { type ProbeAnswer, runProbeOn } from "./engines/run"
 
-const GOLDEN = "packages/kernel/tests/probe/probe-golden.tsv"
 const ARTIFACTS = "test-results/engines"
 
 interface Options {
@@ -58,27 +57,6 @@ function parseOptions(argv: readonly string[]): Options {
       engines === undefined ? undefined : (engines.split(",") as EngineId[]),
     detail: detail === undefined ? undefined : Number(detail),
   }
-}
-
-function readGolden(): Map<string, string> {
-  if (!existsSync(GOLDEN)) return new Map()
-  const map = new Map<string, string>()
-  for (const line of readFileSync(GOLDEN, "utf8").split("\n")) {
-    if (line.length === 0 || line.startsWith("#")) continue
-    const [id, digest] = line.split("\t")
-    if (id !== undefined && digest !== undefined) map.set(id, digest)
-  }
-  return map
-}
-
-function writeGolden(vectors: ProbeAnswer["vectors"]): void {
-  mkdirSync(dirname(GOLDEN), { recursive: true })
-  const lines = [
-    "# Cross-engine probe digests. Written by scripts/engines.ts --update.",
-    "# A change here means the simulation changed. Say why in the commit body.",
-    ...vectors.map((v) => `${v.id}\t${v.digest}`),
-  ]
-  writeFileSync(GOLDEN, `${lines.join("\n")}\n`)
 }
 
 /**

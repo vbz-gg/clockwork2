@@ -1,0 +1,18 @@
+# Line endings are part of the contract in this repository, because two of its
+# checks compare files rather than read them: packages/kernel/tests/dmath/
+# vectors/dmath-golden.tsv is hashed with SHA-256 and compared against a
+# recorded digest, and packages/kernel/tests/probe/probe-golden.tsv is split
+# into fields whose right-hand column is a digest string.
+#
+# Git for Windows sets core.autocrlf=true, and so do the GitHub windows-latest
+# runners. Without this file those checkouts rewrite LF to CRLF, which changes
+# the bytes the dmath checksum covers and leaves a carriage return on the end
+# of every probe digest. Converting probe-golden.tsv to CRLF and running
+# scripts/engines.ts reports all 23 non-heavy vectors as changed and exits 1,
+# accusing the simulation of a change nobody made. No CI run has hit this: the
+# Windows sweep dies earlier, at chromium launch. This closes it before it can.
+#
+# eol=lf applies to the working tree on every platform, so a Windows checkout
+# now holds the same bytes as a Linux one. text=auto still leaves anything Git
+# detects as binary untouched.
+* text=auto eol=lf
