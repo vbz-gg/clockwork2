@@ -15,7 +15,7 @@ import {
   decodeRecording,
   RecordedInputSource,
   runSession,
-} from "@clockwork2/kernel"
+} from "@clockwork2/engine"
 import { createGame, MANIFEST, type SnakeConfig } from "../demo/src/game/index"
 
 function main(argv: readonly string[]): number {

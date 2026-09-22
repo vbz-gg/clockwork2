@@ -14,7 +14,7 @@ import {
   TRAILER,
 } from "./check-docs-updated"
 
-const BEARING = ["packages/kernel/src/loop.ts"]
+const BEARING = ["packages/engine/src/loop.ts"]
 const REAL = `${TRAILER}: re-read engine.md on the loop; still accurate`
 
 function commit(subject: string, ...rest: string[]): string {
@@ -28,7 +28,7 @@ describe("bearing paths", () => {
 
   test("every documented surface is covered", () => {
     const covered = [
-      "packages/kernel/src/errors.ts",
+      "packages/engine/src/errors.ts",
       "demo/src/game/snake.ts",
       "e2e/specs/00-smoke.spec.ts",
       "scripts/engines.ts",
@@ -103,7 +103,7 @@ describe("exemptions", () => {
     // cannot be added to it and --no-verify is banned.
     const staged = [
       "package.json",
-      "packages/kernel/package.json",
+      "packages/engine/package.json",
       "CHANGELOG.md",
     ]
     expect(checkCommitMessage("chore(release): 0.2.0", staged).ok).toBe(true)
@@ -115,7 +115,7 @@ describe("the gate", () => {
     const result = checkCommitMessage(commit("feat: a thing"), BEARING)
     expect(result.ok).toBe(false)
     expect(result.error).toContain(TRAILER)
-    expect(result.error).toContain("packages/kernel/src/loop.ts")
+    expect(result.error).toContain("packages/engine/src/loop.ts")
   })
 
   test("a bearing change with a real trailer passes", () => {

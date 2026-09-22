@@ -14,8 +14,8 @@
  */
 
 import { mkdirSync, writeFileSync } from "node:fs"
-import { GameHost, ManualScheduler } from "@clockwork2/host-bridge"
-import { encodeRecording } from "@clockwork2/kernel"
+import { encodeRecording } from "@clockwork2/engine"
+import { GameHost, ManualScheduler } from "@clockwork2/engine/host"
 import {
   createGame,
   DEFAULT_CONFIG,

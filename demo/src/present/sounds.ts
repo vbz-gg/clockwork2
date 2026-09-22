@@ -11,7 +11,7 @@
  * same module the game imported.
  */
 
-import type { AudioSinkOptions } from "@clockwork2/host-bridge"
+import type { AudioSinkOptions } from "@clockwork2/engine/host"
 
 /** A cheap deterministic noise source, so the sound is the same every time. */
 function noise(seed: number): () => number {

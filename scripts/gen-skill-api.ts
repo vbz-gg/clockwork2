@@ -29,30 +29,30 @@ const ENTRIES: ReadonlyArray<{
   readonly blurb: string
 }> = [
   {
-    specifier: "@clockwork2/kernel",
-    file: "packages/kernel/dist/index.d.ts",
+    specifier: "@clockwork2/engine",
+    file: "packages/engine/dist/index.d.ts",
     blurb: "The contract, the loop, and everything a simulation may call.",
   },
   {
-    specifier: "@clockwork2/kernel/dmath",
-    file: "packages/kernel/dist/dmath/index.d.ts",
+    specifier: "@clockwork2/engine/dmath",
+    file: "packages/engine/dist/dmath/index.d.ts",
     blurb:
       "Deterministic transcendentals. Every one of these replaces a `Math` function that ECMAScript leaves implementation-defined.",
   },
   {
-    specifier: "@clockwork2/kernel/testing",
-    file: "packages/kernel/dist/testing/index.d.ts",
+    specifier: "@clockwork2/engine/testing",
+    file: "packages/engine/dist/testing/index.d.ts",
     blurb: "Input logs and comparison helpers, shared with the validator.",
   },
   {
-    specifier: "@clockwork2/host-bridge",
-    file: "packages/host-bridge/dist/index.d.ts",
+    specifier: "@clockwork2/engine",
+    file: "packages/engine/dist/index.d.ts",
     blurb:
       "Running a game in a page: the accumulator loop, input capture and the frame protocol. Not reachable from a simulation.",
   },
   {
-    specifier: "@clockwork2/validate",
-    file: "packages/validate/dist/index.d.ts",
+    specifier: "@clockwork2/engine/validate",
+    file: "packages/engine/dist/index.d.ts",
     blurb: "The conformance suite, as a library. The CLI wraps this.",
   },
 ]

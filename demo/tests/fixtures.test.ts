@@ -18,7 +18,7 @@ import {
   decodeRecording,
   RecordedInputSource,
   runSession,
-} from "@clockwork2/kernel"
+} from "@clockwork2/engine"
 import { createGame, MANIFEST, type SnakeConfig } from "../src/game/index"
 
 const FIXTURES = join(import.meta.dir, "../../e2e/fixtures")

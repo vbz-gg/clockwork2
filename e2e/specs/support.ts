@@ -11,7 +11,7 @@
  * point of spec 01.
  */
 
-import type { Checkpoint, Recording } from "@clockwork2/kernel"
+import type { Checkpoint, Recording } from "@clockwork2/engine"
 import type { Page } from "@playwright/test"
 
 interface View {

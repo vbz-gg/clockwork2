@@ -20,10 +20,10 @@ https://github.com/coverslide/node-alea
 Copyright (c) 2010 Johannes Baagoe
 MIT License
 
-packages/kernel/src/prng/alea.ts is a vendored TypeScript transcription of
+packages/engine/src/prng/alea.ts is a vendored TypeScript transcription of
 alea 1.0.1. It is vendored rather than depended upon so that the kernel has
 no runtime dependencies. Its output is proved byte-identical to the published
-package by packages/kernel/tests/prng/alea-parity.test.ts.
+package by packages/engine/tests/prng/alea-parity.test.ts.
 
 --------------------------------------------------------------------------
 fdlibm (Sun Microsystems Freely Distributable Math Library)
@@ -34,7 +34,7 @@ Developed at SunSoft, a Sun Microsystems, Inc. business. Permission to use,
 copy, modify, and distribute this software is freely granted, provided that
 this notice is preserved.
 
-packages/kernel/src/dmath/ is a TypeScript transcription of the fdlibm
+packages/engine/src/dmath/ is a TypeScript transcription of the fdlibm
 polynomial kernels. It exists because ECMAScript leaves the results of
 Math.sin, Math.cos, Math.pow and the other transcendental functions
 implementation-defined, so a simulation that must replay bit-exactly on

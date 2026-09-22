@@ -11,11 +11,11 @@
  * explosion particles, and ignored where it does not.
  */
 
+import { NodeSet } from "@clockwork2/engine"
 import {
   createPixiPresentation,
   type PixiPresentation,
-} from "@clockwork2/adapter-pixi"
-import { NodeSet } from "@clockwork2/kernel"
+} from "@clockwork2/engine/adapter-pixi"
 import { Container, Graphics } from "pixi.js"
 import { GAME_CONFIG } from "../game/constants"
 import type { SnakeView } from "../game/snake"

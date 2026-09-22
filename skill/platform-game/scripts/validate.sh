@@ -15,7 +15,7 @@ set -euo pipefail
 target="${1:-./src}"
 shift || true
 
-# `clockwork2-validate` is the bin `@clockwork2/validate` installs. Calling
+# `clockwork2-validate` is the bin `@clockwork2/engine/validate` installs. Calling
 # the bin rather than the package name keeps bunx on the copy in the game's
 # node_modules instead of fetching one from the registry.
 exec bunx clockwork2-validate run "$target" "$@"

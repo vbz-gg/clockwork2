@@ -14,7 +14,7 @@
 import { createHash } from "node:crypto"
 import { readdirSync, readFileSync, statSync } from "node:fs"
 import { join, relative, resolve } from "node:path"
-import type * as Kernel from "@clockwork2/kernel"
+import type * as Kernel from "@clockwork2/engine"
 import { resolveFrom } from "./_resolve"
 
 function flag(name: string): string | undefined {
@@ -64,7 +64,7 @@ console.error(`\n${found.length} files, ${total} bytes`)
 
 const manifestPath = flag("manifest")
 if (manifestPath !== undefined) {
-  const kernel = await resolveFrom<typeof Kernel>("@clockwork2/kernel", root)
+  const kernel = await resolveFrom<typeof Kernel>("@clockwork2/engine", root)
   const loaded = (await import(resolve(manifestPath))) as { MANIFEST?: unknown }
   const manifest = kernel.assertManifest(loaded.MANIFEST)
   const declared = new Map(

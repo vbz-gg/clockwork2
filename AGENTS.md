@@ -2,7 +2,7 @@
 
 Guidance for coding agents. `README.md` says what the project is and
 `docs/engine.md` explains how it works from first principles. Read the engine
-doc before changing anything in `packages/kernel`.
+doc before changing anything in `packages/engine`.
 
 ## Commands
 
@@ -19,7 +19,7 @@ bun run test:engines   # golden vectors under every installed JS engine
 bun run test:e2e       # Playwright against the built demo
 bun run test:e2e:nightly  # the seeded fuzz spec, twenty seeds
 bun run gen:skill-api  # regenerate the skill's API reference after a build
-bun run check:publishable  # pack every package and read what a consumer gets
+bun run check:publishable  # pack the package and read what a consumer gets
 bun run demo           # the demo dev server - never start this yourself
 bun run demo:build
 ```
@@ -70,13 +70,13 @@ signs a provenance attestation naming the commit and the workflow that built
 each tarball. There is no `NPM_TOKEN` in this repository's secrets, and nothing
 to rotate.
 
-`scripts/publish.ts` rewrites each package.json's `workspace:*` ranges to the
-version being published, calls `npm publish --access public`, and puts the file
-back in a `finally`. An unrewritten `workspace:*` reaches the registry verbatim
-and the published version is uninstallable by anyone, permanently, because a
-version cannot be unpublished after 72 hours. `bun publish` does the rewrite by
-itself but has no trusted-publishing support and no `--provenance` at 1.3.11,
-so reaching for it trades the signature for a string replacement.
+`scripts/publish.ts` calls `npm publish --access public` on `packages/engine`,
+and that is the whole of it. It used to rewrite six package.json files,
+substituting each `workspace:*` range for the version being published and
+restoring them afterwards, because an unrewritten range reaches the registry
+verbatim and that version is then uninstallable by anyone, permanently. One
+package has no sibling to depend on, so the rewrite and the hazard are both
+gone.
 
 No `--provenance` flag: under trusted publishing npm produces the attestation
 by default, and the flag would break the one case with no OIDC token, which is
@@ -96,18 +96,34 @@ calling workflow's name instead of the workflow that actually contains the
 publish command", so the tag push stays as the fallback if a dispatch is
 refused.
 
-`bun run check:publishable` packs every package through that same rewrite and
-reads the tarball's own package.json. CI runs it on every push and the release
-gate runs it again.
+`bun run check:publishable` packs the package and reads the tarball's own
+package.json: that it carries a README and a `dist`, and that nothing has crept
+into `dependencies`. CI runs it on every push and the release gate runs it
+again.
 
-## Working on the kernel
+## One package, four halves
 
-`@clockwork2/kernel` has no runtime dependencies and its `package.json` has no
-`dependencies` key at all. Anything it needs is vendored with attribution in
-`NOTICE`. Test-only packages go in the workspace root's `devDependencies`.
+`packages/engine` holds what were six packages: the kernel at `src/`, the host
+bridge at `src/host/`, the conformance checker at `src/validate/` and the three
+renderers at `src/adapters/`. Each is a subpath export carrying its own types,
+and the package is `"sideEffects": false`, so importing `/dmath` pulls nothing
+else.
 
-The kernel must not import DOM types. The base `tsconfig` has no `DOM` lib for
-that reason; a package that needs it adds it locally.
+`@clockwork2/engine` has no runtime dependencies and its `package.json` has no
+`dependencies` key at all. `pixi.js`, `three` and `typescript` are optional
+peers, so nobody installs a renderer to run a simulation. Anything else it
+needs is vendored with attribution in `NOTICE`; test-only packages go in the
+workspace root's `devDependencies`.
+
+**The simulation must not reach a DOM type.** When this was six packages that
+fell out of the layout: the base `tsconfig` has no `DOM` lib and only the
+packages needing one added it. One package has one `lib` setting and the
+adapters need `DOM`, so the property is now checked rather than inherited.
+`packages/engine/tsconfig.sim.json` typechecks `src/` without a DOM, excluding
+the three halves that legitimately have one, and `bun run typecheck` runs it.
+`scripts/lint-sim-purity.ts` is the other half, scanning built output for
+banned calls and skipping `dist/host`, `dist/adapters` and `dist/validate` for
+the same reason.
 
 ## Working on dmath
 

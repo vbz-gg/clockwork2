@@ -1,7 +1,7 @@
 /**
  * Keeps KERNEL_VERSION in step with the kernel's package.json.
  *
- * `packages/kernel/src/index.ts` declares the constant by hand, and that
+ * `packages/engine/src/index.ts` declares the constant by hand, and that
  * constant is written into every Recording.kernelVersion and every frame
  * handshake. It was not in .versionrc.json's bumpFiles, so the next release
  * would have bumped the package and left the constant behind, and every

@@ -10,8 +10,8 @@
  * read it with ordinary selectors rather than through a test hook.
  */
 
-import { createGameFrame } from "@clockwork2/host-bridge/parent"
-import type { InputEvent } from "@clockwork2/kernel"
+import type { InputEvent } from "@clockwork2/engine"
+import { createGameFrame } from "@clockwork2/engine/parent"
 
 const params = new URL(location.href).searchParams
 const seed = params.get("seed") ?? "embedded-seed"

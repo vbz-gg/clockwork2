@@ -6,7 +6,7 @@
  * second JSON Schema file to drift from it.
  */
 
-import type { Manifest } from "@clockwork2/kernel"
+import type { Manifest } from "@clockwork2/engine"
 
 export const MANIFEST: Manifest = {
   schemaVersion: 1,

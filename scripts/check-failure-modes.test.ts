@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
-import { ERROR_CODES } from "../packages/kernel/src/errors"
+import { ERROR_CODES } from "../packages/engine/src/errors"
 import {
   codesInReference,
   codesInSource,

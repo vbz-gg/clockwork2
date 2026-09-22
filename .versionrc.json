@@ -2,16 +2,11 @@
   "packageFiles": ["package.json"],
   "bumpFiles": [
     "package.json",
-    "packages/kernel/package.json",
+    "packages/engine/package.json",
     {
-      "filename": "packages/kernel/src/index.ts",
+      "filename": "packages/engine/src/index.ts",
       "updater": "scripts/kernel-version-updater.cjs"
-    },
-    "packages/validate/package.json",
-    "packages/host-bridge/package.json",
-    "packages/adapter-canvas2d/package.json",
-    "packages/adapter-three/package.json",
-    "packages/adapter-pixi/package.json"
+    }
   ],
   "infile": "CHANGELOG.md",
   "tagPrefix": "v",

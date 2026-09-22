@@ -1,4 +1,4 @@
-import type { Manifest } from "@clockwork2/kernel"
+import type { Manifest } from "@clockwork2/engine"
 import { GAME_CONFIG, TICK_HZ } from "./constants"
 
 export const MANIFEST: Manifest = {

@@ -13,7 +13,7 @@ import {
   probeRange,
   probeVectorIds,
   runProbe,
-} from "../../packages/kernel/src/probe/index"
+} from "../../packages/engine/src/probe/index"
 
 export type ProbeRequest =
   | {

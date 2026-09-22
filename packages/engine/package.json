@@ -1,0 +1,135 @@
+{
+  "name": "@clockwork2/engine",
+  "version": "0.1.0",
+  "description": "A deterministic, fixed-step game kernel for verifiable browser games",
+  "license": "MIT",
+  "author": "Ramesh Nair",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vbz-gg/clockwork2.git",
+    "directory": "packages/engine"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "bin": {
+    "clockwork2-validate": "./dist/validate/cli.js"
+  },
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./host": {
+      "development": "./src/host/index.ts",
+      "types": "./dist/host/index.d.ts",
+      "default": "./dist/host/index.js"
+    },
+    "./dmath": {
+      "development": "./src/dmath/index.ts",
+      "types": "./dist/dmath/index.d.ts",
+      "default": "./dist/dmath/index.js"
+    },
+    "./prng": {
+      "development": "./src/prng/index.ts",
+      "types": "./dist/prng/index.d.ts",
+      "default": "./dist/prng/index.js"
+    },
+    "./presentation": {
+      "development": "./src/presentation/index.ts",
+      "types": "./dist/presentation/index.d.ts",
+      "default": "./dist/presentation/index.js"
+    },
+    "./hash": {
+      "development": "./src/hash/index.ts",
+      "types": "./dist/hash/index.d.ts",
+      "default": "./dist/hash/index.js"
+    },
+    "./recording": {
+      "development": "./src/recording/index.ts",
+      "types": "./dist/recording/index.d.ts",
+      "default": "./dist/recording/index.js"
+    },
+    "./manifest": {
+      "development": "./src/manifest/index.ts",
+      "types": "./dist/manifest/index.d.ts",
+      "default": "./dist/manifest/index.js"
+    },
+    "./testing": {
+      "development": "./src/testing/index.ts",
+      "types": "./dist/testing/index.d.ts",
+      "default": "./dist/testing/index.js"
+    },
+    "./probe": {
+      "development": "./src/probe/index.ts",
+      "types": "./dist/probe/index.d.ts",
+      "default": "./dist/probe/index.js"
+    },
+    "./parent": {
+      "development": "./src/host/parent/index.ts",
+      "types": "./dist/host/parent/index.d.ts",
+      "default": "./dist/host/parent/index.js"
+    },
+    "./frame": {
+      "development": "./src/host/frame/index.ts",
+      "types": "./dist/host/frame/index.d.ts",
+      "default": "./dist/host/frame/index.js"
+    },
+    "./worker": {
+      "development": "./src/host/worker/index.ts",
+      "types": "./dist/host/worker/index.d.ts",
+      "default": "./dist/host/worker/index.js"
+    },
+    "./protocol": {
+      "development": "./src/host/protocol/index.ts",
+      "types": "./dist/host/protocol/index.d.ts",
+      "default": "./dist/host/protocol/index.js"
+    },
+    "./validate": {
+      "development": "./src/validate/index.ts",
+      "types": "./dist/validate/index.d.ts",
+      "default": "./dist/validate/index.js"
+    },
+    "./adapter-canvas2d": {
+      "development": "./src/adapters/canvas2d.ts",
+      "types": "./dist/adapters/canvas2d.d.ts",
+      "default": "./dist/adapters/canvas2d.js"
+    },
+    "./adapter-pixi": {
+      "development": "./src/adapters/pixi.ts",
+      "types": "./dist/adapters/pixi.d.ts",
+      "default": "./dist/adapters/pixi.js"
+    },
+    "./adapter-three": {
+      "development": "./src/adapters/three.ts",
+      "types": "./dist/adapters/three.d.ts",
+      "default": "./dist/adapters/three.js"
+    },
+    "./manifest.schema.json": "./dist/manifest/schema.json",
+    "./package.json": "./package.json"
+  },
+  "peerDependencies": {
+    "pixi.js": "^8.0.0",
+    "three": ">=0.170.0",
+    "typescript": ">=5.5.0"
+  },
+  "peerDependenciesMeta": {
+    "pixi.js": {
+      "optional": true
+    },
+    "three": {
+      "optional": true
+    },
+    "typescript": {
+      "optional": true
+    }
+  },
+  "scripts": {
+    "clean": "rm -rf dist *.tsbuildinfo"
+  }
+}

@@ -12,9 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@clockwork2/adapter-pixi": "workspace:*",
-    "@clockwork2/host-bridge": "workspace:*",
-    "@clockwork2/kernel": "workspace:*",
+    "@clockwork2/engine": "workspace:*",
     "pixi.js": "8.21.0"
   },
   "devDependencies": {

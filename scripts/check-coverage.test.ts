@@ -22,7 +22,7 @@ import {
 
 /** The shape bun 1.3.11 writes, including a record carrying no FN rows. */
 const LCOV = `TN:
-SF:packages/kernel/src/bits.ts
+SF:packages/engine/src/bits.ts
 FNF:7
 FNH:7
 DA:1,25
@@ -31,7 +31,7 @@ LF:90
 LH:86
 end_of_record
 TN:
-SF:packages/kernel/src/fixed.ts
+SF:packages/engine/src/fixed.ts
 FNF:12
 FNH:12
 DA:1,4
@@ -39,7 +39,7 @@ LF:40
 LH:40
 end_of_record
 TN:
-SF:packages/host-bridge/src/audio.ts
+SF:packages/engine/src/host/audio.ts
 LF:68
 LH:11
 end_of_record
@@ -59,16 +59,16 @@ function file(over: Partial<FileCoverage>): FileCoverage {
 describe("parseLcov", () => {
   test("reads one record per file, in the order lcov wrote them", () => {
     expect(parseLcov(LCOV).map((f) => f.path)).toEqual([
-      "packages/kernel/src/bits.ts",
-      "packages/kernel/src/fixed.ts",
-      "packages/host-bridge/src/audio.ts",
+      "packages/engine/src/bits.ts",
+      "packages/engine/src/fixed.ts",
+      "packages/engine/src/host/audio.ts",
     ])
   })
 
   test("reads the found and hit counts, not the per-line DA rows", () => {
     const [bits] = parseLcov(LCOV)
     expect(bits).toEqual({
-      path: "packages/kernel/src/bits.ts",
+      path: "packages/engine/src/bits.ts",
       linesFound: 90,
       linesHit: 86,
       functionsFound: 7,

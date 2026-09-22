@@ -5,7 +5,7 @@ whole reason it exists: everything that decides how a session is run, ranked,
 bounded and billed is data, so a platform can decide whether to run untrusted
 code before running it.
 
-`assertManifest` from `@clockwork2/kernel` is the schema. There is no separate
+`assertManifest` from `@clockwork2/engine` is the schema. There is no separate
 JSON Schema file in this skill, on purpose: two descriptions of one shape
 drift, and the one that drifts is always the one nobody runs. The full type is
 in `kernel-api.md`, which is generated from the declarations.

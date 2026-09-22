@@ -16,8 +16,8 @@ import { describe, expect, test } from "bun:test"
 import { spawnSync } from "node:child_process"
 import { existsSync, readFileSync, statSync } from "node:fs"
 import { join } from "node:path"
-import { ERROR_CODES } from "@clockwork2/kernel"
-import { loadSubject, validate } from "@clockwork2/validate"
+import { ERROR_CODES } from "@clockwork2/engine"
+import { loadSubject, validate } from "@clockwork2/engine/validate"
 
 const ROOT = join(import.meta.dir, "..")
 const SKILL = join(ROOT, "platform-game")

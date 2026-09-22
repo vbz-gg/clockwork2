@@ -1,7 +1,7 @@
 # Line endings are part of the contract in this repository, because two of its
-# checks compare files rather than read them: packages/kernel/tests/dmath/
+# checks compare files rather than read them: packages/engine/tests/dmath/
 # vectors/dmath-golden.tsv is hashed with SHA-256 and compared against a
-# recorded digest, and packages/kernel/tests/probe/probe-golden.tsv is split
+# recorded digest, and packages/engine/tests/probe/probe-golden.tsv is split
 # into fields whose right-hand column is a digest string.
 #
 # Git for Windows sets core.autocrlf=true, and so do the GitHub windows-latest

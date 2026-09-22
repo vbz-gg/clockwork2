@@ -11,7 +11,7 @@
  * is read back by the simulation, so nothing in it can change a score.
  */
 
-import { Canvas2dPresentation } from "@clockwork2/adapter-canvas2d"
+import { Canvas2dPresentation } from "@clockwork2/engine/adapter-canvas2d"
 import { LANES, TRACK_LENGTH, type View } from "./sim"
 
 const WIDTH = 480
