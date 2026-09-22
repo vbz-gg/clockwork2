@@ -61,7 +61,14 @@ const CASES: readonly Case[] = [
     theirs: Math.tan,
     lo: -1000,
     hi: 1000,
-    maxUlp: 2n,
+    // Loose because Apple's libm is, not because we are. On macOS arm64 this
+    // reached 3 ulp at 351.07445158064365, and against a 60-digit reference
+    // dmath was 0.48 ulp from exact - the correctly rounded double - while
+    // JavaScriptCore's answer was 2.52 ulp out. glibc tracks fdlibm closely
+    // enough for 2, Apple's does not, and a bound that encodes one platform's
+    // libm is a bound that fails on the other. That input is pinned exactly by
+    // the test below, so tightness here buys nothing.
+    maxUlp: 8n,
   },
   {
     name: "sin.large",
@@ -157,6 +164,14 @@ describe("dmath against the host Math", () => {
       ).toBe(true)
     })
   }
+
+  test("tan is correctly rounded where the host is not", () => {
+    // The input that made the bound above fail on macOS arm64. dmath returns
+    // the nearest double to the true value; JavaScriptCore returns one 3 ulp
+    // away. Pinned here so loosening the host comparison cannot hide a real
+    // regression at the one point we know the host is wrong about.
+    expect(toBitsHex(dmath.tan(351.07445158064365))).toBe("BFEFE7E8C9CD1943")
+  })
 
   test("pow stays within 8 ulp of the host", () => {
     const random = lcg(0x7654321)

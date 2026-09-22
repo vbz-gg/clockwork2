@@ -158,9 +158,16 @@ x86 one and the replay would report a mismatch neither caused.
 
 The oracle tests in `tests/dmath/oracle.test.ts` are a different matter: they
 compare against the host's own `Math`, which is implementation-defined, so
-their bounds say as much about the host's libm as about dmath. A bound tight
-enough to pass on glibc can fail on Apple's libm without anything being wrong
-here. Loosen the bound rather than the library.
+their bounds say as much about the host's libm as about dmath. `tan` is the
+worked example. It failed at 2 ulp on macOS arm64, reaching 3 at
+`351.07445158064365`; against a 60-digit reference dmath was 0.48 ulp from
+exact, which is the correctly rounded double, and JavaScriptCore was 2.52 ulp
+out. The bound moved to 8 and the library did not move at all.
+
+When a host comparison fails, measure before loosening: find which side is
+wrong. If it is ours, fix dmath. If it is the host's, loosen the bound **and**
+pin the input with an exact assertion, so the looser bound cannot hide a later
+regression at the one point the host is known to be wrong about.
 
 ## Working on the host loop
 
