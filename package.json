@@ -36,7 +36,10 @@
     "replay": "bun run scripts/replay.ts",
     "test:e2e:nightly": "bun run --cwd e2e test:nightly",
     "gen:skill-api": "bun run scripts/gen-skill-api.ts",
-    "check:publishable": "bun run scripts/check-publishable.ts"
+    "check:publishable": "bun run scripts/check-publishable.ts",
+    "release": "commit-and-tag-version",
+    "release:minor": "commit-and-tag-version --release-as minor",
+    "release:major": "commit-and-tag-version --release-as major"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
