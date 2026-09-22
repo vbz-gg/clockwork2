@@ -1,6 +1,6 @@
 {
   "name": "@clockwork2/engine",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A deterministic, fixed-step game kernel for verifiable browser games",
   "license": "MIT",
   "author": "Ramesh Nair",

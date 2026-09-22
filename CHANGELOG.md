@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.0](https://github.com/vbz-gg/clockwork2/compare/v0.2.0...v0.3.0) (2026-09-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* **dmath:** copysign refuses a NaN
+
+### Bug Fixes
+
+* **dmath:** copysign refuses a NaN ([1b11c32](https://github.com/vbz-gg/clockwork2/commit/1b11c32ce54dfc75d223407bae96d981f6ebd80f))
+* **release:** bump the skill's API reference with the kernel version ([8491aca](https://github.com/vbz-gg/clockwork2/commit/8491acabf9aa1c268ee0cefcbd0e738582dc61d4))
+
+
+### Documentation
+
+* add the demo video to the README ([609be72](https://github.com/vbz-gg/clockwork2/commit/609be72afd5dff7448ec62608e8f82c0b19d450d))
+* badges, and what determinism does and does not cover ([f63fef8](https://github.com/vbz-gg/clockwork2/commit/f63fef8fffd70bc3a72fa31cb44f8a81c4e04bb5))
+* drop the orphaned demo poster ([a72dd30](https://github.com/vbz-gg/clockwork2/commit/a72dd30e77cbe5f5a03056ade961b52821c5db86))
+
+
+### CI
+
+* run the suite on arm64 ([df47b45](https://github.com/vbz-gg/clockwork2/commit/df47b45b7d4f0cc15488698df122159662a6ae25))
+
 ## 0.2.0 (2026-09-22)
 
 
