@@ -919,6 +919,41 @@ chunks, `error`, `heartbeat`. No message carries a token, a balance, a URL,
 HTML, a function or another player's data, and there is no `navigate` row, so
 adding one is a visible diff.
 
+### Watching a recorded run
+
+`init` may carry a log, and then the session is a replay:
+
+```ts
+frame.init(seed, config, 60, maxTicks, { inputs: recording.inputs, speed: 2 })
+```
+
+The game builds its host the same way it always does, with one more field:
+
+```ts
+createHost: (init, bridge) =>
+  new GameHost({
+    ...rest,
+    seed: init.seed,
+    ...(init.inputs === undefined
+      ? {}
+      : { inputs: new RecordedInputSource(init.inputs) }),
+    ...(init.speed === undefined ? {} : { speed: init.speed }),
+  }),
+```
+
+A replay is a session whose inputs come from a log instead of from devices, so
+it runs down the same loop and reaches the same states. `host.live` is null for
+one, which does the rest of the work by itself: a device capture has no queue
+to attach to, a `virtual-input` from the parent lands nowhere, and `log-chunk`
+has no log of its own to slice. A game must not attach an `InputCapture` when
+`init.inputs` is present, and the two templates guard on `host.live !== null`
+rather than on the field.
+
+`speed` is only for a replay, and an `init` asking for one without a log is
+refused with `E_FRAME_INIT_FAILED`. Speed on a live session is a player slowing
+the game down to play it, which is the reason a frame exposes no `setSpeed` at
+all.
+
 `log-chunk` is the one that exists for the platform rather than for the game. It
 carries a slice of the input log every couple of seconds while the run is still
 going, and the tail is flushed before `ended`. A host that keeps those slices,

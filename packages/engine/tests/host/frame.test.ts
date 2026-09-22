@@ -9,7 +9,12 @@
 
 import { afterEach, describe, expect, test } from "bun:test"
 import type { InputEvent } from "../../src"
-import { connectToParent, type FrameBridge } from "../../src/host/frame/index"
+import { RecordedInputSource } from "../../src"
+import {
+  connectToParent,
+  type FrameBridge,
+  type FrameInit,
+} from "../../src/host/frame/index"
 import { GameHost, ManualScheduler } from "../../src/host/index"
 import {
   FRAME_ERRORS,
@@ -75,7 +80,9 @@ type Installed = {
 
 const restores: Array<() => void> = []
 
-function install(options: { failInit?: boolean } = {}): Installed {
+function install(
+  options: { failInit?: boolean; onInit?: (init: FrameInit) => void } = {},
+): Installed {
   const window = new FakeFrameWindow()
   const target = globalThis as unknown as Record<string, unknown>
   const saved = {
@@ -100,6 +107,7 @@ function install(options: { failInit?: boolean } = {}): Installed {
     parentOrigin: PARENT,
     createHost: (init, self) => {
       if (options.failInit === true) throw new Error("no renderer here")
+      options.onInit?.(init)
       const made = new GameHost<unknown, HTMLElement>({
         module: createReferenceGame(),
         manifest: REFERENCE_MANIFEST,
@@ -107,6 +115,10 @@ function install(options: { failInit?: boolean } = {}): Installed {
         config: REFERENCE_CONFIG,
         scheduler,
         maxTicks: init.maxTicks,
+        ...(init.inputs === undefined
+          ? {}
+          : { inputs: new RecordedInputSource(init.inputs) }),
+        ...(init.speed === undefined ? {} : { speed: init.speed }),
         checkpointEvery: REFERENCE_MANIFEST.session.tickHz,
         onCheckpoint: (checkpoint) =>
           self.checkpoint(checkpoint.tick, checkpoint.hash),
@@ -406,5 +418,124 @@ describe("progress", () => {
     bridge.progress(120, { score: 2 }, PROGRESS_INTERVAL_MS + 1)
     bridge.progress(180, { score: 3 }, PROGRESS_INTERVAL_MS * 2 + 2)
     expect(window.of("progress").map((p) => p.tick)).toEqual([60, 180])
+  })
+})
+
+describe("a replay in a frame", () => {
+  const LOG: InputEvent[] = [
+    { tick: 2, device: "key", code: "ArrowRight", value: 1 },
+    { tick: 8, device: "key", code: "ArrowDown", value: 1 },
+  ]
+
+  function replay(over: Record<string, unknown> = {}) {
+    let seen: FrameInit | undefined
+    const installed = install({
+      onInit: (init) => {
+        seen = init
+      },
+    })
+    installed.window.send({ type: "hello", protocol: 1 })
+    installed.window.send({
+      type: "init",
+      seed: "watch-this",
+      config: REFERENCE_CONFIG,
+      tickHz: 60,
+      maxTicks: 600,
+      inputs: LOG,
+      ...over,
+    })
+    return { ...installed, init: () => seen }
+  }
+
+  test("hands the log to the game as a log", () => {
+    // The same loop plays it. A replay is a session whose inputs come from a
+    // recording instead of from devices, not a second code path.
+    const { init, hostOf } = replay()
+    expect(init()?.inputs).toEqual(LOG)
+    expect(hostOf()).not.toBeNull()
+  })
+
+  test("and the session has no live queue, so nothing can be typed into it", () => {
+    // `host.live` is what a device capture and a virtual input both write to.
+    // Null here means a key pressed by somebody watching cannot reach the run
+    // they are watching.
+    const { hostOf } = replay()
+    expect(hostOf()?.live).toBeNull()
+  })
+
+  test("and a virtual input sent at one is dropped rather than replayed", () => {
+    // The parent can still draw a control. It must not change a recorded run.
+    const { window, hostOf, scheduler } = replay()
+    window.send({ type: "start" })
+    window.send({ type: "virtual-input", action: "jump", value: 1 })
+    scheduler.advance(100)
+
+    expect(hostOf()?.live).toBeNull()
+    expect(window.of("error")).toHaveLength(0)
+  })
+
+  test("and it posts no slice of a log it did not record", () => {
+    // `log-chunk` exists so a platform can hold what a player committed to
+    // before they knew the outcome. A replay committed nothing.
+    const { window, scheduler } = replay()
+    window.send({ type: "start" })
+    scheduler.advance(PROGRESS_INTERVAL_MS * 20)
+
+    expect(window.of("log-chunk")).toHaveLength(0)
+  })
+
+  test("and a live session still gets its queue", () => {
+    // The guard above must not have turned every session into a replay.
+    const { window, hostOf } = install()
+    window.send({ type: "hello", protocol: 1 })
+    window.send({
+      type: "init",
+      seed: "a-live-one",
+      config: REFERENCE_CONFIG,
+      tickHz: 60,
+      maxTicks: 600,
+    })
+    expect(hostOf()?.live).not.toBeNull()
+  })
+})
+
+describe("speed", () => {
+  test("reaches the game with a log", () => {
+    let seen: FrameInit | undefined
+    const { window } = install({
+      onInit: (init) => {
+        seen = init
+      },
+    })
+    window.send({ type: "hello", protocol: 1 })
+    window.send({
+      type: "init",
+      seed: "watch-this",
+      config: REFERENCE_CONFIG,
+      tickHz: 60,
+      maxTicks: 600,
+      inputs: [],
+      speed: 4,
+    })
+    expect(seen?.speed).toBe(4)
+  })
+
+  test("and is refused without one", () => {
+    // Speed on a live session is a player slowing the game down to play it,
+    // which is the reason a frame exposes no `setSpeed` at all. Accepting it
+    // here would put that back by another route.
+    const { window, hostOf } = install()
+    window.send({ type: "hello", protocol: 1 })
+    window.send({
+      type: "init",
+      seed: "a-live-one",
+      config: REFERENCE_CONFIG,
+      tickHz: 60,
+      maxTicks: 600,
+      speed: 0.25,
+    })
+
+    expect(window.of("error")[0]?.code).toBe(FRAME_ERRORS.INIT_FAILED)
+    expect(hostOf()).toBeNull()
   })
 })

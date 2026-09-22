@@ -12,6 +12,7 @@
  * window instead, which is the identity that actually matters here.
  */
 
+import type { InputEvent } from "../.."
 import {
   createDispatcher,
   type GameToHost,
@@ -123,13 +124,33 @@ export class GameFrame {
     this.post({ type: "hello", protocol: PROTOCOL_VERSION })
   }
 
+  /**
+   * Starts a session, live or replayed.
+   *
+   * `replay.inputs` makes it a replay: the frame hands the log to the same
+   * loop a live run uses, and captures no device input for it. `replay.speed`
+   * is only meaningful there, and the frame refuses one without a log -
+   * speed on a live session is a player slowing the game down to play it.
+   */
   init(
     seed: string,
     config: unknown,
     tickHz: 30 | 60 | 120,
     maxTicks: number,
+    replay?: {
+      readonly inputs: readonly InputEvent[]
+      readonly speed?: number
+    },
   ): void {
-    this.post({ type: "init", seed, config, tickHz, maxTicks })
+    this.post({
+      type: "init",
+      seed,
+      config,
+      tickHz,
+      maxTicks,
+      ...(replay === undefined ? {} : { inputs: replay.inputs }),
+      ...(replay?.speed === undefined ? {} : { speed: replay.speed }),
+    })
   }
 
   start(): void {
