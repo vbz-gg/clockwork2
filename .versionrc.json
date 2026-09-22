@@ -6,6 +6,10 @@
     {
       "filename": "packages/engine/src/index.ts",
       "updater": "scripts/kernel-version-updater.cjs"
+    },
+    {
+      "filename": "skill/platform-game/references/kernel-api.md",
+      "updater": "scripts/skill-api-version-updater.cjs"
     }
   ],
   "infile": "CHANGELOG.md",

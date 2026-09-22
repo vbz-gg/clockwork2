@@ -101,6 +101,17 @@ package.json: that it carries a README and a `dist`, and that nothing has crept
 into `dependencies`. CI runs it on every push and the release gate runs it
 again.
 
+`.versionrc.json`'s `prerelease` hook runs the gate before the version is
+bumped, so it never sees the tree a release actually ships. Anything holding
+the version literal therefore has to be in `bumpFiles`. `KERNEL_VERSION` is,
+and so is the skill's generated `references/kernel-api.md`, which embeds it.
+Without that second entry the bump wrote 0.2.0 into the kernel and left the
+reference at 0.1.0; the tag build regenerated the reference, found the
+difference and exited 1. That failed every release rather than an occasional
+one, and it is why v0.2.0 was tagged and never published.
+`scripts/release-version.test.ts` looks for the next file to grow the literal
+rather than for this one.
+
 ## One package, four halves
 
 `packages/engine` holds what were six packages: the kernel at `src/`, the host
