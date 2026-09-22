@@ -59,6 +59,7 @@ export const BEARING_PATTERNS: readonly RegExp[] = [
   /^package\.json$/,
   /^tsconfig[^/]*\.json$/,
   /^biome\.json$/,
+  /^bunfig\.toml$/,
   /^\.github\//,
 ]
 

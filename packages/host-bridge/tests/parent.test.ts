@@ -255,3 +255,17 @@ describe("what the parent sends", () => {
     h.restore()
   })
 })
+
+describe("the frame element", () => {
+  /**
+   * The host positions and sizes the frame it created. Handing back anything
+   * else would let a host style a node that is not the one the session is
+   * running in, and the mistake would only show as a layout that does not
+   * respond.
+   */
+  test("is the iframe the frame built, not a copy", () => {
+    const h = harness()
+    expect(h.frame.element).toBe(h.iframe as unknown as HTMLIFrameElement)
+    h.restore()
+  })
+})

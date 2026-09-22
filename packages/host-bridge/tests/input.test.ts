@@ -141,3 +141,186 @@ describe("input capture", () => {
     expect(queue.take(1).length).toBe(0)
   })
 })
+
+/**
+ * The pointer path.
+ *
+ * Pointer events arrive in CSS pixels, at whatever size the element happens to
+ * be on this display. The simulation must never see that number: two players
+ * on differently sized screens who touch the same spot have to produce the same
+ * input, or the recording does not replay. So the host maps into the
+ * simulation's own coordinate space and quantises before anything is queued.
+ */
+describe("pointer capture", () => {
+  const VIEWPORT = { width: 320, height: 180 }
+
+  /** An element of a known size and position, with no DOM behind it. */
+  function element(
+    rect: { left: number; top: number; width: number; height: number },
+    target: FakeTarget,
+  ): HTMLElement {
+    return {
+      addEventListener: target.addEventListener.bind(target),
+      removeEventListener: target.removeEventListener.bind(target),
+      getBoundingClientRect: () => rect,
+    } as unknown as HTMLElement
+  }
+
+  function capture(options: { viewport?: typeof VIEWPORT } = {}) {
+    const queue = new LiveInputQueue()
+    const target = new FakeTarget()
+    const rect = { left: 40, top: 20, width: 640, height: 360 }
+    const capture = new InputCapture({
+      manifest: MANIFEST,
+      queue,
+      keyTarget: new FakeTarget(),
+      pointerTarget: element(rect, target),
+      ...(options.viewport === undefined ? {} : { viewport: options.viewport }),
+    })
+    capture.attach()
+    return { queue, target, capture }
+  }
+
+  test("a move is mapped into the simulation's space, not the element's", () => {
+    // The element is twice the viewport's size and offset on the page. The
+    // middle of it has to arrive as the middle of the viewport whatever either
+    // of those happen to be.
+    const { queue, target } = capture({ viewport: VIEWPORT })
+    target.send("pointermove", {
+      type: "pointermove",
+      clientX: 360,
+      clientY: 200,
+    })
+    const taken = queue.take(10)
+    expect(taken.map((e) => [e.code, e.value])).toEqual([
+      ["pointer-x", 160],
+      ["pointer-y", 90],
+    ])
+  })
+
+  test("both axes are pushed for every pointer event", () => {
+    const { queue, target } = capture({ viewport: VIEWPORT })
+    target.send("pointermove", {
+      type: "pointermove",
+      clientX: 40,
+      clientY: 20,
+    })
+    expect(queue.take(10).map((e) => e.code)).toEqual([
+      "pointer-x",
+      "pointer-y",
+    ])
+  })
+
+  test("a press adds a button input, a release adds its zero", () => {
+    const { queue, target } = capture({ viewport: VIEWPORT })
+    target.send("pointerdown", {
+      type: "pointerdown",
+      clientX: 360,
+      clientY: 200,
+    })
+    target.send("pointerup", { type: "pointerup", clientX: 360, clientY: 200 })
+    expect(queue.take(10).map((e) => [e.code, e.value])).toEqual([
+      ["pointer-x", 160],
+      ["pointer-y", 90],
+      ["pointer", 1],
+      ["pointer-x", 160],
+      ["pointer-y", 90],
+      ["pointer", 0],
+    ])
+  })
+
+  test("every pointer input says it came from a pointer", () => {
+    // The device is what tells a replay which quantisation produced the value.
+    const { queue, target } = capture({ viewport: VIEWPORT })
+    target.send("pointerdown", {
+      type: "pointerdown",
+      clientX: 100,
+      clientY: 100,
+    })
+    expect(queue.take(10).every((e) => e.device === "pointer")).toBe(true)
+  })
+
+  test("detach removes the pointer listeners too", () => {
+    const { queue, target, capture: c } = capture({ viewport: VIEWPORT })
+    expect(target.count).toBe(3)
+    c.detach()
+    expect(target.count).toBe(0)
+    target.send("pointermove", {
+      type: "pointermove",
+      clientX: 360,
+      clientY: 200,
+    })
+    expect(queue.take(10).length).toBe(0)
+  })
+
+  /**
+   * Without a viewport there is no space to map into, so listening at all would
+   * mean queueing CSS pixels. Silence is the right answer, not a guess.
+   */
+  test("no viewport means no pointer listeners at all", () => {
+    const { target } = capture()
+    expect(target.count).toBe(0)
+  })
+
+  test("no pointer target means no pointer listeners either", () => {
+    const queue = new LiveInputQueue()
+    const keys = new FakeTarget()
+    new InputCapture({
+      manifest: MANIFEST,
+      queue,
+      keyTarget: keys,
+      viewport: VIEWPORT,
+    }).attach()
+    // The two key listeners, and nothing else.
+    expect(keys.count).toBe(2)
+  })
+})
+
+describe("attaching more than once", () => {
+  /**
+   * A host that attaches twice would otherwise register every listener twice
+   * and push every press twice, which reads in the log as a player who cannot
+   * stop double-tapping and replays to a different result.
+   */
+  test("is ignored, rather than doubling every listener", () => {
+    const queue = new LiveInputQueue()
+    const target = new FakeTarget()
+    const capture = new InputCapture({
+      manifest: MANIFEST,
+      queue,
+      keyTarget: target,
+    })
+    capture.attach()
+    capture.attach()
+    capture.attach()
+    expect(target.count).toBe(2)
+    target.send("keydown", { code: "Space", repeat: false })
+    expect(queue.take(5).length).toBe(1)
+  })
+
+  test("and attach works again after a detach", () => {
+    const queue = new LiveInputQueue()
+    const target = new FakeTarget()
+    const capture = new InputCapture({
+      manifest: MANIFEST,
+      queue,
+      keyTarget: target,
+    })
+    capture.attach()
+    capture.detach()
+    capture.attach()
+    target.send("keydown", { code: "Space", repeat: false })
+    expect(queue.take(5).map((e) => e.code)).toEqual(["thrust"])
+  })
+})
+
+describe("codes", () => {
+  test("lists every bound device code, for a controls card", () => {
+    // A card built from this is what tells a player which keys do anything.
+    const capture = new InputCapture({
+      manifest: MANIFEST,
+      queue: new LiveInputQueue(),
+    })
+    expect(capture.codes).toEqual(["ArrowLeft", "ArrowRight", "KeyD", "Space"])
+  })
+})

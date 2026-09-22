@@ -16,7 +16,11 @@ import {
 } from "@clockwork2/kernel/testing"
 import { connectToParent, type FrameBridge } from "../src/frame/index"
 import { GameHost, ManualScheduler } from "../src/index"
-import { FRAME_ERRORS, type GameToHost } from "../src/protocol/index"
+import {
+  FRAME_ERRORS,
+  type GameToHost,
+  PROGRESS_INTERVAL_MS,
+} from "../src/protocol/index"
 
 const PARENT = "https://play.example"
 
@@ -363,5 +367,44 @@ describe("a session ends once, and destroy ends it", () => {
     expect(hostOf()?.status).toBe("ended")
     expect(hostOf()?.tick).toBe(tickAtEnd as number)
     expect(window.of("started")).toHaveLength(1)
+  })
+})
+
+describe("progress", () => {
+  /**
+   * The host shows a live tick count and score. The frame could post one per
+   * frame, which at 60Hz is sixty structured clones a second across the
+   * boundary for a number nobody can read that fast. The interval is what stops
+   * a game from flooding its host, deliberately or otherwise.
+   */
+  test("is rate-limited, however often it is called", () => {
+    const { window, bridge } = install()
+    window.send({ type: "hello", protocol: 1 })
+
+    for (let now = 0; now < 1000; now += 1000 / 60) {
+      bridge.progress(Math.floor(now), { score: 1 }, now)
+    }
+
+    // A second of frames, at most one message every 250ms.
+    expect(window.of("progress").length).toBeLessThanOrEqual(5)
+    expect(window.of("progress").length).toBeGreaterThan(0)
+  })
+
+  test("carries the tick and counters it was given", () => {
+    const { window, bridge } = install()
+    window.send({ type: "hello", protocol: 1 })
+    bridge.progress(600, { score: 42 }, PROGRESS_INTERVAL_MS * 10)
+    const progress = window.of("progress")[0]
+    expect(progress?.tick).toBe(600)
+    expect(progress?.counters).toEqual({ score: 42 })
+  })
+
+  test("lets a later call through once the interval has passed", () => {
+    const { window, bridge } = install()
+    window.send({ type: "hello", protocol: 1 })
+    bridge.progress(60, { score: 1 }, PROGRESS_INTERVAL_MS)
+    bridge.progress(120, { score: 2 }, PROGRESS_INTERVAL_MS + 1)
+    bridge.progress(180, { score: 3 }, PROGRESS_INTERVAL_MS * 2 + 2)
+    expect(window.of("progress").map((p) => p.tick)).toEqual([60, 180])
   })
 })

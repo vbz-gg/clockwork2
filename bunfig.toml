@@ -1,0 +1,60 @@
+# Coverage settings for `bun test --coverage`.
+#
+# None of this affects `bun run test`, which does not pass --coverage. The
+# everyday command stays as fast as it was; the gate is `bun run test:coverage`.
+
+[test]
+coverageSkipTestFiles = true
+coverageReporter = ["text", "lcov"]
+coverageDir = "coverage"
+
+# What is measured is `packages/*/src`. Everything below is either not the
+# code under test or cannot be measured in process.
+#
+# packages/*/dist is the built output. Bun resolves a cross-package import of
+# `@clockwork2/kernel` to dist rather than to src, because it does not apply
+# the `development` export condition, so a host-bridge test drags the built
+# kernel into the report as a second copy of code already counted from source.
+#
+# packages/validate/fixtures holds deliberately non-conformant games. The
+# point of `unbounded` is that it never ends and the point of `async-tick` is
+# that its tick returns a thenable. How much of one runs says nothing.
+#
+# packages/validate/src/cli.ts is a process entry point: its last statement is
+# `main(process.argv.slice(2)).then((code) => process.exit(code))`, so
+# importing it into the test runner exits the runner. It is covered by
+# packages/validate/tests/cli.test.ts, which spawns the real file. Coverage
+# does not follow a subprocess.
+#
+# demo, e2e, scripts and skill are the demo game, the Playwright suite, the
+# repository's own tooling and the agent skill's templates. They are tested,
+# but they are not the packages this floor is about.
+coveragePathIgnorePatterns = [
+  "packages/*/dist/**",
+  "packages/validate/fixtures/**",
+  "packages/validate/src/cli.ts",
+  "demo/**",
+  "e2e/**",
+  "scripts/**",
+  "skill/**",
+  # Bundles a test writes to a temp directory and imports, to exercise a real
+  # loader against a real file. They are inputs, not code under test, and they
+  # arrive in the report as ../../../tmp/... with a fresh name every run.
+  "**/cw2-scratch-*/**",
+]
+
+# No `coverageThreshold` here on purpose, and adding one back is a mistake.
+#
+# Two reasons. Bun applies it per file rather than to the `All files` row, so
+# 0.99 here would demand 99% of every file, which for a file under a hundred
+# executable lines means 100%. And the keys have to be plural: bun 1.3.11
+# silently ignores `line` and `function`, so the singular spelling reads as a
+# gate and enforces nothing - a run at 33% exits 0. Verified against 1.3.11,
+# the version CI pins.
+#
+# The floor lives in scripts/check-coverage.ts, which reads coverage/lcov.info
+# and holds the aggregate to 99% of lines. That is enough on its own: at 99% of
+# roughly 5,300 executable lines the whole repository has about 53 uncovered
+# lines to spend, so a single file cannot rot without the aggregate noticing.
+# A failure there prints the shortfall in lines and the worst files, rather than
+# one line about whichever file bun happened to check first.

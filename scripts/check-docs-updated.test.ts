@@ -38,6 +38,7 @@ describe("bearing paths", () => {
       "package.json",
       "tsconfig.base.json",
       "biome.json",
+      "bunfig.toml",
       ".github/workflows/ci.yml",
     ]
     expect(bearingFiles(covered)).toEqual(covered)

@@ -92,12 +92,13 @@ Coding agents read it; so can you.
 
 ```bash
 bun test              # unit tests, the demo's frozen recordings, and the skill
+bun run test:coverage # the same tests, then the coverage floor
 bun run test:engines  # the same vectors under every installed JS engine
 bun run test:e2e      # Playwright: record, replay, frame rates, cross-runtime
 bun run demo          # the Snake demo, with record and replay
 ```
 
-CI runs three things that matter more than the rest.
+CI runs four things that matter more than the rest.
 
 The cross-engine sweep builds one probe bundle and runs those exact bytes under
 Bun (JavaScriptCore), Node (V8), Chromium, Firefox (SpiderMonkey) and WebKit,
@@ -112,6 +113,11 @@ than quietly simulate less.
 The cross-boundary test plays a session in a real browser with real key events,
 writes the recording to disk, replays it under Bun and under Node, and compares
 all three.
+
+CI holds coverage over `packages/*/src` at 99% of lines. It is at 99.67%, and
+the 18 uncovered lines are a load-time refusal only a big-endian build reaches,
+a branch `String.prototype.split` cannot produce, and a guard for a runtime that
+has frozen one of the globals the shims trap.
 
 ## Documentation
 

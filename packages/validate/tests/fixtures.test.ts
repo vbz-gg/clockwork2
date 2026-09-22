@@ -60,6 +60,16 @@ describe("each non-conformant fixture reports its own code", () => {
     ["async-tick", ["E_ASYNC_DETECTED", "E_ASYNC_TICK"]],
     ["unbounded", ["E_BOUND_NOT_OVER"]],
     ["incomplete-snapshot", ["E_RESTORE_MISMATCH"]],
+    // Four ways one asset declaration can be wrong, all at once.
+    ["budget-overrun", ["E_BUDGET_EXCEEDED"]],
+    // The kernel refuses a reversed monotone counter mid-run, so every check
+    // that drives a session reports the code the run died of rather than its
+    // own fallback.
+    ["counter-reversed", ["E_COUNTER_REVERSED"]],
+    ["counter-fractional", ["E_COUNTER_RANGE"]],
+    // Both layers again: the scan refuses the name, and the manifest check
+    // separates out the four that reach the embedder specifically.
+    ["globals-touched", ["E_LINT_BANNED", "E_GLOBALS_TOUCHED"]],
   ]
 
   for (const [fixture, expected] of CASES) {
@@ -76,6 +86,30 @@ describe("isolation", () => {
     const report = await validate(subject, { seeds: ["t1"] })
     expect(report.outcomes.filter((o) => !o.ok).map((o) => o.check)).toEqual([
       "bound",
+    ])
+  }, 30_000)
+
+  test("a bundle whose assets do not add up fails only the budgets check", async () => {
+    // The game conforms. Only the manifest's account of the bundle does not,
+    // and no check that runs a session can see that.
+    const subject = await loadSubject(join(FIXTURES, "budget-overrun"))
+    const report = await validate(subject, { seeds: ["t1"] })
+    expect(report.outcomes.filter((o) => !o.ok).map((o) => o.check)).toEqual([
+      "budgets",
+    ])
+  }, 30_000)
+
+  test("all four asset faults are reported, not just the first", async () => {
+    // A check that stopped at the first bad asset would send someone round the
+    // loop once per file.
+    const subject = await loadSubject(join(FIXTURES, "budget-overrun"))
+    const report = await validate(subject, { seeds: ["t1"], only: ["budgets"] })
+    const details = (report.outcomes[0]?.findings ?? []).map((f) => f.detail)
+    expect(details).toEqual([
+      "data/layout.txt is 38 bytes, the manifest says 99",
+      expect.stringContaining("data/texture.txt hashes to"),
+      "data/missing.txt is declared but not present",
+      "assets total 72 bytes, budget is 1",
     ])
   }, 30_000)
 

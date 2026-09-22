@@ -263,3 +263,151 @@ describe("pause and resume", () => {
     expect(host.tick - atPause).toBeLessThanOrEqual(2)
   })
 })
+
+/**
+ * Stepping by hand, and what the host reports about a run in progress.
+ *
+ * `stepOnce` exists so a test can run a session with no frame pacing at all.
+ * That is only worth having if it reaches the same place the paced loop does,
+ * which is the first thing below. The rest are the numbers a host UI and a
+ * renderer read every frame: a progress bar built on `tick`, an interpolating
+ * renderer built on `alpha`, and a diagnostics panel built on `stats`.
+ */
+describe("stepping by hand", () => {
+  const log = botLog("by-hand", 5_000)
+
+  test("reaches the same state as the paced loop", () => {
+    // If it did not, every test that uses it would be checking a second
+    // implementation of the loop rather than the one that ships.
+    const paced = replayHost(log, new ManualScheduler())
+    const pacedScheduler = new ManualScheduler()
+    const pacedHost = replayHost(log, pacedScheduler)
+    pacedHost.start()
+    pacedScheduler.run(400, 1000 / 60)
+    void paced
+
+    const stepped = replayHost(log, new ManualScheduler())
+    while (stepped.tick < pacedHost.tick && stepped.stepOnce()) {
+      // run it out by hand
+    }
+
+    expect(stepped.tick).toBe(pacedHost.tick)
+    expect(stepped.snapshot()).toEqual(pacedHost.snapshot())
+    expect(stepped.counters()).toEqual(pacedHost.counters())
+  })
+
+  test("tick advances exactly one per step", () => {
+    // A host that counted two would put a progress bar at twice the truth and
+    // end a session early.
+    const host = replayHost(log, new ManualScheduler())
+    const before = host.tick
+    host.stepOnce()
+    host.stepOnce()
+    host.stepOnce()
+    expect(host.tick).toBe(before + 3)
+  })
+
+  test("the last step ends the session and reports it once", () => {
+    const ends: number[] = []
+    const host = new GameHost({
+      module: createReferenceGame(),
+      manifest: REFERENCE_MANIFEST,
+      seed: "by-hand-end",
+      config: REFERENCE_CONFIG,
+      inputs: new RecordedInputSource(log),
+      scheduler: new ManualScheduler(),
+      checkpointEvery: 60,
+      maxTicks: 30,
+      onEnded: (result) => ends.push(result.endTick),
+    })
+    while (host.stepOnce()) {
+      // to the end
+    }
+    expect(host.status).toBe("ended")
+    expect(ends.length).toBe(1)
+    expect(ends[0]).toBe(host.result().endTick)
+  })
+
+  test("stats count the ticks that were actually run", () => {
+    const host = replayHost(log, new ManualScheduler())
+    for (let i = 0; i < 17; i++) host.stepOnce()
+    expect(host.stats.ticksRun).toBe(17)
+    // Nothing was paced, so no frame was ever drawn.
+    expect(host.stats.frames).toBe(0)
+  })
+})
+
+describe("what a renderer and a host UI read", () => {
+  const log = botLog("readouts", 5_000)
+
+  /**
+   * alpha is how far between the last tick and the next this frame sits, and
+   * a renderer multiplies it into a position. Outside [0, 1) it would draw the
+   * game ahead of or behind a state that was never simulated.
+   */
+  test("alpha stays inside [0, 1) at every frame rate", () => {
+    for (const ms of [1000 / 240, 1000 / 60, 7.3, 200]) {
+      const scheduler = new ManualScheduler()
+      const host = replayHost(log, scheduler)
+      host.start()
+      for (let i = 0; i < 60; i++) {
+        scheduler.advance(ms)
+        expect(host.alpha).toBeGreaterThanOrEqual(0)
+        expect(host.alpha).toBeLessThan(1)
+      }
+    }
+  })
+
+  /**
+   * The upper end is the one that bites. A tick at 60Hz is 1000/60 ms, which
+   * is not representable, so frames of exactly one tick accumulate a residue
+   * that creeps towards a whole tick without ever making one: ten of them
+   * leave alpha at 0.9999999999999987. A renderer handed 1 would draw the
+   * state one tick ahead of the one that was simulated, so the bound has to be
+   * strict rather than rounded.
+   */
+  test("alpha approaches 1 without reaching it", () => {
+    const scheduler = new ManualScheduler()
+    const host = replayHost(log, scheduler)
+    host.start()
+    let highest = 0
+    for (let i = 0; i < 200; i++) {
+      scheduler.advance(1000 / 60)
+      highest = Math.max(highest, host.alpha)
+      expect(host.alpha).toBeLessThan(1)
+    }
+    expect(highest).toBeGreaterThan(0.99)
+  })
+
+  /**
+   * A frame that took far longer than a tick runs several, and the diagnostics
+   * panel reports the worst one. A stalled tab that reported one tick per frame
+   * would hide exactly the case the catch-up limit exists for.
+   */
+  test("stats report the worst frame, not the average", () => {
+    const scheduler = new ManualScheduler()
+    const host = replayHost(log, scheduler)
+    host.start()
+    scheduler.advance(1000 / 60)
+    const afterOne = host.stats.mostTicksInAFrame
+    scheduler.advance(1000)
+    expect(host.stats.mostTicksInAFrame).toBeGreaterThan(afterOne)
+    expect(host.stats.frames).toBe(2)
+  })
+
+  test("the manifest and seed it reports are the ones it was built with", () => {
+    // The frame bridge hashes this manifest into its `ready` message, so a
+    // host reporting a different one would announce a game it is not running.
+    const host = replayHost(log, new ManualScheduler())
+    expect(host.manifest).toBe(REFERENCE_MANIFEST)
+    expect(host.seed).toBe("frame-rate")
+  })
+
+  test("snapshot and counters are the module's own, live", () => {
+    const host = replayHost(log, new ManualScheduler())
+    const atStart = host.snapshot()
+    for (let i = 0; i < 40; i++) host.stepOnce()
+    expect(host.snapshot()).not.toEqual(atStart)
+    expect(host.counters()).toEqual(host.result().counters)
+  })
+})
