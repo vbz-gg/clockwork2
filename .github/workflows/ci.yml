@@ -31,6 +31,15 @@ jobs:
       - run: bun run build
       - run: bun run typecheck
       - run: bun run test
+      - name: coverage floor
+        run: bun run test:coverage
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-lcov
+          path: coverage/lcov.info
+          if-no-files-found: error
       - name: simulation purity scan
         run: bun run scripts/lint-sim-purity.ts
       - name: packages would install cleanly
