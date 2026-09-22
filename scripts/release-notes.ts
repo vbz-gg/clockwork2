@@ -21,7 +21,12 @@ import { readFileSync } from "node:fs"
  * cannot end a section. Requiring a version number after the hashes is what
  * separates them.
  */
-const RELEASE_HEADING = /^#{2,3} \[?(\d+\.\d+\.\d+[^\]\s]*)\]?/
+export const RELEASE_HEADING = /^#{2,3} \[?(\d+\.\d+\.\d+[^\]\s]*)\]?/
+
+/** Whether the changelog records any release at all. */
+export function hasRelease(changelog: string): boolean {
+  return changelog.split("\n").some((line) => RELEASE_HEADING.test(line))
+}
 
 /**
  * Everything under `version`'s heading, up to the next release heading.

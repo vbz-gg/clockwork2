@@ -38,8 +38,7 @@
     "gen:skill-api": "bun run scripts/gen-skill-api.ts",
     "check:publishable": "bun run scripts/check-publishable.ts",
     "release": "commit-and-tag-version",
-    "release:minor": "commit-and-tag-version --release-as minor",
-    "release:major": "commit-and-tag-version --release-as major"
+    "release:minor": "commit-and-tag-version --release-as minor"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",

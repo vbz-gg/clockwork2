@@ -73,6 +73,19 @@ describe("the kernel version literal", () => {
     }
   })
 
+  /**
+   * Majors are off the table for now, by decision. On a 0.x version
+   * commit-and-tag-version maps a breaking change to a minor, so the ordinary
+   * release path cannot reach 1.0.0 by itself; `release:major` was the only
+   * script that could and it is gone. This is the backstop, so a 1.0.0 release
+   * commit fails CI before anything can be published. Lifting the policy means
+   * deleting this test in a diff somebody reads, which is the point of it
+   * being a test rather than a sentence in AGENTS.md.
+   */
+  test("stays on 0.x while major releases are off the table", () => {
+    expect(Number(rootVersion.split(".")[0])).toBe(0)
+  })
+
   test("every file holding it agrees with the root package.json", () => {
     for (const path of filesHoldingTheLiteral()) {
       const contents = readFileSync(join(ROOT, path), "utf8")

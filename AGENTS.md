@@ -101,6 +101,14 @@ from a laptop and the publisher configured afterwards.
 mistakes cannot be undone. `.versionrc.json`'s `prerelease` hook runs that gate
 locally, and `bun run release` is what invokes it.
 
+**No major releases for now.** Patch and minor only, for this repository and
+for the arcade. On a 0.x version commit-and-tag-version already maps a breaking
+change to a minor, so `bun run release` cannot reach 1.0.0 on its own;
+`release:major` was the only script that could and it is gone.
+`scripts/release-version.test.ts` holds the major at 0, so a 1.0.0 release
+commit fails CI before it can be published. Lifting the policy means deleting
+that test in a diff somebody reads.
+
 The job creates the tag and the GitHub release itself, as its last step, so
 cutting a release is one action and a tag can never name a commit the publish
 did not come from. `gh release create` makes the tag at `--target` when it does
