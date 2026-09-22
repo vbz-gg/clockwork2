@@ -3,6 +3,7 @@ import {
   assertManifest,
   mergeParamDefaults,
   type ParamSchema,
+  type ParamValues,
   validateManifest,
   validateParams,
 } from "../../src/manifest/index"
@@ -275,5 +276,250 @@ describe("parameters", () => {
       expect("title" in merged).toBe(false)
       expect("music" in merged).toBe(false)
     })
+  })
+})
+
+/**
+ * Every remaining rule, one manifest per rule.
+ *
+ * The rules matter because `assertManifest` is what the frame handshake and the
+ * conformance suite's loader both stand on. A rule that stops firing lets a
+ * malformed manifest into the platform, and the platform then ranks a game on
+ * counters nobody declared or binds an input nothing can press.
+ *
+ * Each row breaks exactly one thing in a manifest that is otherwise the
+ * reference one, and names the path the issue has to be reported at. Asserting
+ * the path rather than the message is deliberate: a caller shows the path
+ * beside the offending field, so a wrong path points a developer at the wrong
+ * line.
+ */
+describe("one rule at a time", () => {
+  const M = REFERENCE_MANIFEST
+  const counter = { name: "score", direction: "up", monotonic: true }
+  const asset = {
+    path: "data/level.json",
+    sha256: "a".repeat(64),
+    bytes: 12,
+    requiredForSim: true,
+    license: "CC0-1.0",
+  }
+
+  const CASES: Array<[at: string, manifest: unknown]> = [
+    // The whole document.
+    ["", null],
+    ["", ["not", "an", "object"]],
+    ["", "a string is not a manifest"],
+
+    // Identity.
+    ["name", { ...M, name: "" }],
+    ["kernel.version", { ...M, kernel: {} }],
+    ["kernel.version", { ...M, kernel: { version: 1 } }],
+
+    // The session block.
+    ["session", { ...M, session: "soon" }],
+    [
+      "session.hasEnding",
+      { ...M, session: { ...M.session, hasEnding: "yes" } },
+    ],
+
+    // Counters.
+    ["counters[0]", { ...M, counters: ["score"] }],
+    ["counters[0].name", { ...M, counters: [{ ...counter, name: "" }] }],
+    ["counters[0].name", { ...M, counters: [{ ...counter, name: 7 }] }],
+    [
+      "counters[0].monotonic",
+      { ...M, counters: [{ ...counter, monotonic: "sometimes" }] },
+    ],
+    // Two counters of one name would make rankBy ambiguous.
+    [
+      "counters[1].name",
+      { ...M, counters: [counter, counter], rankBy: ["score"] },
+    ],
+
+    // Inputs.
+    ["inputs.map", { ...M, inputs: {} }],
+    ["inputs.map", { ...M, inputs: { map: "push" } }],
+    ["inputs.map.push", { ...M, inputs: { map: { push: [] } } }],
+    ["inputs.map.push", { ...M, inputs: { map: { push: "Space" } } }],
+    ["inputs.map.push[0]", { ...M, inputs: { map: { push: ["Space"] } } }],
+    [
+      "inputs.map.push[0].code",
+      { ...M, inputs: { map: { push: [{ device: "key" }] } } },
+    ],
+    [
+      "inputs.map.push[0].code",
+      { ...M, inputs: { map: { push: [{ code: "", device: "key" }] } } },
+    ],
+    [
+      "inputs.map.push[0].device",
+      { ...M, inputs: { map: { push: [{ code: "Space", device: "mind" }] } } },
+    ],
+
+    // Capabilities.
+    ["capabilities", { ...M, capabilities: true }],
+    [
+      "capabilities.renderer",
+      { ...M, capabilities: { ...M.capabilities, renderer: 2 } },
+    ],
+    [
+      "capabilities.physics",
+      { ...M, capabilities: { ...M.capabilities, physics: null } },
+    ],
+
+    // Params and assets.
+    ["params", { ...M, params: [] }],
+    ["assets", { ...M, assets: {} }],
+    ["assets[0]", { ...M, assets: ["data/level.json"] }],
+    ["assets[0].path", { ...M, assets: [{ ...asset, path: "" }] }],
+    ["assets[1].path", { ...M, assets: [asset, asset] }],
+    [
+      "assets[0].sha256",
+      { ...M, assets: [{ ...asset, sha256: "A".repeat(64) }] },
+    ],
+    ["assets[0].sha256", { ...M, assets: [{ ...asset, sha256: "abc" }] }],
+    ["assets[0].bytes", { ...M, assets: [{ ...asset, bytes: 1.5 }] }],
+    ["assets[0].bytes", { ...M, assets: [{ ...asset, bytes: -1 }] }],
+    [
+      "assets[0].requiredForSim",
+      { ...M, assets: [{ ...asset, requiredForSim: "maybe" }] },
+    ],
+    ["assets[0].license", { ...M, assets: [{ ...asset, license: "" }] }],
+  ]
+
+  for (const [at, manifest] of CASES) {
+    test(`${at === "" ? "<root>" : at}`, () => {
+      issueAt(manifest, at)
+    })
+  }
+
+  test("a manifest carrying valid assets and params is accepted", () => {
+    // The negative rows above are only worth something if the positive one
+    // passes; otherwise they would all fire on some unrelated mistake.
+    withoutIssues({
+      ...M,
+      assets: [asset, { ...asset, path: "data/other.json" }],
+      params: { lives: { type: "int", label: "Lives", min: 1, max: 9 } },
+    })
+  })
+})
+
+describe("a parameter definition the game got wrong", () => {
+  /**
+   * These are the schema's own mistakes rather than a player's value. A schema
+   * that is wrong cannot check anything, so the manifest carrying it has to be
+   * refused rather than used.
+   */
+  const CASES: Array<[at: string, definition: unknown]> = [
+    ["params.p", "an int please"],
+    ["params.p", ["int"]],
+    ["params.p.label", { type: "int" }],
+    ["params.p.label", { type: "int", label: "" }],
+    ["params.p.type", { type: "float", label: "P" }],
+    ["params.p.type", { label: "P" }],
+    ["params.p.values", { type: "enum", label: "P" }],
+    ["params.p.values", { type: "enum", label: "P", values: [] }],
+    ["params.p.values", { type: "enum", label: "P", values: ["a", 2] }],
+    ["params.p.min", { type: "int", label: "P", min: 1.5 }],
+    ["params.p.max", { type: "int", label: "P", max: "nine" }],
+    ["params.p.default", { type: "int", label: "P", default: 0.5 }],
+    // A range nothing can satisfy is a schema that refuses every value.
+    ["params.p.min", { type: "int", label: "P", min: 10, max: 2 }],
+    [
+      "params.p.pattern",
+      { type: "string", label: "P", pattern: "a".repeat(201) },
+    ],
+    ["params.p.pattern", { type: "string", label: "P", pattern: "[" }],
+  ]
+
+  for (const [at, definition] of CASES) {
+    test(`${at}: ${JSON.stringify(definition)}`.slice(0, 90), () => {
+      issueAt({ ...REFERENCE_MANIFEST, params: { p: definition } }, at)
+    })
+  }
+})
+
+describe("checking a value against its definition", () => {
+  const schema: ParamSchema = {
+    theme: { type: "color", label: "Theme", allowed: ["#000000"] },
+    title: { type: "string", label: "Title", allowed: ["alpha", "beta"] },
+    lives: { type: "int", label: "Lives", min: 1, max: 9 },
+    music: { type: "bool", label: "Music" },
+  }
+
+  // Values a caller could really send, including the wrong types a schema
+  // exists to refuse, so the cast is the point rather than a convenience.
+  function issue(values: Record<string, unknown>, at: string): void {
+    const issues = validateParams(schema, values as ParamValues)
+    expect(
+      issues.some((i) => i.at === at),
+      `expected an issue at ${at}, got ${JSON.stringify(issues)}`,
+    ).toBe(true)
+  }
+
+  test("a colour that is not a string", () => {
+    issue(
+      { theme: 0x000000, title: "alpha", lives: 1, music: true },
+      "params.theme",
+    )
+  })
+
+  test("a colour outside its allowed list", () => {
+    issue(
+      { theme: "#ffffff", title: "alpha", lives: 1, music: true },
+      "params.theme",
+    )
+  })
+
+  test("a string that is not a string", () => {
+    issue({ theme: "#000000", title: 7, lives: 1, music: true }, "params.title")
+  })
+
+  test("a string outside its allowed list", () => {
+    issue(
+      { theme: "#000000", title: "gamma", lives: 1, music: true },
+      "params.title",
+    )
+  })
+
+  test("an int above its maximum", () => {
+    issue(
+      { theme: "#000000", title: "alpha", lives: 10, music: true },
+      "params.lives",
+    )
+  })
+
+  /**
+   * A schema pattern that does not compile must refuse the value rather than
+   * wave it through. The over-long case is already covered; this is the short
+   * but unparseable one, which reaches the same null from the other side of
+   * compilePattern and has to produce the same refusal.
+   */
+  test("a pattern that cannot compile refuses the value it cannot check", () => {
+    const broken: ParamSchema = {
+      slug: { type: "string", label: "Slug", pattern: "[unclosed" },
+    }
+    const issues = validateParams(broken, { slug: "anything" })
+    expect(issues.map((i) => i.message)).toEqual([
+      "cannot be checked: the schema pattern is unusable",
+    ])
+  })
+
+  /**
+   * compilePattern caches per schema and name. Asking twice has to give the
+   * same answer: a cache that recompiled would be pointless, and one that
+   * cached the wrong entry would check a value against another field's rule.
+   */
+  test("the compiled pattern is reused across calls", () => {
+    const cached: ParamSchema = {
+      slug: { type: "string", label: "Slug", pattern: "[a-z]+" },
+      code: { type: "string", label: "Code", pattern: "[0-9]+" },
+    }
+    const first = validateParams(cached, { slug: "abc", code: "123" })
+    const second = validateParams(cached, { slug: "abc", code: "123" })
+    expect(first).toEqual([])
+    expect(second).toEqual([])
+    expect(
+      validateParams(cached, { slug: "123", code: "abc" }).map((i) => i.at),
+    ).toEqual(["params.slug", "params.code"])
   })
 })
