@@ -1,69 +1,36 @@
 #!/usr/bin/env bun
 /**
- * Publishes every public package, in dependency order.
+ * Publishes `@clockwork2/engine`.
  *
  * Authentication is npm Trusted Publishing: the release workflow grants
  * `id-token: write`, the npm CLI exchanges that OIDC token for a short-lived
  * credential, and npm signs a provenance attestation naming the commit and the
- * workflow that built each tarball. So there is no token to read here, and no
+ * workflow that built the tarball. So there is no token to read here, and no
  * `--provenance` flag either - under trusted publishing npm produces the
- * attestation by default, and passing the flag would only break the one case
- * that has no OIDC token: the first publish of a package, which has to come
- * from a laptop because a trusted publisher cannot be configured for a package
- * that does not exist yet.
+ * attestation by default, and passing it would break the one case with no OIDC
+ * token, which is a package's first publish from a laptop.
  *
- * What this script is really for is the rewrite. `bun publish` would
- * substitute the workspace ranges for us, but it has no `--provenance` at
- * 1.3.11 and no trusted-publishing support, so reaching for it trades a
- * supply-chain signature for a string replacement. We do the replacement here
- * instead: rewrite each manifest, publish, put it back.
- *
- * An unrewritten `workspace:*` reaches the registry verbatim and the published
- * version is uninstallable by anyone, permanently, because a version cannot be
- * unpublished after 72 hours. The restore is in a `finally` so a failed
- * publish does not leave a rewritten package.json in the tree.
+ * This used to rewrite six package.json files, substituting each `workspace:*`
+ * range for the version being published and restoring the file afterwards. An
+ * unrewritten range reaches the registry verbatim and that version is
+ * uninstallable by anyone, permanently, because nothing can be unpublished
+ * after 72 hours. One package has no sibling to depend on, so the rewrite and
+ * the hazard are both gone.
  */
-import { readFileSync, writeFileSync } from "node:fs"
 import { $ } from "bun"
-import { type Manifest, resolveWorkspaceDeps } from "./publish-manifest"
-
-const ORDER = [
-  "kernel",
-  "host-bridge",
-  "adapter-canvas2d",
-  "adapter-pixi",
-  "adapter-three",
-  "validate",
-]
 
 /**
  * Packs and asks the registry to validate, without publishing.
  *
  * Worth knowing what this does not cover: `--dry-run` never reaches the
  * publish endpoint, so it does not exercise the OIDC exchange. A green dry run
- * says the tarballs are right, not that the credential works.
+ * says the tarball is right, not that the credential works.
  */
 const dryRun = process.argv.includes("--dry-run")
 
-for (const pkg of ORDER) {
-  const path = `packages/${pkg}/package.json`
-  const original = readFileSync(path, "utf8")
-  const manifest = JSON.parse(original) as Manifest
-  const version = manifest.version
-  if (version === undefined) throw new Error(`${path} has no version`)
-
-  console.log(`${dryRun ? "packing" : "publishing"} packages/${pkg}@${version}`)
-  writeFileSync(
-    path,
-    `${JSON.stringify(resolveWorkspaceDeps(manifest, version), null, 2)}\n`,
-  )
-  try {
-    // `--access public` is still needed: a scoped package is private by
-    // default on its first publish.
-    await $`npm publish --access public ${dryRun ? ["--dry-run"] : []}`.cwd(
-      `packages/${pkg}`,
-    )
-  } finally {
-    writeFileSync(path, original)
-  }
-}
+console.log(`${dryRun ? "packing" : "publishing"} @clockwork2/engine`)
+// `--access public` is still needed: a scoped package is private by default on
+// its first publish.
+await $`npm publish --access public ${dryRun ? ["--dry-run"] : []}`.cwd(
+  "packages/engine",
+)

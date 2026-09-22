@@ -13,10 +13,10 @@
  */
 
 import { writeFileSync } from "node:fs"
-import { fromBitsHex, toBitsHex } from "../packages/kernel/src/bits"
-import * as dmath from "../packages/kernel/src/dmath/index"
+import { fromBitsHex, toBitsHex } from "../packages/engine/src/bits"
+import * as dmath from "../packages/engine/src/dmath/index"
 
-const OUT = "packages/kernel/tests/dmath/vectors/dmath-golden.tsv"
+const OUT = "packages/engine/tests/dmath/vectors/dmath-golden.tsv"
 
 /** A tiny generator of its own, so the vectors do not depend on the PRNG. */
 function lcg(seed: number): () => number {

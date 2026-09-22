@@ -12,7 +12,7 @@
  * scene every frame would work and would be slow.
  */
 
-import { NodeSet, ThreePresentation } from "@clockwork2/adapter-three"
+import { NodeSet, ThreePresentation } from "@clockwork2/engine/adapter-three"
 import {
   BoxGeometry,
   ConeGeometry,

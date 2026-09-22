@@ -7,14 +7,14 @@
  * any of them.
  */
 
-import { AudioSink, GameHost, InputCapture } from "@clockwork2/host-bridge"
 import {
   decodeRecording,
   encodeRecording,
   hashCanonical,
   RecordedInputSource,
   type Recording,
-} from "@clockwork2/kernel"
+} from "@clockwork2/engine"
+import { AudioSink, GameHost, InputCapture } from "@clockwork2/engine/host"
 import {
   createGame,
   DEFAULT_CONFIG,

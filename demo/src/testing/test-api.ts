@@ -9,11 +9,6 @@
  */
 
 import {
-  GameHost,
-  type LoopStats,
-  ManualScheduler,
-} from "@clockwork2/host-bridge"
-import {
   type Checkpoint,
   type Counters,
   decodeRecording,
@@ -21,7 +16,12 @@ import {
   RecordedInputSource,
   type Recording,
   type Snapshot,
-} from "@clockwork2/kernel"
+} from "@clockwork2/engine"
+import {
+  GameHost,
+  type LoopStats,
+  ManualScheduler,
+} from "@clockwork2/engine/host"
 import { createGame, MANIFEST, type SnakeConfig } from "../game/index"
 
 export type FrameSchedule =

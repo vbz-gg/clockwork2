@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
-import { probeVectorIds } from "../../packages/kernel/src/probe/index"
+import { probeVectorIds } from "../../packages/engine/src/probe/index"
 import { GOLDEN, parseGolden, readGolden } from "./golden"
 
 const LF = [

@@ -12,7 +12,7 @@
  * deserialiser per type.
  */
 
-import { dmath, type Prng } from "@clockwork2/kernel"
+import { dmath, type Prng } from "@clockwork2/engine"
 import {
   DIRECTION_VECTORS,
   Direction,

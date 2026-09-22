@@ -77,16 +77,22 @@ The scaffold comes from `skill/platform-game/`, an Agent Skill that carries the
 rules a game has to follow, a section per error code, and two starter templates.
 Coding agents read it; so can you.
 
-## Packages
+## One package, several entry points
 
-| Package | What it is |
+`@clockwork2/engine` ships with **no runtime dependencies**. `pixi.js`, `three`
+and `typescript` are optional peers, so a consumer who wants only the
+simulation installs nothing else. Every entry point below is a separate
+subpath with its own types, and the package is `"sideEffects": false`, so a
+bundler keeps what you import and drops the rest.
+
+| Import | What it is |
 | --- | --- |
-| `@clockwork2/kernel` | The simulation kernel: loop, PRNG, timers, hashing, `dmath`, manifest, recording. Zero runtime dependencies. |
-| `@clockwork2/validate` | The twelve conformance checks and their CLI. |
-| `@clockwork2/host-bridge` | The frame loop, input capture, audio, and the iframe and worker protocol. |
-| `@clockwork2/adapter-canvas2d` | Read-only presentation on a 2D canvas. |
-| `@clockwork2/adapter-three` | Read-only presentation on Three.js. |
-| `@clockwork2/adapter-pixi` | Read-only presentation on PIXI 8. |
+| `@clockwork2/engine` | The simulation kernel: loop, PRNG, timers, hashing, `dmath`, manifest, recording. |
+| `@clockwork2/engine/validate` | The twelve conformance checks and their CLI. |
+| `@clockwork2/engine/host` | The frame loop, input capture, audio, and the iframe and worker protocol. |
+| `@clockwork2/engine/adapter-canvas2d` | Read-only presentation on a 2D canvas. |
+| `@clockwork2/engine/adapter-three` | Read-only presentation on Three.js. |
+| `@clockwork2/engine/adapter-pixi` | Read-only presentation on PIXI 8. |
 
 ## What is verified, and how
 

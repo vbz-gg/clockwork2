@@ -145,7 +145,7 @@ plain loop:
 for (let t = 0; t < recording.endTick; t++) game.tick(inputsAt(t))
 ```
 
-Both sides call the same `runSession()` in `@clockwork2/kernel`. Replay is not
+Both sides call the same `runSession()` in `@clockwork2/engine`. Replay is not
 a second code path; it is the ordinary loop reading inputs from a recording
 instead of from a keyboard.
 
@@ -200,7 +200,7 @@ import {
   dmath, Prng, Timer,
   type Counters, type Effect, type GameModule,
   type InputEvent, type PrngState, type Snapshot, type TimerState,
-} from "@clockwork2/kernel"
+} from "@clockwork2/engine"
 
 const LANES = 3
 const TRACK = 100
@@ -428,7 +428,7 @@ differs, and the replay is rejected.
 So the kernel ships `dmath`, with the same function names:
 
 ```ts
-import { dmath } from "@clockwork2/kernel"
+import { dmath } from "@clockwork2/engine"
 
 dmath.sin(x)
 dmath.atan2(y, x)
@@ -470,7 +470,7 @@ The kernel installs runtime traps around `init` and `tick` and removes them
 afterwards. Touching a banned global throws `E_BANNED_API` at the point of use,
 so the stack points at the line.
 
-`@clockwork2/validate` scans the simulation's entry file and every module it
+`@clockwork2/engine/validate` scans the simulation's entry file and every module it
 imports, transitively, and reports `E_LINT_BANNED` with a file, line and
 column. A scan sees code that never runs; the traps see an aliased global, a
 dynamic import, and anything the scan cannot follow.
@@ -571,9 +571,9 @@ Three adapters ship, each read-only and driven the same way:
 
 | Package | Renderer |
 | --- | --- |
-| `@clockwork2/adapter-canvas2d` | 2D canvas |
-| `@clockwork2/adapter-three` | Three.js |
-| `@clockwork2/adapter-pixi` | PIXI 8 |
+| `@clockwork2/engine/adapter-canvas2d` | 2D canvas |
+| `@clockwork2/engine/adapter-three` | Three.js |
+| `@clockwork2/engine/adapter-pixi` | PIXI 8 |
 
 Each owns its surface, its device-pixel scaling and its draw call, and takes one
 `draw` function from the game. None of them starts its renderer's own animation
@@ -606,7 +606,7 @@ They are values rather than calls inside `tick` for two reasons. A headless
 replay has nothing to stub, and a frame that runs two ticks cannot play the same
 sound twice by accident.
 
-`AudioSink` in `@clockwork2/host-bridge` turns effects into sound, including
+`AudioSink` in `@clockwork2/engine/host` turns effects into sound, including
 procedurally generated sound, so a game can ship without audio files. The demo
 in this repository synthesises all of its audio that way.
 
@@ -652,7 +652,7 @@ produces confident wrong answers.
 To replay one:
 
 ```ts
-import { decodeRecording, RecordedInputSource, runSession } from "@clockwork2/kernel"
+import { decodeRecording, RecordedInputSource, runSession } from "@clockwork2/engine"
 
 const recording = decodeRecording(text)
 const result = runSession({
@@ -737,7 +737,7 @@ costs you at submission.
 
 ## Conformance
 
-`@clockwork2/validate` runs twelve checks. The same code runs locally and in the
+`@clockwork2/engine/validate` runs twelve checks. The same code runs locally and in the
 submission pipeline, and the platform's own run is the one that decides.
 
 ```bash
@@ -774,7 +774,7 @@ ids relies on that without knowing.
 
 ## Embedding a game
 
-`@clockwork2/host-bridge` runs a game in a page. At its simplest:
+`@clockwork2/engine/host` runs a game in a page. At its simplest:
 
 ```ts
 const host = new GameHost({

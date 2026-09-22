@@ -16,7 +16,7 @@
 import { execSync } from "node:child_process"
 import { readFileSync } from "node:fs"
 
-export const ERRORS_SOURCE = "packages/kernel/src/errors.ts"
+export const ERRORS_SOURCE = "packages/engine/src/errors.ts"
 export const REFERENCE = "skill/platform-game/references/failure-modes.md"
 
 /**

@@ -6,11 +6,7 @@
       "name": "clockwork2",
       "devDependencies": {
         "@biomejs/biome": "2.5.14",
-        "@clockwork2/adapter-canvas2d": "workspace:*",
-        "@clockwork2/adapter-three": "workspace:*",
-        "@clockwork2/host-bridge": "workspace:*",
-        "@clockwork2/kernel": "workspace:*",
-        "@clockwork2/validate": "workspace:*",
+        "@clockwork2/engine": "workspace:*",
         "@commitlint/cli": "^19.8.1",
         "@commitlint/config-conventional": "^19.8.1",
         "@types/bun": "^1.2.21",
@@ -27,9 +23,7 @@
       "name": "demo",
       "version": "0.1.0",
       "dependencies": {
-        "@clockwork2/adapter-pixi": "workspace:*",
-        "@clockwork2/host-bridge": "workspace:*",
-        "@clockwork2/kernel": "workspace:*",
+        "@clockwork2/engine": "workspace:*",
         "pixi.js": "8.21.0",
       },
       "devDependencies": {
@@ -41,68 +35,29 @@
       "name": "e2e",
       "version": "0.1.0",
       "dependencies": {
-        "@clockwork2/kernel": "workspace:*",
+        "@clockwork2/engine": "workspace:*",
       },
       "devDependencies": {
         "@playwright/test": "1.56.1",
         "playwright": "1.56.1",
       },
     },
-    "packages/adapter-canvas2d": {
-      "name": "@clockwork2/adapter-canvas2d",
+    "packages/engine": {
+      "name": "@clockwork2/engine",
       "version": "0.1.0",
-      "dependencies": {
-        "@clockwork2/kernel": "workspace:*",
-      },
-    },
-    "packages/adapter-pixi": {
-      "name": "@clockwork2/adapter-pixi",
-      "version": "0.1.0",
-      "dependencies": {
-        "@clockwork2/kernel": "workspace:*",
-      },
-      "devDependencies": {
-        "pixi.js": "8.21.0",
+      "bin": {
+        "clockwork2-validate": "./dist/validate/cli.js",
       },
       "peerDependencies": {
         "pixi.js": "^8.0.0",
-      },
-    },
-    "packages/adapter-three": {
-      "name": "@clockwork2/adapter-three",
-      "version": "0.1.0",
-      "dependencies": {
-        "@clockwork2/kernel": "workspace:*",
-      },
-      "devDependencies": {
-        "@types/three": "0.186.0",
-        "three": "0.186.0",
-      },
-      "peerDependencies": {
         "three": ">=0.170.0",
+        "typescript": ">=5.5.0",
       },
-    },
-    "packages/host-bridge": {
-      "name": "@clockwork2/host-bridge",
-      "version": "0.1.0",
-      "dependencies": {
-        "@clockwork2/kernel": "workspace:*",
-      },
-    },
-    "packages/kernel": {
-      "name": "@clockwork2/kernel",
-      "version": "0.1.0",
-    },
-    "packages/validate": {
-      "name": "@clockwork2/validate",
-      "version": "0.1.0",
-      "bin": {
-        "clockwork2-validate": "./dist/cli.js",
-      },
-      "dependencies": {
-        "@clockwork2/kernel": "workspace:*",
-        "typescript": "5.9.3",
-      },
+      "optionalPeers": [
+        "pixi.js",
+        "three",
+        "typescript",
+      ],
     },
   },
   "packages": {
@@ -128,17 +83,7 @@
 
     "@biomejs/cli-win32-x64": ["@biomejs/cli-win32-x64@2.5.14", "", { "os": "win32", "cpu": "x64" }, "sha512-oJWmBhoHsnhUKIke+0gXDX0mltJrWHA1UyHsrTlXwX0TL64ilVZAo+TYZm97baecV0esBdpzy3k96q+09JaZUQ=="],
 
-    "@clockwork2/adapter-canvas2d": ["@clockwork2/adapter-canvas2d@workspace:packages/adapter-canvas2d"],
-
-    "@clockwork2/adapter-pixi": ["@clockwork2/adapter-pixi@workspace:packages/adapter-pixi"],
-
-    "@clockwork2/adapter-three": ["@clockwork2/adapter-three@workspace:packages/adapter-three"],
-
-    "@clockwork2/host-bridge": ["@clockwork2/host-bridge@workspace:packages/host-bridge"],
-
-    "@clockwork2/kernel": ["@clockwork2/kernel@workspace:packages/kernel"],
-
-    "@clockwork2/validate": ["@clockwork2/validate@workspace:packages/validate"],
+    "@clockwork2/engine": ["@clockwork2/engine@workspace:packages/engine"],
 
     "@commitlint/cli": ["@commitlint/cli@19.8.1", "", { "dependencies": { "@commitlint/format": "^19.8.1", "@commitlint/lint": "^19.8.1", "@commitlint/load": "^19.8.1", "@commitlint/read": "^19.8.1", "@commitlint/types": "^19.8.1", "tinyexec": "^1.0.0", "yargs": "^17.0.0" }, "bin": { "commitlint": "./cli.js" } }, "sha512-LXUdNIkspyxrlV6VDHWBmCZRtkEVRpBKxi2Gtw3J54cGWhLCTouVD/Q6ZSaSvd2YaDObWK8mDjrz3TIKtaQMAA=="],
 

@@ -1,0 +1,19 @@
+{
+  // The simulation half, typechecked without a DOM.
+  //
+  // When this was six packages the kernel had its own tsconfig and inherited a
+  // base with no DOM lib, so `document` did not typecheck there. One package
+  // has one lib setting, and the adapters need DOM - so the property that the
+  // simulation cannot reach a DOM type is checked here instead of falling out
+  // of the layout. `bun run typecheck` runs it.
+  //
+  // src/host, src/adapters and src/validate are the halves that legitimately
+  // touch a DOM or a compiler API.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": []
+  },
+  "include": ["src/**/*"],
+  "exclude": ["src/host/**", "src/adapters/**", "src/validate/**"]
+}

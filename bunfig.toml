@@ -16,14 +16,14 @@ coverageDir = "coverage"
 # the `development` export condition, so a host-bridge test drags the built
 # kernel into the report as a second copy of code already counted from source.
 #
-# packages/validate/fixtures holds deliberately non-conformant games. The
+# packages/engine/fixtures holds deliberately non-conformant games. The
 # point of `unbounded` is that it never ends and the point of `async-tick` is
 # that its tick returns a thenable. How much of one runs says nothing.
 #
-# packages/validate/src/cli.ts is a process entry point: its last statement is
+# packages/engine/src/validate/cli.ts is a process entry point: its last statement is
 # `main(process.argv.slice(2)).then((code) => process.exit(code))`, so
 # importing it into the test runner exits the runner. It is covered by
-# packages/validate/tests/cli.test.ts, which spawns the real file. Coverage
+# packages/engine/tests/validate/cli.test.ts, which spawns the real file. Coverage
 # does not follow a subprocess.
 #
 # demo, e2e, scripts and skill are the demo game, the Playwright suite, the
@@ -31,8 +31,8 @@ coverageDir = "coverage"
 # but they are not the packages this floor is about.
 coveragePathIgnorePatterns = [
   "packages/*/dist/**",
-  "packages/validate/fixtures/**",
-  "packages/validate/src/cli.ts",
+  "packages/engine/fixtures/**",
+  "packages/engine/src/validate/cli.ts",
   "demo/**",
   "e2e/**",
   "scripts/**",

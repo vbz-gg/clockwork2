@@ -28,7 +28,7 @@ import {
   type Snapshot,
   Timer,
   type TimerState,
-} from "@clockwork2/kernel"
+} from "@clockwork2/engine"
 import { MANIFEST } from "./manifest"
 
 export const LANES = 3

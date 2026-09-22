@@ -109,7 +109,7 @@ export function isBareValue(value: string): boolean {
   return value.length < MIN_VALUE_LENGTH || BARE_VALUES.has(value.toLowerCase())
 }
 
-/** `packages/kernel/src/loop.ts and 3 more`, for a rejection message. */
+/** `packages/engine/src/loop.ts and 3 more`, for a rejection message. */
 export function summarize(bearing: readonly string[]): string {
   const rest = bearing.length - 1
   return `${bearing[0]}${rest > 0 ? ` and ${rest} more` : ""}`

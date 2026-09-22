@@ -5,7 +5,7 @@
  * The failure this exists for is silent and total. Cross-package dependencies
  * are declared `workspace:*`, which is what makes the monorepo resolve
  * locally; npm ships that string verbatim, so the tarball would carry
- * `"@clockwork2/kernel": "workspace:*"` and `npm install` would fail for
+ * `"@clockwork2/engine": "workspace:*"` and `npm install` would fail for
  * everyone, forever, on a version that cannot be unpublished after 72 hours.
  * Nothing in a build, a lint or a test sees it.
  *
@@ -29,16 +29,8 @@ import {
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { $ } from "bun"
-import { type Manifest, resolveWorkspaceDeps } from "./publish-manifest"
 
-export const PUBLIC_PACKAGES = [
-  "kernel",
-  "validate",
-  "host-bridge",
-  "adapter-canvas2d",
-  "adapter-pixi",
-  "adapter-three",
-] as const
+export const PUBLIC_PACKAGES = ["engine"] as const
 
 export type Shipped = {
   readonly name: string
@@ -49,21 +41,12 @@ export type Shipped = {
 
 /** Reads the package.json a tarball would carry, not the one on disk. */
 export async function pack(pkg: string, into: string): Promise<Shipped> {
-  // Pack through the same rewrite the publisher applies, then put the file
-  // back. A check that packed the unrewritten manifest would be measuring a
-  // release nobody performs.
-  const manifestPath = `packages/${pkg}/package.json`
-  const original = readFileSync(manifestPath, "utf8")
-  const parsed = JSON.parse(original) as Manifest
-  writeFileSync(
-    manifestPath,
-    `${JSON.stringify(resolveWorkspaceDeps(parsed, parsed.version ?? "0.0.0"), null, 2)}\n`,
-  )
-  try {
-    await $`npm pack --pack-destination ${into}`.cwd(`packages/${pkg}`).quiet()
-  } finally {
-    writeFileSync(manifestPath, original)
-  }
+  // No rewrite before packing any more. When this was six packages each
+  // declared its siblings `workspace:*`, and the publisher substituted the
+  // real version on the way out - so a check that packed the manifest on disk
+  // was measuring a release nobody performs. One package has no sibling, so
+  // what is on disk is what ships.
+  await $`npm pack --pack-destination ${into}`.cwd(`packages/${pkg}`).quiet()
   const tarball = [...new Bun.Glob("*.tgz").scanSync(into)][0]
   if (tarball === undefined) throw new Error(`${pkg} produced no tarball`)
   const out = join(into, "unpacked")
@@ -89,11 +72,6 @@ export function problemsWith(shipped: Shipped): string[] {
         `${shipped.name} would ship ${name}: "${range}", which no consumer can install`,
       )
     }
-    if (name.startsWith("@clockwork2/") && range !== shipped.version) {
-      problems.push(
-        `${shipped.name}@${shipped.version} would ship ${name}: "${range}"; the versions move together`,
-      )
-    }
   }
   // `files` lists README.md, and npm drops a missing entry without failing.
   if (!shipped.files.includes("README.md")) {
@@ -107,7 +85,7 @@ export function problemsWith(shipped: Shipped): string[] {
 }
 
 async function main(): Promise<number> {
-  if (!existsSync("packages/kernel/package.json")) {
+  if (!existsSync("packages/engine/package.json")) {
     console.error("run this from the repository root")
     return 2
   }
@@ -129,11 +107,11 @@ async function main(): Promise<number> {
     console.error("\na package would ship broken:")
     for (const line of found) console.error(`  ${line}`)
     console.error(
-      "\nscripts/publish.ts rewrites workspace ranges before calling npm; check resolveWorkspaceDeps",
+      "\nthe manifest on disk is what ships; there is no rewrite step to blame",
     )
     return 1
   }
-  console.log(`\n${PUBLIC_PACKAGES.length} packages would install cleanly`)
+  console.log("\nthe package would install cleanly")
   return 0
 }
 

@@ -20,7 +20,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { dirname } from "node:path"
 import type { ProbeAnswer } from "./run"
 
-export const GOLDEN = "packages/kernel/tests/probe/probe-golden.tsv"
+export const GOLDEN = "packages/engine/tests/probe/probe-golden.tsv"
 
 /** Vector id to digest. Comments and blank lines are skipped. */
 export function parseGolden(text: string): Map<string, string> {

@@ -12,13 +12,13 @@
  *   run-headless.ts ./src --log=idle --quiet   only the last line
  *
  * `--log` is one of idle, chaos or bot. They are generated from the seed by
- * `@clockwork2/kernel/testing`, not read from a file, so a log is reproducible
+ * `@clockwork2/engine/testing`, not read from a file, so a log is reproducible
  * from two words rather than from an artefact somebody has to keep.
  */
 
-import type * as Kernel from "@clockwork2/kernel"
-import type * as KernelTesting from "@clockwork2/kernel/testing"
-import type * as Validate from "@clockwork2/validate"
+import type * as Kernel from "@clockwork2/engine"
+import type * as KernelTesting from "@clockwork2/engine/testing"
+import type * as Validate from "@clockwork2/engine/validate"
 import { resolveFrom } from "./_resolve"
 
 function flag(name: string, fallback: string): string {
@@ -36,13 +36,13 @@ const seed = flag("seed", "headless-1")
 const logName = flag("log", "bot")
 const quiet = process.argv.includes("--quiet")
 
-const kernel = await resolveFrom<typeof Kernel>("@clockwork2/kernel", target)
+const kernel = await resolveFrom<typeof Kernel>("@clockwork2/engine", target)
 const testing = await resolveFrom<typeof KernelTesting>(
-  "@clockwork2/kernel/testing",
+  "@clockwork2/engine/testing",
   target,
 )
 const validate = await resolveFrom<typeof Validate>(
-  "@clockwork2/validate",
+  "@clockwork2/engine/validate",
   target,
 )
 

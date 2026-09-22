@@ -16,13 +16,13 @@ import type {
   GameModule,
   InputEvent,
   Snapshot,
-} from "@clockwork2/kernel"
+} from "@clockwork2/engine"
 import {
   Prng,
   type PrngState,
   Timer,
   type TimerState,
-} from "@clockwork2/kernel"
+} from "@clockwork2/engine"
 import { Direction, GAME_CONFIG } from "./constants"
 import { MANIFEST } from "./manifest"
 import {

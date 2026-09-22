@@ -1,6 +1,6 @@
 ---
 name: platform-game
-description: Build a browser game on Clockwork 2 that the arcade can verify - fixed-step ticks, seeded randomness, an input log that replays to the same state on a server. Use when writing or reviewing a game module, a manifest, a renderer or a recording; when a conformance check fails with an E_ code; or when porting a variable-step game onto the fixed-step contract. Covers the simulation and renderer boundary, deterministic maths, snapshots and restore, counters and objectives, budgets, and the twelve checks in @clockwork2/validate.
+description: Build a browser game on Clockwork 2 that the arcade can verify - fixed-step ticks, seeded randomness, an input log that replays to the same state on a server. Use when writing or reviewing a game module, a manifest, a renderer or a recording; when a conformance check fails with an E_ code; or when porting a variable-step game onto the fixed-step contract. Covers the simulation and renderer boundary, deterministic maths, snapshots and restore, counters and objectives, budgets, and the twelve checks in @clockwork2/engine/validate.
 ---
 
 # Building a verifiable game

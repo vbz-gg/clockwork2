@@ -34,6 +34,14 @@ const ALLOWED = [
   /\/shims\./, // the shim module names every global it traps
   /\/errors\./, // the error table quotes the API names
   /lint-sim-purity/,
+  // The halves of the engine that are not the simulation. A renderer is
+  // supposed to call requestAnimationFrame and the conformance checker is
+  // supposed to name the APIs it bans. When these were separate packages the
+  // scan simply pointed at the kernel's dist; one package means saying which
+  // subtrees are out of scope.
+  /\/dist\/host\//,
+  /\/dist\/adapters\//,
+  /\/dist\/validate\//,
 ]
 
 /**
@@ -124,7 +132,7 @@ function* walk(dir: string): Generator<string> {
 }
 
 const roots = process.argv.slice(2)
-const targets = roots.length > 0 ? roots : ["packages/kernel/dist"]
+const targets = roots.length > 0 ? roots : ["packages/engine/dist"]
 let failures = 0
 let scanned = 0
 

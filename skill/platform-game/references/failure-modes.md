@@ -9,7 +9,7 @@ Read the code, not the message. Messages are prose and change; a code is a
 promise. Catching code switches on `error.code`, never on a substring of
 `error.message`.
 
-Where this file and `@clockwork2/validate` disagree, the validator is right.
+Where this file and `@clockwork2/engine/validate` disagree, the validator is right.
 
 ## Runtime, inside the kernel
 

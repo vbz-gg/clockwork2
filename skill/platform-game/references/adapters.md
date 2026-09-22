@@ -25,7 +25,7 @@ one jumps. Interpolate positions between the two views with it.
 system driven by `dtMs` looks right at every frame rate and cannot change a
 score.
 
-## `@clockwork2/adapter-canvas2d`
+## `@clockwork2/engine/adapter-canvas2d`
 
 ```ts
 new Canvas2dPresentation<View>({
@@ -40,7 +40,7 @@ The adapter owns the canvas, the device-pixel scaling and the clear. The game
 owns one `draw`. `maxPixelRatio` defaults to 2, because a phone at 3x costs
 nine times the pixels for very little.
 
-## `@clockwork2/adapter-three`
+## `@clockwork2/engine/adapter-three`
 
 ```ts
 new ThreePresentation<View>({
@@ -56,7 +56,7 @@ happens and the adapter renders once. Keep objects in a map keyed by the
 simulation's ids, create on first sight, remove when the view stops mentioning
 them - rebuilding the scene each frame works and is slow.
 
-## `@clockwork2/adapter-pixi`
+## `@clockwork2/engine/adapter-pixi`
 
 The same contract with a PIXI `Application`, `autoStart: false`. The demo in
 this repository uses it.
@@ -66,7 +66,7 @@ this repository uses it.
 Every renderer faces the same small problem: the view is a list and the scene
 is a set of objects. `NodeSet` does the diff - create on first sight, update
 while present, destroy when gone. It lives in the kernel and all three
-adapters re-export it, so `import { NodeSet } from "@clockwork2/adapter-three"`
+adapters re-export it, so `import { NodeSet } from "@clockwork2/engine/adapter-three"`
 works and there is no fourth copy of those forty lines anywhere.
 
 ```ts
@@ -91,7 +91,7 @@ from `effects()`, drained by the host each frame. They are not called inside
 `tick()`, for two reasons: a headless replay would have to stub the call, and
 a frame that runs two ticks would otherwise play the sound twice.
 
-`AudioSink` in `@clockwork2/host-bridge` turns effects into sound, including
+`AudioSink` in `@clockwork2/engine/host` turns effects into sound, including
 procedurally generated ones, so a game can ship without audio files.
 
 ## Worker mode

@@ -7,8 +7,8 @@
  * none of it.
  */
 
-import { GameHost, InputCapture } from "@clockwork2/host-bridge"
-import { encodeRecording } from "@clockwork2/kernel"
+import { encodeRecording } from "@clockwork2/engine"
+import { GameHost, InputCapture } from "@clockwork2/engine/host"
 import createGame, {
   type Config,
   DEFAULT_CONFIG,

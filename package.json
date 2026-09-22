@@ -21,7 +21,7 @@
   "scripts": {
     "build": "tsc -b",
     "clean": "rm -rf packages/*/dist packages/*/*.tsbuildinfo demo/dist e2e/test-results e2e/playwright-report",
-    "typecheck": "tsc -b && tsc -p tsconfig.tests.json && tsc -p demo --noEmit && tsc -p e2e --noEmit && tsc -p skill --noEmit",
+    "typecheck": "tsc -b && tsc -p packages/engine/tsconfig.sim.json && tsc -p tsconfig.tests.json && tsc -p demo --noEmit && tsc -p e2e --noEmit && tsc -p skill --noEmit",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
@@ -40,11 +40,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
-    "@clockwork2/adapter-canvas2d": "workspace:*",
-    "@clockwork2/adapter-three": "workspace:*",
-    "@clockwork2/host-bridge": "workspace:*",
-    "@clockwork2/kernel": "workspace:*",
-    "@clockwork2/validate": "workspace:*",
+    "@clockwork2/engine": "workspace:*",
     "@commitlint/cli": "^19.8.1",
     "@commitlint/config-conventional": "^19.8.1",
     "@types/bun": "^1.2.21",

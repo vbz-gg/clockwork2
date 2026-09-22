@@ -11,9 +11,9 @@
  * secret and which a real deployment would bake in per platform instead.
  */
 
-import { GameHost, InputCapture } from "@clockwork2/host-bridge"
-import { connectToParent, encodeRecording } from "@clockwork2/host-bridge/frame"
-import { FRAME_ERRORS } from "@clockwork2/host-bridge/protocol"
+import { connectToParent, encodeRecording } from "@clockwork2/engine/frame"
+import { GameHost, InputCapture } from "@clockwork2/engine/host"
+import { FRAME_ERRORS } from "@clockwork2/engine/protocol"
 import {
   createGame,
   DEFAULT_CONFIG,

@@ -43,7 +43,7 @@
   },
   "overrides": [
     {
-      "includes": ["packages/kernel/src/dmath/**"],
+      "includes": ["packages/engine/src/dmath/**"],
       "linter": {
         "rules": {
           "correctness": {
