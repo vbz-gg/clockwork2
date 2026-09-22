@@ -9,8 +9,10 @@
 # the bytes the dmath checksum covers and leaves a carriage return on the end
 # of every probe digest. Converting probe-golden.tsv to CRLF and running
 # scripts/engines.ts reports all 23 non-heavy vectors as changed and exits 1,
-# accusing the simulation of a change nobody made. No CI run has hit this: the
-# Windows sweep dies earlier, at chromium launch. This closes it before it can.
+# accusing the simulation of a change nobody made. The Windows sweep used to die
+# earlier, at chromium launch, so no CI run had ever reached this comparison.
+# Run 35669728895 is the first that did, on a checkout this file pinned to LF,
+# and every vector agreed.
 #
 # eol=lf applies to the working tree on every platform, so a Windows checkout
 # now holds the same bytes as a Linux one. text=auto still leaves anything Git

@@ -49,20 +49,45 @@ function extract(output: string, engine: EngineId): unknown {
   return JSON.parse(line)
 }
 
-async function runInRuntime(
-  engine: "bun" | "node",
+const DRIVER = `${import.meta.dir}/browser-driver.mjs`
+
+/**
+ * How each engine is started.
+ *
+ * Every one of them is a child process fed the bundle on stdin, so there is
+ * one way of running the probe rather than a runtime path and a browser path
+ * that fail differently. The browsers used to be driven in process through
+ * Playwright, which cannot work on Windows: bun does not carry through the
+ * extra stdio descriptors --remote-debugging-pipe needs, so launch() hangs
+ * until it times out. `browser-driver.mjs` carries the detail and the
+ * upstream bugs.
+ *
+ * The browsers run under node for that reason alone. Keeping them there on
+ * every platform means CI exercises one code path, not a Windows-only one
+ * that nothing else would catch a break in.
+ */
+const COMMAND: Record<EngineId, readonly string[]> = {
+  bun: ["bun", "run", "-"],
+  node: ["node", "--input-type=module", "-"],
+  chromium: ["node", DRIVER],
+  firefox: ["node", DRIVER],
+  webkit: ["node", DRIVER],
+}
+
+export async function runProbeOn(
+  engine: EngineId,
   bundle: ProbeBundle,
   request: ProbeRequest,
 ): Promise<unknown> {
-  const command =
-    engine === "bun"
-      ? ["bun", "run", "-"]
-      : ["node", "--input-type=module", "-"]
-  const child = Bun.spawn(command, {
+  const child = Bun.spawn(COMMAND[engine] as string[], {
     stdin: new TextEncoder().encode(bundle.source),
     stdout: "pipe",
     stderr: "pipe",
-    env: { ...process.env, CW2_PROBE_REQUEST: JSON.stringify(request) },
+    env: {
+      ...process.env,
+      CW2_PROBE_REQUEST: JSON.stringify(request),
+      CW2_PROBE_ENGINE: engine,
+    },
   })
   const [stdout, stderr, code] = await Promise.all([
     new Response(child.stdout).text(),
@@ -73,39 +98,4 @@ async function runInRuntime(
     throw new Error(`${engine} exited with ${code}:\n${stderr.slice(0, 2000)}`)
   }
   return extract(stdout, engine)
-}
-
-async function runInBrowser(
-  engine: "chromium" | "firefox" | "webkit",
-  bundle: ProbeBundle,
-  request: ProbeRequest,
-): Promise<unknown> {
-  const playwright = await import("playwright")
-  const browser = await playwright[engine].launch()
-  try {
-    const page = await browser.newPage()
-    // about:blank is enough. No server, no fixture, nothing else to go wrong.
-    await page.goto("about:blank")
-    await page.addScriptTag({ content: bundle.source })
-    return await page.evaluate((payload: string) => {
-      const probe = (globalThis as unknown as Record<string, unknown>)
-        .__cw2probe as {
-        dispatch: (request: unknown) => unknown
-      }
-      return probe.dispatch(JSON.parse(payload))
-    }, JSON.stringify(request))
-  } finally {
-    await browser.close()
-  }
-}
-
-export async function runProbeOn(
-  engine: EngineId,
-  bundle: ProbeBundle,
-  request: ProbeRequest,
-): Promise<unknown> {
-  if (engine === "bun" || engine === "node") {
-    return runInRuntime(engine, bundle, request)
-  }
-  return runInBrowser(engine, bundle, request)
 }

@@ -126,8 +126,16 @@ replays to a different state.
   same bytes as a Linux one. Without it `core.autocrlf` rewrote both: converting
   `probe-golden.tsv` to CRLF makes `bun run test:engines` report all 23
   non-heavy vectors as changed and exit 1, and it changes the bytes the dmath
-  checksum covers. No CI run has reached that point, because the Windows sweep
-  fails earlier at chromium launch.
+  checksum covers. No CI run reached that comparison until the browsers moved to
+  node: run 35669728895 is the first, and every vector agreed.
+- `scripts/engines.ts` runs every engine as a child process fed the bundle on
+  stdin, browsers included: `scripts/engines/browser-driver.mjs` drives
+  Playwright under node. Bun cannot do it on Windows, where the two extra stdio
+  descriptors `--remote-debugging-pipe` needs are not carried through and
+  `launch()` hangs for its full 180s timeout (oven-sh/bun#27977). Node runs the
+  browsers on every platform rather than on Windows alone, so CI exercises one
+  path; it costs about 380ms of node startup per engine. The driver is the
+  harness's only `.mjs` file, because node has to run it with no build step.
 
 ## Working on the skill
 
