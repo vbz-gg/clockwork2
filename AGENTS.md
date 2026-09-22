@@ -63,13 +63,21 @@ ordering bug.
 
 ## Releasing
 
-Publish with `bun publish`, which `scripts/publish.ts` does. Never `npm
-publish`: cross-package dependencies are declared `workspace:*`, npm ships that
-string verbatim, and the published version is then uninstallable by anyone and
-cannot be unpublished after 72 hours. Bun replaces the protocol with the
-version being published, and `bun run check:publishable` packs each package and
-reads the tarball's own package.json to prove it still does. CI runs it on
-every push, and the release gate runs it again.
+`scripts/publish.ts` rewrites each package.json's `workspace:*` ranges to the
+version being published, calls `npm publish --access public --provenance`, and
+puts the file back in a `finally`.
+
+Both halves matter. An unrewritten `workspace:*` reaches the registry verbatim
+and the published version is uninstallable by anyone, permanently, because a
+version cannot be unpublished after 72 hours. And `--provenance` is why the
+release workflow grants `id-token: write`: npm signs an attestation naming the
+commit and the workflow that built the tarball. `bun publish` does the rewrite
+by itself and has no `--provenance` at 1.3.11, so reaching for it trades the
+signature for a string replacement.
+
+`bun run check:publishable` packs every package through that same rewrite and
+reads the tarball's own package.json. CI runs it on every push and the release
+gate runs it again.
 
 ## Working on the kernel
 
