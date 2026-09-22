@@ -28,9 +28,20 @@ import { $ } from "bun"
  */
 const dryRun = process.argv.includes("--dry-run")
 
+/**
+ * A one-time password, for a publish from a laptop.
+ *
+ * CI never needs this: trusted publishing exchanges an OIDC token and npm asks
+ * for nothing. A human with 2FA does, and `npm publish` cannot prompt for it
+ * from here because Bun's `$` allocates no TTY - so it fails with EOTP after
+ * packing, which reads like the publish went wrong rather than like a missing
+ * argument. Pass it through instead: `bun run scripts/publish.ts --otp=123456`.
+ */
+const otp = process.argv.find((a) => a.startsWith("--otp="))
+
 console.log(`${dryRun ? "packing" : "publishing"} @clockwork2/engine`)
 // `--access public` is still needed: a scoped package is private by default on
 // its first publish.
-await $`npm publish --access public ${dryRun ? ["--dry-run"] : []}`.cwd(
-  "packages/engine",
-)
+await $`npm publish --access public ${dryRun ? ["--dry-run"] : []} ${
+  otp === undefined ? [] : [otp]
+}`.cwd("packages/engine")

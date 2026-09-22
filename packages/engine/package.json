@@ -17,7 +17,7 @@
     "README.md"
   ],
   "bin": {
-    "clockwork2-validate": "./dist/validate/cli.js"
+    "clockwork2-validate": "dist/validate/cli.js"
   },
   "exports": {
     ".": {
