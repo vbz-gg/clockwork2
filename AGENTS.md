@@ -70,13 +70,26 @@ signs a provenance attestation naming the commit and the workflow that built
 each tarball. There is no `NPM_TOKEN` in this repository's secrets, and nothing
 to rotate.
 
-`scripts/publish.ts` calls `npm publish --access public` on `packages/engine`,
-and that is the whole of it. It used to rewrite six package.json files,
+`scripts/publish.ts` calls `npm publish --access public` on `packages/engine`.
+It used to rewrite six package.json files,
 substituting each `workspace:*` range for the version being published and
 restoring them afterwards, because an unrewritten range reaches the registry
 verbatim and that version is then uninstallable by anyone, permanently. One
 package has no sibling to depend on, so the rewrite and the hazard are both
 gone.
+
+It asks the registry for the version first and exits 0 without publishing when
+it is already there. Both triggers reach the same version by design, because
+dispatching a publish and then pushing the matching tag is how a release gets
+cut, and without the check that second run is red with no finding except that
+the release already worked. The check compares the printed version and not just
+the exit code: npm 10.9.7 answers a missing version with E404 and a non-zero
+exit, older majors exited 0 with an empty stdout, and anything but an exact
+match falls through to the publish where npm is the authority. That is the
+direction it has to fail in, since it can cost an attempted publish npm refuses
+and can never silently skip a release. `scripts/publish.test.ts` covers the
+readings, and covers that the publish sits behind `import.meta.main` so
+importing the script to test it cannot release what is on disk.
 
 No `--provenance` flag: under trusted publishing npm produces the attestation
 by default, and the flag would break the one case with no OIDC token, which is
