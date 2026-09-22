@@ -167,10 +167,30 @@ JSON where `JSON.stringify(NaN)` is `null`. Keep all three. Encoding a NaN
 anywhere in that path would hand an arm64 player a different checkpoint from an
 x86 one and the replay would report a mismatch neither caused.
 
-The oracle tests in `tests/dmath/oracle.test.ts` are a different matter: they
-compare against the host's own `Math`, which is implementation-defined, so
-their bounds say as much about the host's libm as about dmath. `tan` is the
-worked example. It failed at 2 ulp on macOS arm64, reaching 3 at
+`dmath.copysign` is the one way around all three that has been found. It reads
+the sign bit of its second argument and returns a finite number, so
+`copysign(5, inf - inf)` is `-5` on x86 and `5` on arm64 and the hash takes
+both. `docs/engine.md` documents it under the arithmetic section. Anything else
+added to dmath that reads a sign bit or a payload rather than a value needs the
+same look.
+
+**The oracle tests compare against `Math`, and that is not a mistake even
+though a simulation may never call it.** The point is not that `Math` is
+available to a game. It is that the host's libm is the only independent
+implementation of these functions within reach. The golden vectors compare
+dmath against its own last run, so a file regenerated from a broken build
+blesses the break. The identities compare it against mathematics, which is
+stronger and much looser: `exp(log(x)) = x` is checked to 4096 ulp, because the
+round trip amplifies. Between the two sits a band that only the host covers.
+Scaling `dmath.log` by `1 + e` puts numbers on it: at `e = 3e-15`, about 28
+ulp, the identities catch it; at `1e-15`, about 10 ulp, only the host
+comparison does; at `3e-16`, 2 ulp, nothing catches it and nothing should. That
+middle band is the size of a mistyped low-order digit in an fdlibm constant,
+which is the defect these tests are for.
+
+What it costs is that the bound has to sit near the host's own accuracy to
+cover that band, so a host with a looser libm fails a test that is about us.
+`tan` is the worked example. It failed at 2 ulp on macOS arm64, reaching 3 at
 `351.07445158064365`; against a 60-digit reference dmath was 0.48 ulp from
 exact, which is the correctly rounded double, and JavaScriptCore was 2.52 ulp
 out. The bound moved to 8 and the library did not move at all.

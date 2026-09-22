@@ -454,6 +454,78 @@ host library disagree, the difference is recorded as data with a test asserting
 it is still exactly what it says. Agreeing with any particular host is not the
 goal; agreeing with itself everywhere is.
 
+### How close "the same" is
+
+Two claims get mixed up here, so they are worth separating.
+
+`dmath` promises that every engine computes the same bits from the same input.
+That is the property a replay needs, and the golden vectors and the cross-engine
+sweep are what check it.
+
+It does not promise those bits are the true value of the function, and no binary
+floating-point library can, because `sin(0.1)` has no exact double. Accuracy is
+measured in ulp, the unit in the last place: the gap between one representable
+double and the next. Near 1.0 that gap is about 1.1e-16, so a result 2 ulp from
+the truth is wrong somewhere around the sixteenth significant digit. fdlibm aims
+for under 1 ulp and usually reaches it.
+
+If a `dmath` function were 2 ulp out everywhere, every engine would still agree
+and every replay would still settle. Accuracy is a separate quality from
+reproducibility, and this engine is built for the second. That is also why the
+tests comparing `dmath` against the host's own `Math` carry loose bounds: where
+the two disagree by a rounding step it is as likely the host that is loose. On
+macOS arm64, `Math.tan(351.07445158064365)` is 2.52 ulp from the true value and
+`dmath.tan` is 0.48 ulp from it, which is the nearest double there is.
+
+### The one freedom hardware keeps: the sign of a NaN
+
+Everything above is about the engine. The processor underneath it has one
+remaining latitude, and it is worth knowing before it surprises you.
+
+ECMAScript leaves a NaN's sign and payload implementation-defined, and
+processors differ. An invalid operation produces the negative quiet NaN
+`0xFFF8000000000000` on x86 and the positive `0x7FF8000000000000` on arm64:
+
+```ts
+import { toBitsHex } from "@clockwork2/engine"
+
+// `inf` has to be read from a variable. A literal `Infinity - Infinity` is
+// folded at parse time and gives the positive NaN on both architectures.
+toBitsHex(inf - inf)        // FFF8000000000000 on x86, 7FF8000000000000 on arm64
+toBitsHex(Number.NaN)       // 7FF8000000000000 on both: the literal is not computed
+```
+
+Of the 1212 NaN-producing golden vectors, 1074 differ between an Apple Silicon
+Mac and an x86 Linux runner. The other 138 propagate a NaN that arrived as an
+argument, and a propagated NaN keeps the sign it came with.
+
+`bun run test:engines` cannot see any of this, because it runs all five engines
+on one machine. So the golden comparison asserts that a NaN result is a NaN, and
+never which NaN it is.
+
+That is safe because a NaN cannot reach anything that decides a score. The three
+reasons are properties to preserve rather than luck:
+
+- `hashCanonical` refuses a NaN with `E_CANONICAL_UNSUPPORTED`, so one can never
+  enter a snapshot or a checkpoint hash.
+- A counter must be a whole number, so one can never be a score.
+- A recording is JSON, and `JSON.stringify(NaN)` is `null`.
+
+One route around all three is open, which is why this section exists.
+`dmath.copysign` reads the sign bit of its second argument and returns a finite
+number, so a NaN can hand its architecture-dependent sign to a value the hash
+will happily take:
+
+```ts
+dmath.copysign(5, inf - inf)   // -5 on x86, 5 on arm64
+```
+
+Both results are finite, both hash, and the two machines diverge from there. Do
+not pass a computed NaN to `copysign`. A simulation that produces a NaN at all
+has a bug the kernel reports the moment it tries to hash one, so the useful
+response is to find where the NaN came from rather than to route around the
+refusal.
+
 ## What a simulation may not touch
 
 Simulation code is anything reachable from `init` or `tick`. In that code these

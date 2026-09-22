@@ -1,6 +1,13 @@
 # Clockwork 2
 
-A game engine for browser games whose results someone else has to check.
+[![npm](https://img.shields.io/npm/v/@clockwork2/engine?label=npm&color=blue)](https://www.npmjs.com/package/@clockwork2/engine)
+[![CI](https://github.com/vbz-gg/clockwork2/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/vbz-gg/clockwork2/actions/workflows/ci.yml)
+[![Engines](https://img.shields.io/badge/engines-V8%20%7C%20JavaScriptCore%20%7C%20SpiderMonkey-brightgreen)](#what-is-verified-and-how)
+[![Runtime dependencies](https://img.shields.io/badge/runtime%20dependencies-0-brightgreen)](#one-package-several-entry-points)
+[![Coverage floor](https://img.shields.io/badge/coverage%20floor-99%25%20of%20lines-brightgreen)](#what-is-verified-and-how)
+[![License](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
+
+**A game engine for browser games whose results someone else has to check.**
 
 The browser records what the player pressed. A server replays that recording and
 computes the score itself. If the two disagree, the score is not real. That works
@@ -9,9 +16,7 @@ inputs, on every JavaScript engine a player might be using, and most of this
 project is the work of making that true and keeping it true.
 
 ```bash
-bun install
-bun run build
-bun run demo          # play Snake, record it, replay it
+bun add @clockwork2/engine
 ```
 
 ## Live demo
@@ -20,30 +25,39 @@ bun run demo          # play Snake, record it, replay it
 Play a round, download the recording, then load it back: the page replays it and
 puts the replay's state hash beside the one the run recorded.
 
+To run it locally:
+
+```bash
+bun install
+bun run build
+bun run demo          # play Snake, record it, replay it
+```
+
 ## What it gives you
 
-A fixed-step simulation loop. Your game advances one tick at a time and never
-sees a time delta, so it cannot depend on the player's frame rate. The host
-absorbs uneven frames by running more ticks, never bigger ones.
+The loop is fixed-step. Your game advances one tick at a time and never sees a
+time delta, so it cannot depend on the player's frame rate. The host absorbs an
+uneven frame by running more ticks, never a bigger one.
 
-Deterministic maths. `Math.sin`, `Math.pow` and the rest are allowed to give
-different answers in different engines, and they do: `Math.cos(0.1)` is
-`0x3FEFD712F9A817C1` on JavaScriptCore and `0x3FEFD712F9A817C0` on V8. The
-kernel ships `dmath` with the same function names, written from operations
-ECMAScript specifies exactly.
+`dmath` replaces the parts of `Math` that engines are allowed to disagree about,
+and do: `Math.cos(0.1)` is `0x3FEFD712F9A817C1` on JavaScriptCore and
+`0x3FEFD712F9A817C0` on V8. Every `dmath` function is a transcription of the
+fdlibm routine of the same name, built from operations ECMAScript specifies
+exactly, so it returns the same bits on all three engines.
 
-Seeded randomness, in labelled sub-streams, with its state in the snapshot.
+Randomness is seeded, drawn from labelled sub-streams, and carried in the
+snapshot like any other state.
 
-Recordings that replay. A recording is a seed, a configuration, the inputs
-stamped with the tick they run on, a state hash every second, and an end tick.
-Replaying it is the same loop reading inputs from a file instead of a keyboard.
+A recording is a seed, a configuration, the inputs stamped with the tick they run
+on, a state hash every second, and an end tick. Replaying it is the same loop
+reading inputs from a file instead of a keyboard.
 
-A conformance suite. Twelve checks with stable error codes, run the same way
-locally and by whatever platform accepts the game.
+The conformance suite is twelve checks with stable error codes, run the same way
+on your machine and by whatever platform accepts the game.
 
-Renderers that cannot cheat. A presentation reads the view and writes nothing,
-so it can use anything the simulation may not: `Math.random`, `performance.now`,
-WebGL, audio.
+A presentation reads the view and writes nothing, which is what lets it use
+everything the simulation may not: `Math.random`, `performance.now`, WebGL,
+audio.
 
 ## A game
 
@@ -79,11 +93,11 @@ Coding agents read it; so can you.
 
 ## One package, several entry points
 
-`@clockwork2/engine` ships with **no runtime dependencies**. `pixi.js`, `three`
-and `typescript` are optional peers, so a consumer who wants only the
-simulation installs nothing else. Every entry point below is a separate
-subpath with its own types, and the package is `"sideEffects": false`, so a
-bundler keeps what you import and drops the rest.
+`@clockwork2/engine` ships with no runtime dependencies. `pixi.js`, `three` and
+`typescript` are optional peers, so a consumer who wants only the simulation
+installs nothing else. Every entry point below is a separate subpath with its own
+types, and the package is `"sideEffects": false`, so a bundler keeps what you
+import and drops the rest.
 
 | Import | What it is |
 | --- | --- |
@@ -101,7 +115,6 @@ bun test              # unit tests, the demo's frozen recordings, and the skill
 bun run test:coverage # the same tests, then the coverage floor
 bun run test:engines  # the same vectors under every installed JS engine
 bun run test:e2e      # Playwright: record, replay, frame rates, cross-runtime
-bun run demo          # the Snake demo, with record and replay
 ```
 
 CI runs four things that matter more than the rest.
@@ -120,10 +133,10 @@ The cross-boundary test plays a session in a real browser with real key events,
 writes the recording to disk, replays it under Bun and under Node, and compares
 all three.
 
-CI holds coverage over `packages/*/src` at 99% of lines. It is at 99.67%, and
-the 18 uncovered lines are a load-time refusal only a big-endian build reaches,
-a branch `String.prototype.split` cannot produce, and a guard for a runtime that
-has frozen one of the globals the shims trap.
+Coverage over `packages/engine/src` is held at 99% of lines. It sits at 99.67%,
+and the 18 uncovered lines are a load-time refusal only a big-endian build
+reaches, a branch `String.prototype.split` cannot produce, and a guard for a
+runtime that has frozen one of the globals the shims trap.
 
 ## Documentation
 

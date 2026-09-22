@@ -8,6 +8,14 @@
  * transcription error, which shows up as a large difference or a wrong
  * special case rather than a last-bit one.
  *
+ * It is not redundant against the other two suites, which is the thing to know
+ * before deleting it. The golden vectors compare dmath against its own last
+ * run, so a file regenerated from a broken build blesses the break; the
+ * identities compare it against mathematics but have to be loose, since
+ * `exp(log(x)) = x` amplifies. Scaling `dmath.log` by `1 + 1e-15` - about 10
+ * ulp - passes every identity and every regenerated vector and fails only
+ * here. See AGENTS.md for the sweep those numbers come from.
+ *
  * Bounds are per routine, and they say as much about the host's library as
  * about ours. V8 tracks fdlibm closely for the trigonometric and exponential
  * families, so those are tight. `Math.pow` is a different algorithm in every
