@@ -15,10 +15,13 @@ name: Release
 on:
   workflow_dispatch:
     inputs:
+      # Unchecked publishes. The tag trigger below publishes with no box to
+      # tick at all, so a dispatch that needed one to do the same thing was the
+      # odd one out. Tick it to pack and validate without publishing.
       dry_run:
         description: Pack and validate without publishing
         type: boolean
-        default: true
+        default: false
   push:
     tags: ["v*"]
 

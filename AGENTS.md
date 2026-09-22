@@ -88,9 +88,11 @@ from a laptop and the publisher configured afterwards.
 mistakes cannot be undone. `.versionrc.json`'s `prerelease` hook runs that gate
 locally, and `bun run release` is what invokes it.
 
-Two triggers. `workflow_dispatch` takes a `dry_run` input defaulting true; a
-dry run packs and validates but never reaches the publish endpoint, so it does
-not exercise the OIDC exchange. npm's documented limitations say that for a
+Two triggers. `workflow_dispatch` takes a `dry_run` input defaulting **false**,
+so a dispatch publishes unless the box is ticked; the tag trigger publishes
+with no box at all, so a dispatch needing one to do the same thing was the odd
+one out. A dry run packs and validates but never reaches the publish endpoint,
+so it does not exercise the OIDC exchange. npm's documented limitations say that for a
 workflow using `workflow_call` or `workflow_dispatch`, "validation checks the
 calling workflow's name instead of the workflow that actually contains the
 publish command", so the tag push stays as the fallback if a dispatch is
