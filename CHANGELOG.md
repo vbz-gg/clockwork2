@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.2](https://github.com/vbz-gg/clockwork2/compare/v0.3.1...v0.3.2) (2026-09-22)
+
+
+### Features
+
+* **recording:** carry what the host's own loop measured ([1c7bb2d](https://github.com/vbz-gg/clockwork2/commit/1c7bb2dd018ffd24e7451ff08a64897a523916b3))
+
 ## [0.3.1](https://github.com/vbz-gg/clockwork2/compare/v0.3.0...v0.3.1) (2026-09-22)
 
 
