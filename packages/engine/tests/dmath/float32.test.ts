@@ -202,6 +202,38 @@ describe("copysign", () => {
       Number.NEGATIVE_INFINITY,
     )
   })
+
+  /**
+   * The one way a NaN could reach a checkpoint. Its sign bit belongs to the
+   * processor, not to ECMAScript, and copysign turns that bit into a finite
+   * number the canonical encoder will happily take: before this guard,
+   * copysign(5, inf - inf) was -5 on x86 and 5 on arm64. Every other route is
+   * closed by something that refuses a NaN outright, so this one had to be
+   * closed by refusing it here.
+   */
+  test("refuses a NaN, which is what stops an architecture reaching a hash", () => {
+    // Opaque, because a literal `Infinity - Infinity` is folded at parse time
+    // and yields the positive NaN on both architectures. The computed one is
+    // the value that actually differs.
+    const opaque = new Float64Array([Number.POSITIVE_INFINITY])
+    const inf = opaque[0] as number
+    const computedNaN = inf - inf
+
+    expect(Number.isNaN(computedNaN)).toBe(true)
+    expect(codeOf(() => copysign(5, computedNaN))).toBe("E_ARG_INVALID")
+    expect(codeOf(() => copysign(computedNaN, 1))).toBe("E_ARG_INVALID")
+    expect(codeOf(() => copysign(Number.NaN, Number.NaN))).toBe("E_ARG_INVALID")
+  })
+
+  test("the refusal names the call, so the line is obvious", () => {
+    let message = ""
+    try {
+      copysign(5, Number.NaN)
+    } catch (error) {
+      message = String(error)
+    }
+    expect(message).toContain("copysign(5, NaN)")
+  })
 })
 
 describe("scalbn", () => {
@@ -239,6 +271,8 @@ describe("scalbn", () => {
     expect(scalbn(Number.POSITIVE_INFINITY, -2000)).toBe(
       Number.POSITIVE_INFINITY,
     )
+    // copysign refuses a NaN now, and scalbn must still not throw on one: it
+    // returns at the `k === 0x7ff` branch before it ever calls copysign.
     expect(Number.isNaN(scalbn(Number.NaN, 5))).toBe(true)
   })
 

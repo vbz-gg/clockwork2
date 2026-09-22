@@ -1204,6 +1204,8 @@ export declare function atan2(y: number, x: number): number;
 
 ### copysign
 
+`x` with the sign of `y`. Refuses a NaN in either argument with `E_ARG_INVALID`.
+
 ```ts
 export declare function copysign(x: number, y: number): number;
 ```

@@ -141,10 +141,19 @@ An argument the caller controls was outside the range the API accepts, and the
 detail names the value and the range. The APIs that report it are `maxTicks`
 and `tickHz` on a session, the tick counts `Timer.every()` and `Timer.after()`
 take, the replay speed on a host, `fixed.div()` by zero, `fixed.sqrt()` of a
-negative, and `randomChoice()` on an empty array.
+negative, `randomChoice()` on an empty array, and `dmath.copysign()` with a NaN
+in either argument.
 
-This is a bug in the calling code, not a state a simulation can reach, so there
-is nothing to catch and nothing to recover. Read the detail and fix the call.
+This is a bug in the calling code rather than a state the engine puts you in,
+so there is nothing to catch and nothing to recover. Read the detail and fix
+the call.
+
+`copysign` is the one that needs a word of its own, because refusing a NaN
+there is not obvious. A NaN's sign bit is chosen by the processor, not by
+ECMAScript, so `copysign` would hand you a *finite* number that differs between
+an x86 player and an arm64 one, and the canonical encoder would accept it.
+Reaching it means the simulation already produced a NaN somewhere, so the fix
+is upstream of the call.
 
 ### E_ENV_UNSUPPORTED
 

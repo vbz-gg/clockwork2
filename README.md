@@ -2,9 +2,6 @@
 
 [![npm](https://img.shields.io/npm/v/@clockwork2/engine?label=npm&color=blue)](https://www.npmjs.com/package/@clockwork2/engine)
 [![CI](https://github.com/vbz-gg/clockwork2/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/vbz-gg/clockwork2/actions/workflows/ci.yml)
-[![Engines](https://img.shields.io/badge/engines-V8%20%7C%20JavaScriptCore%20%7C%20SpiderMonkey-brightgreen)](#what-is-verified-and-how)
-[![Runtime dependencies](https://img.shields.io/badge/runtime%20dependencies-0-brightgreen)](#one-package-several-entry-points)
-[![Coverage floor](https://img.shields.io/badge/coverage%20floor-99%25%20of%20lines-brightgreen)](#what-is-verified-and-how)
 [![License](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
 
 <div style="padding:75% 0 0 0;position:relative;"><iframe src="https://player.vimeo.com/video/1229077001?badge=0&amp;autopause=0&amp;player_id=0&amp;app_id=58479&amp;autoplay=1&amp;muted=1&amp;loop=1" frameborder="0" allow="autoplay; fullscreen; picture-in-picture; clipboard-write; encrypted-media; web-share" referrerpolicy="strict-origin-when-cross-origin" style="position:absolute;top:0;left:0;width:100%;height:100%;" title="Clockwork2 demo"></iframe></div><script src="https://player.vimeo.com/api/player.js"></script>

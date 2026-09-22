@@ -167,12 +167,14 @@ JSON where `JSON.stringify(NaN)` is `null`. Keep all three. Encoding a NaN
 anywhere in that path would hand an arm64 player a different checkpoint from an
 x86 one and the replay would report a mismatch neither caused.
 
-`dmath.copysign` is the one way around all three that has been found. It reads
-the sign bit of its second argument and returns a finite number, so
-`copysign(5, inf - inf)` is `-5` on x86 and `5` on arm64 and the hash takes
-both. `docs/engine.md` documents it under the arithmetic section. Anything else
-added to dmath that reads a sign bit or a payload rather than a value needs the
-same look.
+`dmath.copysign` was the one way around all three. It reads the sign bit of its
+second argument and returns a finite number, so `copysign(5, inf - inf)` was
+`-5` on x86 and `5` on arm64 and the hash took both. It now refuses a NaN in
+either argument with `E_ARG_INVALID`, which fdlibm's C does not do; the reason
+is in its doc comment and in `docs/engine.md` under arithmetic. `scalbn` is the
+only internal caller and is unaffected, because it returns at its `k === 0x7ff`
+branch before it reaches a copysign call. Anything added to dmath that reads a
+sign bit or a payload rather than a value needs the same look.
 
 **The oracle tests compare against `Math`, and that is not a mistake even
 though a simulation may never call it.** The point is not that `Math` is

@@ -511,20 +511,24 @@ reasons are properties to preserve rather than luck:
 - A counter must be a whole number, so one can never be a score.
 - A recording is JSON, and `JSON.stringify(NaN)` is `null`.
 
-One route around all three is open, which is why this section exists.
+One route around all three used to be open, which is why this section exists.
 `dmath.copysign` reads the sign bit of its second argument and returns a finite
-number, so a NaN can hand its architecture-dependent sign to a value the hash
-will happily take:
+number, so a NaN could hand its architecture-dependent sign to a value the hash
+would take: `copysign(5, inf - inf)` was `-5` on x86 and `5` on arm64. Both are
+finite, both hash, and two players diverge from there on the same inputs.
+
+So `copysign` refuses a NaN in either argument with `E_ARG_INVALID`, which
+fdlibm's C does not:
 
 ```ts
-dmath.copysign(5, inf - inf)   // -5 on x86, 5 on arm64
+dmath.copysign(5, -1)          // -5
+dmath.copysign(5, inf - inf)   // throws E_ARG_INVALID
 ```
 
-Both results are finite, both hash, and the two machines diverge from there. Do
-not pass a computed NaN to `copysign`. A simulation that produces a NaN at all
-has a bug the kernel reports the moment it tries to hash one, so the useful
-response is to find where the NaN came from rather than to route around the
-refusal.
+Reaching that error means the simulation already produced a NaN, which is a bug
+the kernel would have reported at the next hash anyway. The throw just moves the
+report to the line that caused it. Anything added to `dmath` later that reads a
+sign bit or a payload rather than a value needs the same treatment.
 
 ## What a simulation may not touch
 
