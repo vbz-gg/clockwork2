@@ -37,6 +37,10 @@ coveragePathIgnorePatterns = [
   "e2e/**",
   "scripts/**",
   "skill/**",
+  # Bundles a test writes to a temp directory and imports, to exercise a real
+  # loader against a real file. They are inputs, not code under test, and they
+  # arrive in the report as ../../../tmp/... with a fresh name every run.
+  "**/cw2-scratch-*/**",
 ]
 
 # No `coverageThreshold` here on purpose, and adding one back is a mistake.

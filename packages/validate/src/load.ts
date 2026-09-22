@@ -8,7 +8,7 @@
  * knowing it. A cache-busting query on the import is how that is done here.
  */
 
-import { existsSync, readFileSync } from "node:fs"
+import { existsSync, readFileSync, statSync } from "node:fs"
 import { isAbsolute, join, resolve } from "node:path"
 import {
   assertManifest,
@@ -24,12 +24,21 @@ const ENTRY_NAMES = ["index.ts", "index.js", "index.mjs", "src/index.ts"]
 
 export function findEntry(target: string): string {
   const full = isAbsolute(target) ? target : resolve(target)
-  if (existsSync(full) && !existsSync(join(full, "."))) return full
+  // A path straight to a file is the entry, whatever it is called.
+  //
+  // This asks statSync rather than `!existsSync(join(full, "."))`, which was
+  // here before and never once fired: path.join normalises the "." away, so it
+  // asked whether `full` exists twice over and answered false for a file and a
+  // directory alike. The direct-file case was reaching the fallback below
+  // instead, and the fallback returned the directory for a bundle with no
+  // entry - so the message this ends with, the only one that names the
+  // filenames looked for, was unreachable. A submitter who shipped no entry
+  // file got `Cannot find module /path/to/bundle` from the import.
+  if (existsSync(full) && statSync(full).isFile()) return full
   for (const name of ENTRY_NAMES) {
     const candidate = join(full, name)
     if (existsSync(candidate)) return candidate
   }
-  if (existsSync(full)) return full
   fail("E_SUBJECT_LOAD", {
     detail: `no entry file at ${target}; looked for ${ENTRY_NAMES.join(", ")}`,
   })
