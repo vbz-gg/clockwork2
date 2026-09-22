@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.1](https://github.com/vbz-gg/clockwork2/compare/v0.3.0...v0.3.1) (2026-09-22)
+
+
+### CI
+
+* **release:** dispatch publishes unless the box is ticked ([a746aed](https://github.com/vbz-gg/clockwork2/commit/a746aedb62af908626b0b01b74b3ff83c71b7077))
+* **release:** publishing a version the registry has is a no-op ([509044f](https://github.com/vbz-gg/clockwork2/commit/509044fcac85df012058611725d6dbe7085cfed4))
+* **release:** refuse a release with no tag to measure from, and no majors ([838708b](https://github.com/vbz-gg/clockwork2/commit/838708b251f574b67dbac97c96b61c36e2c9810a))
+* **release:** the job creates its own tag and GitHub release ([2708f09](https://github.com/vbz-gg/clockwork2/commit/2708f098fcf19c4745603d8530b9837245d1b381))
+
 ## [0.3.0](https://github.com/vbz-gg/clockwork2/compare/v0.2.0...v0.3.0) (2026-09-22)
 
 
