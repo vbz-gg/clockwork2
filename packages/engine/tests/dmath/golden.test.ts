@@ -32,6 +32,31 @@ const BINARY: Record<string, Binary> = {
   ipow: dmath.ipow,
 }
 
+/**
+ * Whether a result matches the vector.
+ *
+ * Exact bits, except for a NaN. ECMAScript leaves a NaN's sign and payload to
+ * the implementation, and the hardware disagrees: an invalid operation yields
+ * the negative quiet NaN 0xFFF8000000000000 on x86 and the positive one
+ * 0x7FF8000000000000 on arm64. Every dmath routine that can generate a NaN
+ * therefore returns a different bit pattern on an Apple Silicon Mac than on a
+ * Linux x64 runner - 1074 of these vectors, measured - while propagating a NaN
+ * that arrived as an argument keeps its sign on both.
+ *
+ * Pinning the sign here would be pinning the architecture. Nothing downstream
+ * can see it: `hashCanonical` refuses NaN outright rather than encoding it,
+ * counters must be whole numbers, and a recording is JSON, where a NaN does
+ * not survive `JSON.stringify` at all. So a vector whose result is a NaN says
+ * that the result is a NaN, and nothing about which one.
+ */
+function matches(actualBits: string, expectedBits: string): boolean {
+  if (actualBits === expectedBits) return true
+  return (
+    Number.isNaN(fromBitsHex(actualBits)) &&
+    Number.isNaN(fromBitsHex(expectedBits))
+  )
+}
+
 describe("dmath golden vectors", () => {
   const raw = readFileSync(VECTORS, "utf8")
   const rows = raw
@@ -56,7 +81,7 @@ describe("dmath golden vectors", () => {
       if (unary !== undefined) {
         const x = fromBitsHex(parts[1] as string)
         const actual = toBitsHex(unary(x))
-        if (actual !== parts[2]) {
+        if (!matches(actual, parts[2] as string)) {
           throw new Error(
             `line ${i + 3}: ${name}(${x}) is ${actual}, the vector says ${parts[2]}`,
           )
@@ -69,7 +94,7 @@ describe("dmath golden vectors", () => {
       const a = fromBitsHex(parts[1] as string)
       const b = fromBitsHex(parts[2] as string)
       const actual = toBitsHex(binary(a, b))
-      if (actual !== parts[3]) {
+      if (!matches(actual, parts[3] as string)) {
         throw new Error(
           `line ${i + 3}: ${name}(${a}, ${b}) is ${actual}, the vector says ${parts[3]}`,
         )

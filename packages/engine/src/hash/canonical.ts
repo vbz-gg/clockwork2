@@ -16,7 +16,12 @@
  * - NaN, Infinity, undefined, functions, symbols, and class instances are
  *   refused rather than coerced. Each of them is a bug in the snapshot, and
  *   encoding them would hide it. NaN in particular has an unspecified payload,
- *   so it cannot be hashed meaningfully even in principle.
+ *   so it cannot be hashed meaningfully even in principle - and the difference
+ *   is not theoretical: an invalid operation yields 0xFFF8000000000000 on x86
+ *   and 0x7FF8000000000000 on arm64, so hashing a NaN would give an Apple
+ *   Silicon player a different checkpoint from an x86 one and the replay would
+ *   report a mismatch neither of them caused. Refusing it here is what stops
+ *   that, which is why this rule is load-bearing rather than fastidious.
  * - Strings carry their length, so `{"ab": 1}` and `{"a": "b1"}` cannot
  *   collide through a delimiter.
  */

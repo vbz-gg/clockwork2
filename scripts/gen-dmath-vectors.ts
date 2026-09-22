@@ -7,6 +7,15 @@
  *
  *   bun run scripts/gen-dmath-vectors.ts
  *
+ * **Regenerate on the same architecture the file was written on, or expect a
+ * diff that says nothing.** A NaN's sign is implementation-defined and the
+ * hardware disagrees - an invalid operation gives 0xFFF8000000000000 on x86
+ * and 0x7FF8000000000000 on arm64 - so running this on an Apple Silicon Mac
+ * flips the sign on 1074 rows without a single routine having changed. The
+ * test reads a NaN row as "this is a NaN" rather than as exact bits, so such a
+ * file still passes everywhere; it just buries a real change in noise. x86 is
+ * what CI runs and what the current file holds.
+ *
  * Every value is written as 16 hex digits of IEEE 754, so -0, subnormals, the
  * NaN payload and every boundary case are visible in a diff rather than hidden
  * behind decimal formatting.

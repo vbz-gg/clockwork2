@@ -19,6 +19,31 @@
  * import * as dmath from "."
  * const x = dmath.cos(angle) * radius
  * ```
+ *
+ * ## The one thing not bit-identical across machines: a NaN's sign
+ *
+ * Every finite result here is the same bits on every engine and every
+ * architecture. A NaN is not, and cannot be. ECMAScript leaves a NaN's sign
+ * and payload to the implementation, and the hardware differs: an invalid
+ * operation produces the negative quiet NaN `0xFFF8000000000000` on x86 and
+ * the positive `0x7FF8000000000000` on arm64. So `dmath.log(-1)` returns a NaN
+ * with a different sign bit on an Apple Silicon Mac than on an x86 Linux
+ * server, and no amount of care here can change that - the bits never pass
+ * through JavaScript arithmetic, they come straight from the FPU.
+ *
+ * A NaN that *arrives* as an argument is propagated with its sign intact, so
+ * only a freshly generated one differs. Measured across the golden vectors:
+ * 1074 of 1212 NaN results.
+ *
+ * This is safe, because a NaN cannot reach anything that decides a score.
+ * `hashCanonical` refuses one rather than encoding it, counters must be whole
+ * numbers, and a recording is JSON, where `JSON.stringify(NaN)` is `null` and
+ * the decoder rejects it. A simulation that produces a NaN has a bug, and the
+ * kernel makes that bug loud instead of letting it settle into a hash.
+ *
+ * The consequence for tests: a golden vector whose result is a NaN asserts
+ * that the result *is* a NaN, never which one. Pinning the sign would pin the
+ * architecture, and the suite would fail on every arm64 machine.
  */
 
 export { acos, asin, atan, atan2 } from "./atan"

@@ -140,6 +140,28 @@ computes a plausible wrong answer from stale scratch values. Throw.
 Changing any `dmath` function means regenerating its golden vectors, which is a
 deliberate act. Say why in the commit body.
 
+**A NaN's sign is the one thing dmath does not pin, and must not.** ECMAScript
+leaves a NaN's sign and payload to the implementation, and the hardware
+differs: an invalid operation yields the negative quiet NaN
+`0xFFF8000000000000` on x86 and the positive `0x7FF8000000000000` on arm64.
+1074 of the 1212 NaN-producing golden vectors differ between an Apple Silicon
+Mac and an x86 Linux runner; the other 138 propagate a NaN that arrived as an
+argument, which keeps its sign on both. So the golden comparison asserts that
+a NaN result *is* a NaN and never which one, and `bun run test:engines` cannot
+catch this because it runs every engine on one machine.
+
+That is safe only because a NaN cannot reach anything that decides a score:
+`hashCanonical` refuses one, counters must be whole numbers, and a recording is
+JSON where `JSON.stringify(NaN)` is `null`. Keep all three. Encoding a NaN
+anywhere in that path would hand an arm64 player a different checkpoint from an
+x86 one and the replay would report a mismatch neither caused.
+
+The oracle tests in `tests/dmath/oracle.test.ts` are a different matter: they
+compare against the host's own `Math`, which is implementation-defined, so
+their bounds say as much about the host's libm as about dmath. A bound tight
+enough to pass on glibc can fail on Apple's libm without anything being wrong
+here. Loosen the bound rather than the library.
+
 ## Working on the host loop
 
 `DEFAULT_MAX_CATCHUP_TICKS` and `DEFAULT_MAX_FRAME_MS` are exported so tests
