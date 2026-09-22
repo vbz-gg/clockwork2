@@ -18,7 +18,11 @@ import { fail } from "../errors"
 import { validateInputLog } from "../inputs"
 import type { Checkpoint } from "../loop"
 import { TICK_RATES } from "../manifest/types"
-import { RECORDING_FORMAT, RECORDING_VERSION, type Recording } from "./types"
+import {
+  READABLE_RECORDING_VERSIONS,
+  RECORDING_FORMAT,
+  type Recording,
+} from "./types"
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -59,9 +63,9 @@ export function decodeRecording(source: string | unknown): Recording {
       detail: `format is ${JSON.stringify(r.format)}, expected ${JSON.stringify(RECORDING_FORMAT)}`,
     })
   }
-  if (r.version !== RECORDING_VERSION) {
+  if (!READABLE_RECORDING_VERSIONS.includes(r.version as never)) {
     fail("E_RECORDING_VERSION", {
-      detail: `version is ${String(r.version)}, this kernel reads ${RECORDING_VERSION}`,
+      detail: `version is ${String(r.version)}, this kernel reads ${READABLE_RECORDING_VERSIONS.join(" and ")}`,
     })
   }
 
@@ -122,6 +126,28 @@ export function decodeRecording(source: string | unknown): Recording {
     if (!Number.isInteger(count) || Math.abs(count) > Number.MAX_SAFE_INTEGER) {
       malformed(`counter ${JSON.stringify(name)} is ${String(count)}`)
     }
+  }
+
+  // Absent on a version 1 recording, which is the only reason it is nullable.
+  // Present and wrong is a malformed recording: a platform that reads these to
+  // tell a slow phone from a cheat cannot do it from a string.
+  if (r.hostStats === undefined || r.hostStats === null) {
+    return { ...r, hostStats: null } as unknown as Recording
+  }
+  if (!isPlainObject(r.hostStats)) malformed("hostStats must be an object")
+  const stats = r.hostStats as Record<string, unknown>
+  for (const key of ["frames", "ticksRun", "mostTicksInAFrame"] as const) {
+    const count = stats[key]
+    if (!Number.isInteger(count) || (count as number) < 0) {
+      malformed(`hostStats.${key} is ${String(count)}`)
+    }
+  }
+  // Not an integer: the accumulator drops a fraction of a millisecond at a
+  // time and this is their sum. A stalled tab reports something like
+  // 299916.6666666667, which is the measurement rather than a defect in it.
+  const dropped = stats.droppedMs
+  if (typeof dropped !== "number" || !Number.isFinite(dropped) || dropped < 0) {
+    malformed(`hostStats.droppedMs is ${String(dropped)}`)
   }
 
   return value as Recording

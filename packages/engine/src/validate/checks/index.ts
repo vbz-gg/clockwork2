@@ -550,6 +550,8 @@ const replayRoundTrip: Check = {
         checkpoints: recorded.checkpoints,
         endTick: recorded.endTick,
         terminal: recorded.terminal,
+        // No host loop ran this, so there is nothing to report about one.
+        hostStats: null,
         counters: recorded.counters,
       }
 

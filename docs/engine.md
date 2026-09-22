@@ -693,7 +693,7 @@ A recording is what the browser sends and the server verifies:
 ```jsonc
 {
   "format": "cw2-recording",
-  "version": 1,
+  "version": 2,
   "kernelVersion": "0.1.0",
   "gameId": "lane-runner",
   "gameVersion": "1.0.0",
@@ -705,12 +705,25 @@ A recording is what the browser sends and the server verifies:
   "checkpoints": [{ "tick": 0, "hash": "..." }, { "tick": 60, "hash": "..." }],
   "endTick": 1650,
   "terminal": "completed",
-  "counters": { "ticksSurvived": 1650 }
+  "counters": { "ticksSurvived": 1650 },
+  "hostStats": { "frames": 1650, "ticksRun": 1650, "mostTicksInAFrame": 2, "droppedMs": 0 }
 }
 ```
 
 Replay is determined by the seed, the config, the inputs and `endTick`. Nothing
 else is needed to reproduce the run.
+
+`hostStats` is the exception that proves it: a replay ignores the field
+entirely. It is what the host's own loop measured while the run was happening,
+and it is in the envelope because a platform reading a submission cannot
+otherwise tell a player who is cheating from a player on a slow phone, and
+those need different answers. `droppedMs` is not an integer - the accumulator
+drops a fraction of a millisecond at a time and this is their sum, so a stalled
+tab reports something like `299916.6666666667`.
+
+It is `null` on a version 1 recording, which is the only reason it is nullable
+rather than absent: `Recording` has to remain a `PlainValue`, and an optional
+property does not satisfy that index signature.
 
 Checkpoints are a state hash taken once a second. A replay does not read them;
 it produces its own and compares. Their only job is to turn "this recording does
@@ -724,6 +737,11 @@ else.
 `E_RECORDING_VERSION` for anything it does not read, rather than guessing. A
 recording is evidence, and a codec that silently reinterprets old evidence
 produces confident wrong answers.
+
+What it does read is every version in `READABLE_RECORDING_VERSIONS`, currently
+1 and 2. Refusing an older recording because the kernel has moved on throws the
+evidence away rather than protecting anything, so a version is dropped from
+that list only when a field's meaning changed rather than when one was added.
 
 To replay one:
 

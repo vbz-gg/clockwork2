@@ -593,7 +593,7 @@ RECORDING_FORMAT = "cw2-recording"
 Bumped whenever a field changes meaning. `decodeRecording` checks it, which game-base's envelope did not: it wrote a version and read it nowhere, while changing codec twice underneath.
 
 ```ts
-RECORDING_VERSION = 1
+RECORDING_VERSION = 2
 ```
 
 ### TERMINAL_REASONS
@@ -977,6 +977,15 @@ export type Recording = {
     readonly terminal: TerminalReason;
     /** What the client claims. The server compares this against its own replay. */
     readonly counters: Counters;
+    /**
+     * The host loop's own measurements, or null for a version 1 recording.
+     *
+     * Nullable rather than optional, because `Recording` has to remain a
+     * `PlainValue` and an optional property does not satisfy that index
+     * signature. Null says "this recording predates the field" rather than
+     * "there were no frames".
+     */
+    readonly hostStats: HostStats | null;
 };
 ```
 
@@ -2199,7 +2208,7 @@ RECORDING_FORMAT = "cw2-recording"
 Bumped whenever a field changes meaning. `decodeRecording` checks it, which game-base's envelope did not: it wrote a version and read it nowhere, while changing codec twice underneath.
 
 ```ts
-RECORDING_VERSION = 1
+RECORDING_VERSION = 2
 ```
 
 ### TERMINAL_REASONS
@@ -2583,6 +2592,15 @@ export type Recording = {
     readonly terminal: TerminalReason;
     /** What the client claims. The server compares this against its own replay. */
     readonly counters: Counters;
+    /**
+     * The host loop's own measurements, or null for a version 1 recording.
+     *
+     * Nullable rather than optional, because `Recording` has to remain a
+     * `PlainValue` and an optional property does not satisfy that index
+     * signature. Null says "this recording predates the field" rather than
+     * "there were no frames".
+     */
+    readonly hostStats: HostStats | null;
 };
 ```
 
@@ -3364,7 +3382,7 @@ RECORDING_FORMAT = "cw2-recording"
 Bumped whenever a field changes meaning. `decodeRecording` checks it, which game-base's envelope did not: it wrote a version and read it nowhere, while changing codec twice underneath.
 
 ```ts
-RECORDING_VERSION = 1
+RECORDING_VERSION = 2
 ```
 
 ### TERMINAL_REASONS
@@ -3748,6 +3766,15 @@ export type Recording = {
     readonly terminal: TerminalReason;
     /** What the client claims. The server compares this against its own replay. */
     readonly counters: Counters;
+    /**
+     * The host loop's own measurements, or null for a version 1 recording.
+     *
+     * Nullable rather than optional, because `Recording` has to remain a
+     * `PlainValue` and an optional property does not satisfy that index
+     * signature. Null says "this recording predates the field" rather than
+     * "there were no frames".
+     */
+    readonly hostStats: HostStats | null;
 };
 ```
 

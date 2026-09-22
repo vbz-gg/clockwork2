@@ -389,6 +389,9 @@ export class GameHost<
       endTick: result.endTick,
       terminal: result.terminal,
       counters: result.counters,
+      // What the loop did while this was happening. A replay ignores it; a
+      // platform reads it to tell a slow phone from a cheat.
+      hostStats: this.stats,
     }
   }
 

@@ -44,6 +44,12 @@ function record(seed = "seed-1"): Recording {
     endTick: result.endTick,
     terminal: result.terminal,
     counters: result.counters,
+    hostStats: {
+      frames: 1200,
+      ticksRun: result.endTick,
+      mostTicksInAFrame: 5,
+      droppedMs: 0,
+    },
   }
 }
 
@@ -410,3 +416,87 @@ describe("diffSnapshots", () => {
     )
   })
 })
+
+describe("reading an older recording", () => {
+  /**
+   * A recording is evidence about a run that already happened. Refusing to
+   * read one because the kernel has moved on throws the evidence away rather
+   * than protecting anything, and the three frozen fixtures in e2e/ are
+   * version 1.
+   */
+  test("a version 1 recording decodes, with no host stats", () => {
+    const { hostStats: _dropped, ...older } = record()
+    const decoded = decodeRecording(JSON.stringify({ ...older, version: 1 }))
+    expect(decoded.version).toBe(1)
+    expect(decoded.hostStats).toBeNull()
+  })
+
+  test("a version this kernel has never heard of is refused", () => {
+    const thrown = expectThrows(() =>
+      decodeRecording(JSON.stringify({ ...record(), version: 99 })),
+    )
+    expect(thrown.code).toBe("E_RECORDING_VERSION")
+    expect(thrown.detail).toContain("1 and 2")
+  })
+})
+
+describe("host stats", () => {
+  /**
+   * A platform reads these to tell a player on a slow phone from a player who
+   * is cheating, and those need different answers. A string where a count
+   * belongs would make that judgement silently.
+   */
+  test.each([
+    ["not an object", "fast"],
+    [
+      "a string count",
+      { frames: "many", ticksRun: 1, mostTicksInAFrame: 1, droppedMs: 0 },
+    ],
+    [
+      "a fractional count",
+      { frames: 1.5, ticksRun: 1, mostTicksInAFrame: 1, droppedMs: 0 },
+    ],
+    [
+      "a negative count",
+      { frames: -1, ticksRun: 1, mostTicksInAFrame: 1, droppedMs: 0 },
+    ],
+    ["a missing key", { frames: 1, ticksRun: 1, mostTicksInAFrame: 1 }],
+  ])("refuses %s", (_name, hostStats) => {
+    const thrown = expectThrows(() =>
+      decodeRecording(JSON.stringify({ ...record(), hostStats })),
+    )
+    expect(thrown.code).toBe("E_RECORDING_MALFORMED")
+  })
+
+  test("keeps a fractional dropped time, which is what a stalled tab reports", () => {
+    // The accumulator drops a fraction of a millisecond at a time and this is
+    // their sum. Requiring an integer here refused a real recording.
+    const stats = {
+      frames: 30,
+      ticksRun: 120,
+      mostTicksInAFrame: 5,
+      droppedMs: 299916.6666666667,
+    }
+    const decoded = decodeRecording(
+      JSON.stringify({ ...record(), hostStats: stats }),
+    )
+    expect(decoded.hostStats?.droppedMs).toBe(299916.6666666667)
+  })
+
+  test("survives a round trip", () => {
+    const recording = record()
+    expect(decodeRecording(encodeRecording(recording)).hostStats).toEqual(
+      recording.hostStats,
+    )
+  })
+})
+
+/** The error, with its code, rather than whatever `toThrow` matched. */
+function expectThrows(run: () => unknown): { code: string; detail?: string } {
+  try {
+    run()
+  } catch (error) {
+    return error as { code: string; detail?: string }
+  }
+  throw new Error("expected a throw, got none")
+}
