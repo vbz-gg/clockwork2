@@ -4,13 +4,17 @@ name: Release
 # short-lived credential, so there is no long-lived NPM_TOKEN in this
 # repository's secrets and nothing to leak or rotate.
 #
-# Two triggers on purpose. npm's own documented limitation says that for a
-# workflow using workflow_call or workflow_dispatch, "validation checks the
-# calling workflow's name instead of the workflow that actually contains the
-# publish command". A plain dispatch on this file should present this file as
-# its own workflow_ref, so it ought to match - but npm validates nothing until
-# publish time, so the tag push stays as the fallback. The publish step lives
-# here and is never reached through workflow_call.
+# npm's documented limitation says that for a workflow using workflow_call or
+# workflow_dispatch, "validation checks the calling workflow's name instead of
+# the workflow that actually contains the publish command". A dispatch of this
+# file presents this file as its own workflow_ref, so it ought to match, and
+# run 35699600341 measured that it does: 0.3.0 published from a dispatch and
+# npm signed its provenance. The tag trigger stays anyway, for a tag pushed by
+# hand. The publish step is never reached through workflow_call.
+#
+# The tag and the GitHub release are made by this job rather than pushed ahead
+# of it, so cutting a release is one action and a tag can never name a commit
+# the publish did not come from.
 
 on:
   workflow_dispatch:
@@ -29,10 +33,12 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      # Nothing here writes to the repository, so contents is read. id-token is
-      # what trusted publishing needs, and what makes npm sign a provenance
-      # attestation naming the commit and this workflow.
-      contents: read
+      # contents is write only because the last step creates the tag and the
+      # GitHub release. Nothing else here writes to the repository, and no step
+      # pushes to a branch. id-token is what trusted publishing needs, and what
+      # makes npm sign a provenance attestation naming the commit and this
+      # workflow.
+      contents: write
       id-token: write
     steps:
       - uses: actions/checkout@v4
@@ -78,3 +84,30 @@ jobs:
       - name: Publish
         if: github.event_name != 'workflow_dispatch' || !inputs.dry_run
         run: bun run scripts/publish.ts
+
+      # `gh release create` creates the tag at --target when it does not exist
+      # yet, so this is the tag and the release in one call. A ref created with
+      # GITHUB_TOKEN does not start another workflow run, which is what stops
+      # this retriggering the push: tags trigger above.
+      #
+      # It runs even when the publish above found the version already on the
+      # registry, because that is exactly the re-run that exists to add a tag
+      # or a release that went missing. Both halves check first, so running it
+      # again changes nothing.
+      - name: Tag and publish the GitHub release
+        if: github.event_name != 'workflow_dispatch' || !inputs.dry_run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./packages/engine/package.json').version")"
+          tag="v$version"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "$tag is already released"
+            exit 0
+          fi
+          bun run scripts/release-notes.ts "$version" > "$RUNNER_TEMP/notes.md"
+          gh release create "$tag" \
+            --title "$tag" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            --target "$GITHUB_SHA"

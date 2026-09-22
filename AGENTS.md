@@ -101,6 +101,18 @@ from a laptop and the publisher configured afterwards.
 mistakes cannot be undone. `.versionrc.json`'s `prerelease` hook runs that gate
 locally, and `bun run release` is what invokes it.
 
+The job creates the tag and the GitHub release itself, as its last step, so
+cutting a release is one action and a tag can never name a commit the publish
+did not come from. `gh release create` makes the tag at `--target` when it does
+not exist, and a ref created with `GITHUB_TOKEN` starts no further workflow
+run, so this cannot retrigger the tag trigger. It runs even when the publish
+found the version already on the registry, because that is the re-run that
+exists to add a tag or a release that went missing; both halves check first.
+The release body is the version's own `CHANGELOG.md` section, read by
+`scripts/release-notes.ts`, which throws rather than publishing a release that
+says nothing about itself. That last step is the only reason the job has
+`contents: write`.
+
 Two triggers. `workflow_dispatch` takes a `dry_run` input defaulting **false**,
 so a dispatch publishes unless the box is ticked; the tag trigger publishes
 with no box at all, so a dispatch needing one to do the same thing was the odd
@@ -108,8 +120,9 @@ one out. A dry run packs and validates but never reaches the publish endpoint,
 so it does not exercise the OIDC exchange. npm's documented limitations say that for a
 workflow using `workflow_call` or `workflow_dispatch`, "validation checks the
 calling workflow's name instead of the workflow that actually contains the
-publish command", so the tag push stays as the fallback if a dispatch is
-refused.
+publish command". Run 35699600341 measured that a dispatch does validate:
+0.3.0 published from one and npm signed its provenance. The tag trigger stays
+for a tag pushed by hand.
 
 `bun run check:publishable` packs the package and reads the tarball's own
 package.json: that it carries a README and a `dist`, and that nothing has crept
