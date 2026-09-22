@@ -45,6 +45,33 @@ jobs:
       - name: packages would install cleanly
         run: bun run scripts/check-publishable.ts
 
+  arm64:
+    name: arm64
+    # The architecture half the players are on, and nothing else in CI runs
+    # there. Two dmath tests failed on an Apple Silicon Mac while every x86
+    # job was green: the golden vectors pinned a NaN's sign, which the
+    # hardware decides, and the tan oracle bound was calibrated against
+    # glibc rather than Apple's libm. Both reached a laptop because CI could
+    # not see them.
+    #
+    # Build and test only. Lint and typecheck do not vary by architecture,
+    # and the cross-engine sweep compares a digest against a file recorded on
+    # x86, which is a separate question from whether the suite passes here.
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.11
+      - name: Cache bun install
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-arm64-${{ hashFiles('bun.lock') }}
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      - run: bun run test
+
   engines:
     name: cross-engine determinism
     needs: check
