@@ -4,6 +4,7 @@ import { runSession } from "../../src/loop"
 import {
   compareToRecording,
   decodeRecording,
+  diffSnapshots,
   encodeRecording,
   RECORDING_FORMAT,
   RECORDING_VERSION,
@@ -217,5 +218,195 @@ describe("replaying a recording", () => {
     const comparison = compareToRecording(recording, other)
     expect(comparison.matches).toBe(false)
     expect(comparison.divergedAt).not.toBeNull()
+  })
+})
+
+describe("checkpoints a recording may not carry", () => {
+  /**
+   * The checkpoint list is what a validator compares a replay against, so a
+   * malformed one is not a cosmetic problem: a recording whose checkpoints go
+   * backwards, or carry a tick that is not a tick, cannot be compared to
+   * anything. Rejecting it at the door beats producing a divergence report
+   * about a run that was never coherent.
+   */
+  const CASES: Array<[name: string, checkpoint: unknown]> = [
+    ["not an object", "600:deadbeefdeadbeef"],
+    ["a tick that is not a whole number", { tick: 1.5, hash: "a".repeat(16) }],
+    ["a negative tick", { tick: -1, hash: "a".repeat(16) }],
+    [
+      "a tick that is not a number at all",
+      { tick: "600", hash: "a".repeat(16) },
+    ],
+    ["a hash that is not sixteen hex digits", { tick: 60, hash: "nope" }],
+    ["a hash in capitals", { tick: 60, hash: "A".repeat(16) }],
+    ["a hash that is not a string", { tick: 60, hash: 12345 }],
+  ]
+
+  for (const [name, checkpoint] of CASES) {
+    test(name, () => {
+      const recording = { ...record(), checkpoints: [checkpoint] }
+      expect(() => decodeRecording(recording)).toThrow(/E_RECORDING_MALFORMED/)
+    })
+  }
+
+  test("checkpoints that go backwards", () => {
+    const recording = {
+      ...record(),
+      checkpoints: [
+        { tick: 60, hash: "a".repeat(16) },
+        { tick: 120, hash: "b".repeat(16) },
+        { tick: 90, hash: "c".repeat(16) },
+      ],
+    }
+    expect(() => decodeRecording(recording)).toThrow(/E_RECORDING_MALFORMED/)
+  })
+
+  test("two checkpoints at one tick are allowed, because a resume makes one", () => {
+    // A run resumed from a snapshot writes a checkpoint at the tick it resumed
+    // from, beside the one the uninterrupted run already wrote there.
+    const recording = {
+      ...record(),
+      checkpoints: [
+        { tick: 60, hash: "a".repeat(16) },
+        { tick: 60, hash: "a".repeat(16) },
+        { tick: 120, hash: "b".repeat(16) },
+      ],
+      endTick: 120,
+      inputs: [],
+    }
+    expect(() => decodeRecording(recording)).not.toThrow()
+  })
+})
+
+describe("comparing a replay to its recording", () => {
+  /**
+   * An end tick that does not match is its own difference, reported on its own
+   * terms. AGENTS.md is explicit about why: if the host loop drops time, the
+   * recording must end at the tick the host actually reached, or the log
+   * replays to a different state. "ended at 1200, recorded 1800" says that;
+   * a list of mismatched checkpoint hashes does not.
+   */
+  test("an end tick that does not match is reported as itself", () => {
+    const recording = record()
+    const comparison = compareToRecording(recording, {
+      endTick: recording.endTick - 60,
+      counters: recording.counters,
+      checkpoints: recording.checkpoints,
+    })
+    expect(comparison.matches).toBe(false)
+    expect(comparison.differences.some((d) => d.startsWith("endTick:"))).toBe(
+      true,
+    )
+  })
+
+  test("a counter that does not match names the counter", () => {
+    const recording = record()
+    const name = Object.keys(recording.counters)[0] as string
+    const comparison = compareToRecording(recording, {
+      endTick: recording.endTick,
+      counters: { ...recording.counters, [name]: -999 },
+      checkpoints: recording.checkpoints,
+    })
+    expect(comparison.matches).toBe(false)
+    expect(comparison.differences.some((d) => d.startsWith(`${name}:`))).toBe(
+      true,
+    )
+  })
+
+  test("a counter only one side has is still a difference", () => {
+    // A replay that stopped reporting a counter would otherwise compare equal
+    // on every counter it did report.
+    const recording = record()
+    const comparison = compareToRecording(recording, {
+      endTick: recording.endTick,
+      counters: { ...recording.counters, invented: 1 },
+      checkpoints: recording.checkpoints,
+    })
+    expect(comparison.matches).toBe(false)
+    expect(comparison.differences.some((d) => d.startsWith("invented:"))).toBe(
+      true,
+    )
+  })
+
+  test("a matching replay reports no difference and no divergence tick", () => {
+    const recording = record()
+    const comparison = compareToRecording(recording, {
+      endTick: recording.endTick,
+      counters: recording.counters,
+      checkpoints: recording.checkpoints,
+    })
+    expect(comparison).toEqual({
+      matches: true,
+      divergedAt: null,
+      differences: [],
+    })
+  })
+
+  test("the first differing checkpoint is the one reported as the divergence", () => {
+    const recording = record()
+    const replayed = recording.checkpoints.map((c, i) =>
+      i >= 2 ? { ...c, hash: "f".repeat(16) } : c,
+    )
+    const comparison = compareToRecording(recording, {
+      endTick: recording.endTick,
+      counters: recording.counters,
+      checkpoints: replayed,
+    })
+    expect(comparison.divergedAt).toBe(recording.checkpoints[2]?.tick ?? -1)
+  })
+})
+
+describe("diffSnapshots", () => {
+  /**
+   * What a validator prints when two snapshots part company, so a wrong diff is
+   * a wrong bug report. Worth knowing as much for its limit as its behaviour:
+   * it compares with JSON.stringify, so it reports key order as a difference
+   * that is not one. testing/compare.ts's compareSnapshots uses encodeCanonical
+   * and does not. A caller who reaches for the wrong one gets false
+   * divergences on a run that never diverged.
+   */
+  test("a key whose value differs", () => {
+    expect(diffSnapshots({ x: 1, y: 2 }, { x: 1, y: 3 })).toEqual([
+      "y: expected 2, got 3",
+    ])
+  })
+
+  test("a key only the actual snapshot has", () => {
+    expect(diffSnapshots({ x: 1 }, { x: 1, extra: 9 })).toEqual([
+      "extra: only in the actual snapshot",
+    ])
+  })
+
+  test("a key missing from the actual snapshot", () => {
+    expect(diffSnapshots({ x: 1, gone: 2 }, { x: 1 })).toEqual([
+      "gone: missing from the actual snapshot",
+    ])
+  })
+
+  test("identical snapshots have no differences", () => {
+    expect(diffSnapshots({ x: 1, y: [1, 2] }, { x: 1, y: [1, 2] })).toEqual([])
+  })
+
+  test("differences come out in a stable order", () => {
+    // Two runs of a validator have to print the same report, or a diff of the
+    // reports is noise.
+    expect(
+      diffSnapshots({ b: 1, a: 1, c: 1 }, { c: 2, a: 2, b: 2 }).map((d) =>
+        d.slice(0, 1),
+      ),
+    ).toEqual(["a", "b", "c"])
+  })
+
+  test("nested values are compared whole, not field by field", () => {
+    expect(diffSnapshots({ p: { x: 1 } }, { p: { x: 2 } })).toEqual([
+      'p: expected {"x":1}, got {"x":2}',
+    ])
+  })
+
+  test("and key order inside a nested value reads as a difference", () => {
+    // Not a bug, a limit, and the reason compareSnapshots exists beside it.
+    expect(diffSnapshots({ p: { x: 1, y: 2 } }, { p: { y: 2, x: 1 } })).toEqual(
+      ['p: expected {"x":1,"y":2}, got {"y":2,"x":1}'],
+    )
   })
 })
