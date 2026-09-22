@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.4.0](https://github.com/vbz-gg/clockwork2/compare/v0.3.2...v0.4.0) (2026-09-22)
+
+
+### Features
+
+* **host:** a frame can replay a recorded log ([#13](https://github.com/vbz-gg/clockwork2/issues/13)) ([9898208](https://github.com/vbz-gg/clockwork2/commit/9898208d1a829eb5c672799775fe709db08d82a4))
+
 ## [0.3.2](https://github.com/vbz-gg/clockwork2/compare/v0.3.1...v0.3.2) (2026-09-22)
 
 
