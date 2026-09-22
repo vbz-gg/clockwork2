@@ -284,3 +284,44 @@ describe("worker and inline hosts", () => {
     }
   })
 })
+
+describe("stopping a worker session", () => {
+  /**
+   * A page that navigates away, or a host that ends a session early, has to be
+   * able to stop the simulation. Without it the worker keeps stepping a session
+   * nobody is watching, on a thread the page cannot reclaim, for as long as the
+   * tab is open.
+   */
+  test("stop reaches the worker and the session stops reporting", () => {
+    const pair = new FakeWorkerPair()
+    runSimulationWorker(createReferenceGame, REFERENCE_MANIFEST, pair.scope)
+    const checkpoints: Array<{ tick: number }> = []
+    let ended = false
+    const simulation = new WorkerSimulation({
+      worker: pair.page,
+      seed: "stop-me",
+      config: REFERENCE_CONFIG,
+      onCheckpoint: (checkpoint) => checkpoints.push(checkpoint),
+      onEnded: () => {
+        ended = true
+      },
+    })
+
+    for (let i = 0; i < 200; i++) simulation.frame(1000 / 60)
+    const beforeStop = checkpoints.length
+    expect(beforeStop).toBeGreaterThan(0)
+    expect(ended).toBe(false)
+
+    // Abandoning takes a final checkpoint at the tick actually reached. That
+    // is the one that matters: a recording has to end where the run ended, or
+    // it replays to a state the player never saw.
+    simulation.stop()
+    expect(checkpoints.length).toBe(beforeStop + 1)
+    const last = checkpoints[checkpoints.length - 1]?.tick ?? -1
+
+    for (let i = 0; i < 200; i++) simulation.frame(1000 / 60)
+    expect(ended).toBe(true)
+    // Nothing advanced past where it stopped.
+    expect(checkpoints[checkpoints.length - 1]?.tick).toBe(last)
+  })
+})
