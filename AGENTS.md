@@ -64,17 +64,37 @@ ordering bug.
 
 ## Releasing
 
-`scripts/publish.ts` rewrites each package.json's `workspace:*` ranges to the
-version being published, calls `npm publish --access public --provenance`, and
-puts the file back in a `finally`.
+Publishing is npm Trusted Publishing. `release.yml` grants `id-token: write`,
+the npm CLI exchanges that OIDC token for a short-lived credential, and npm
+signs a provenance attestation naming the commit and the workflow that built
+each tarball. There is no `NPM_TOKEN` in this repository's secrets, and nothing
+to rotate.
 
-Both halves matter. An unrewritten `workspace:*` reaches the registry verbatim
+`scripts/publish.ts` rewrites each package.json's `workspace:*` ranges to the
+version being published, calls `npm publish --access public`, and puts the file
+back in a `finally`. An unrewritten `workspace:*` reaches the registry verbatim
 and the published version is uninstallable by anyone, permanently, because a
-version cannot be unpublished after 72 hours. And `--provenance` is why the
-release workflow grants `id-token: write`: npm signs an attestation naming the
-commit and the workflow that built the tarball. `bun publish` does the rewrite
-by itself and has no `--provenance` at 1.3.11, so reaching for it trades the
-signature for a string replacement.
+version cannot be unpublished after 72 hours. `bun publish` does the rewrite by
+itself but has no trusted-publishing support and no `--provenance` at 1.3.11,
+so reaching for it trades the signature for a string replacement.
+
+No `--provenance` flag: under trusted publishing npm produces the attestation
+by default, and the flag would break the one case with no OIDC token, which is
+a package's first publish. A trusted publisher cannot be configured for a
+package that does not exist, so the first version of a new package is published
+from a laptop and the publisher configured afterwards.
+
+`release.yml` runs the same gate `ci.yml` does, because it is the one job whose
+mistakes cannot be undone. `.versionrc.json`'s `prerelease` hook runs that gate
+locally, and `bun run release` is what invokes it.
+
+Two triggers. `workflow_dispatch` takes a `dry_run` input defaulting true; a
+dry run packs and validates but never reaches the publish endpoint, so it does
+not exercise the OIDC exchange. npm's documented limitations say that for a
+workflow using `workflow_call` or `workflow_dispatch`, "validation checks the
+calling workflow's name instead of the workflow that actually contains the
+publish command", so the tag push stays as the fallback if a dispatch is
+refused.
 
 `bun run check:publishable` packs every package through that same rewrite and
 reads the tarball's own package.json. CI runs it on every push and the release
