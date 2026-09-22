@@ -11,6 +11,7 @@
  * secret and which a real deployment would bake in per platform instead.
  */
 
+import { RecordedInputSource } from "@clockwork2/engine"
 import { connectToParent, encodeRecording } from "@clockwork2/engine/frame"
 import { GameHost, InputCapture } from "@clockwork2/engine/host"
 import { FRAME_ERRORS } from "@clockwork2/engine/protocol"
@@ -40,6 +41,12 @@ connectToParent<SnakeView>({
       container,
       checkpointEvery: 60,
       maxTicks: init.maxTicks,
+      // A log makes this a replay, and the same loop plays it. Left out,
+      // the host collects from devices as it always has.
+      ...(init.inputs === undefined
+        ? {}
+        : { inputs: new RecordedInputSource(init.inputs) }),
+      ...(init.speed === undefined ? {} : { speed: init.speed }),
       onCheckpoint: (checkpoint) => {
         bridge.checkpoint(checkpoint.tick, checkpoint.hash)
       },
@@ -61,7 +68,12 @@ connectToParent<SnakeView>({
     // Device input is captured here, inside the frame, from real events. The
     // game cannot build an input of its own, and the parent can only send the
     // virtual kind, from a control it drew itself.
-    new InputCapture({ manifest: MANIFEST, queue: host.live as never }).attach()
+    //
+    // Not for a replay: `host.live` is null there, and a key pressed by
+    // somebody watching would be an input nobody recorded.
+    if (host.live !== null) {
+      new InputCapture({ manifest: MANIFEST, queue: host.live }).attach()
+    }
     return host
   },
 })

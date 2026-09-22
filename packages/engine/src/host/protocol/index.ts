@@ -53,6 +53,28 @@ export type HostToGame =
       readonly config: unknown
       readonly tickHz: TickRate
       readonly maxTicks: number
+      /**
+       * A recorded log, which makes this session a replay rather than a run.
+       *
+       * The same loop plays it: a replay is not a second code path, it is a
+       * session whose inputs come from a log instead of from devices. Left
+       * out, the frame captures from real events as it always has.
+       *
+       * It is the one field here that could be mistaken for a way to feed a
+       * player's inputs into their own live run, so the frame refuses to
+       * capture device input for a session that carries one. A replay reads
+       * its log and nothing else.
+       */
+      readonly inputs?: readonly InputEvent[]
+      /**
+       * How fast a replay advances. Only with `inputs`.
+       *
+       * A live session may never carry one. Speed on a live run is a player
+       * slowing the game down to play it, which is the reason a frame does
+       * not expose `setSpeed` at all, and the frame refuses an `init` that
+       * asks for one without a log to replay.
+       */
+      readonly speed?: number
     }
   | { readonly type: "start" }
   | { readonly type: "pause" }

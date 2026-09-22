@@ -13,7 +13,13 @@
  * entry and a server log.
  */
 
-import type { Counters, Manifest, SessionResult, TickRate } from "../.."
+import type {
+  Counters,
+  InputEvent,
+  Manifest,
+  SessionResult,
+  TickRate,
+} from "../.."
 import { encodeRecording, hashCanonical, KERNEL_VERSION } from "../.."
 import type { GameHost } from "../host"
 import {
@@ -32,6 +38,20 @@ export interface FrameInit {
   readonly config: unknown
   readonly tickHz: TickRate
   readonly maxTicks: number
+  /**
+   * A recorded log, present when this session is a replay.
+   *
+   * Pass it to `GameHost` as `inputs: new RecordedInputSource(init.inputs)`.
+   * The same loop plays it, which is the point: a replay is a session whose
+   * inputs come from a log instead of from devices.
+   *
+   * A game that receives one must not attach an `InputCapture`. `host.live`
+   * is null for a replay, so the capture has no queue to write to, and a
+   * device event reaching a replay would be an input nobody recorded.
+   */
+  readonly inputs?: readonly InputEvent[]
+  /** How fast a replay advances. Never present on a live session. */
+  readonly speed?: number
 }
 
 export interface FrameBridgeOptions<TView> {
@@ -95,6 +115,15 @@ export class FrameBridge<TView> {
           )
           return
         }
+        if (message.speed !== undefined && message.inputs === undefined) {
+          // Speed on a live session is a player slowing the game down to
+          // play it, which is why a frame exposes no `setSpeed` at all.
+          this.error(
+            FRAME_ERRORS.INIT_FAILED,
+            "speed is only for a replay, and this init carries no log",
+          )
+          return
+        }
         try {
           this.host = options.createHost(
             {
@@ -102,6 +131,10 @@ export class FrameBridge<TView> {
               config: message.config,
               tickHz: message.tickHz,
               maxTicks: message.maxTicks,
+              ...(message.inputs === undefined
+                ? {}
+                : { inputs: message.inputs }),
+              ...(message.speed === undefined ? {} : { speed: message.speed }),
             },
             this,
           )
