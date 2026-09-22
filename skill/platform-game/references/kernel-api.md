@@ -1328,7 +1328,7 @@ export declare function scalbn(x: number, n: number): number;
 
 ### sign
 
-The sign of x applied to the magnitude of y, with -0 handled.
+-1, 0 or 1, with the sign of a zero preserved. `Math.sign` is exact.
 
 ```ts
 export declare function sign(x: number): number;

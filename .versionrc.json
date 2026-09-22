@@ -3,6 +3,10 @@
   "bumpFiles": [
     "package.json",
     "packages/kernel/package.json",
+    {
+      "filename": "packages/kernel/src/index.ts",
+      "updater": "scripts/kernel-version-updater.cjs"
+    },
     "packages/validate/package.json",
     "packages/host-bridge/package.json",
     "packages/adapter-canvas2d/package.json",

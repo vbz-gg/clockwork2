@@ -98,7 +98,7 @@ export function f32FromBits(bits: number): number {
   return F32_VIEW[0] as number
 }
 
-/** The sign of x applied to the magnitude of y, with -0 handled. */
+/** -1, 0 or 1, with the sign of a zero preserved. `Math.sign` is exact. */
 export function sign(x: number): number {
   return Math.sign(x)
 }
