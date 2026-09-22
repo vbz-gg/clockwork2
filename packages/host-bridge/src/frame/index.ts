@@ -78,6 +78,8 @@ const DEFAULT_CHUNK = 48 * 1024
 export class FrameBridge<TView> {
   private readonly onMessage: (event: MessageEvent) => void
   private host: GameHost<TView, HTMLElement> | null = null
+  private started = false
+  private destroyed = false
   private lastProgressAt = 0
   private lastLogChunkAt = 0
   private logSentUpTo = 0
@@ -122,6 +124,17 @@ export class FrameBridge<TView> {
       start: () => {
         const host = this.require("start")
         if (host === null) return
+        if (this.started) {
+          // GameHost refuses to restart an ended session, but answering a
+          // second start would still send a second `started` and leave the
+          // parent expecting a second result.
+          this.error(
+            FRAME_ERRORS.ALREADY_STARTED,
+            "this session has already been started",
+          )
+          return
+        }
+        this.started = true
         host.start()
         this.post({ type: "started" })
       },
@@ -168,6 +181,10 @@ export class FrameBridge<TView> {
   }
 
   private post(message: GameToHost): void {
+    // The host's callbacks outlive destroy() unless something stops them, and
+    // a torn-down frame posting at a parent that has gone is the leak this
+    // guards. destroy() also stops the session, so this is the second line.
+    if (this.destroyed) return
     globalThis.parent.postMessage(message, this.options.parentOrigin)
   }
 
@@ -243,8 +260,19 @@ export class FrameBridge<TView> {
     this.post({ type: "error", code, detail })
   }
 
+  /**
+   * Stops listening, and stops the session.
+   *
+   * Removing the listener alone left the host running: its scheduler kept
+   * going and its onCheckpoint and onFrame callbacks kept calling back into
+   * this bridge, so a destroyed frame carried on posting checkpoints at a
+   * parent that was no longer there.
+   */
   destroy(): void {
+    if (this.destroyed) return
+    this.destroyed = true
     globalThis.removeEventListener("message", this.onMessage)
+    this.host?.destroy()
   }
 }
 

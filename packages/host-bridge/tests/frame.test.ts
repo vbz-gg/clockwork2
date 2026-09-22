@@ -296,3 +296,72 @@ describe("the input log reaches the parent before the run ends", () => {
     expect(types.indexOf("log-chunk")).toBeLessThan(types.indexOf("ended"))
   })
 })
+
+describe("a session ends once, and destroy ends it", () => {
+  function running() {
+    const installed = install()
+    installed.window.send({ type: "hello", protocol: 1 })
+    installed.window.send({
+      type: "init",
+      seed: "once",
+      config: REFERENCE_CONFIG,
+      tickHz: 60,
+      maxTicks: 6000,
+    })
+    installed.window.send({ type: "start" })
+    return installed
+  }
+
+  test("destroy stops the session, not just the listening", () => {
+    // Removing the listener alone left the host running: its scheduler kept
+    // going and its onCheckpoint kept calling back into the bridge, so a
+    // destroyed frame carried on posting at a parent that had gone.
+    const { window, scheduler, hostOf, bridge } = running()
+    for (let frame = 0; frame < 70; frame++) scheduler.advance(1000 / 60)
+    expect(window.of("checkpoint").length).toBeGreaterThan(0)
+
+    const before = window.posted.length
+    bridge.destroy()
+    expect(hostOf()?.status).toBe("ended")
+
+    for (let frame = 0; frame < 200; frame++) scheduler.advance(1000 / 60)
+    expect(window.posted.length).toBe(before)
+  })
+
+  test("nothing is posted after destroy even if a callback still fires", () => {
+    const { window, bridge } = running()
+    // The session checkpoints at tick 0, so count from the teardown rather
+    // than from zero.
+    const before = window.posted.length
+    bridge.destroy()
+    bridge.checkpoint(600, "deadbeefdeadbeef")
+    bridge.heartbeat(600)
+    bridge.error("E_TEST", "should not reach the parent")
+    expect(window.posted.length).toBe(before)
+  })
+
+  test("a second start is refused rather than answered again", () => {
+    // GameHost refuses to restart an ended session, but a second `started`
+    // would still leave the parent waiting for a second result - and a shell
+    // whose effect runs twice sends one without meaning to.
+    const { window } = running()
+    window.send({ type: "start" })
+
+    expect(window.of("started")).toHaveLength(1)
+    expect(window.of("error")[0]?.code).toBe(FRAME_ERRORS.ALREADY_STARTED)
+  })
+
+  test("a run that has ended is not restarted into a second result", () => {
+    const { window, scheduler, hostOf } = running()
+    for (let frame = 0; frame < 20; frame++) scheduler.advance(1000 / 60)
+    window.send({ type: "end" })
+    const tickAtEnd = hostOf()?.tick
+
+    window.send({ type: "start" })
+    for (let frame = 0; frame < 20; frame++) scheduler.advance(1000 / 60)
+
+    expect(hostOf()?.status).toBe("ended")
+    expect(hostOf()?.tick).toBe(tickAtEnd as number)
+    expect(window.of("started")).toHaveLength(1)
+  })
+})

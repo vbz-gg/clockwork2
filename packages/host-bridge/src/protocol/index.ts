@@ -39,6 +39,8 @@ export const FRAME_ERRORS = {
   ALREADY_INITIALISED: "E_FRAME_ALREADY_INITIALISED",
   /** Building the session from `init` threw. */
   INIT_FAILED: "E_FRAME_INIT_FAILED",
+  /** A second `start` arrived. One session is started once. */
+  ALREADY_STARTED: "E_FRAME_ALREADY_STARTED",
   /** The loop threw while running the player's own inputs. */
   THREW: "E_FRAME_THREW",
 } as const

@@ -4,21 +4,32 @@
  *
  * The failure this exists for is silent and total. Cross-package dependencies
  * are declared `workspace:*`, which is what makes the monorepo resolve
- * locally; `npm publish` ships that string verbatim, so the tarball carries
- * `"@clockwork2/kernel": "workspace:*"` and `npm install` fails for everyone,
- * forever, on a version that cannot be unpublished after 72 hours. Nothing in
- * a build, a lint or a test sees it. `bun publish` rewrites the protocol, and
- * this is how we find out whether it still does.
+ * locally; npm ships that string verbatim, so the tarball would carry
+ * `"@clockwork2/kernel": "workspace:*"` and `npm install` would fail for
+ * everyone, forever, on a version that cannot be unpublished after 72 hours.
+ * Nothing in a build, a lint or a test sees it.
+ *
+ * `scripts/publish.ts` rewrites each manifest with `resolveWorkspaceDeps`
+ * before calling npm. This packs through that same function, so what it reads
+ * is what a release would really ship rather than what a different tool would
+ * have shipped.
  *
  *   bun run scripts/check-publishable.ts
  *
  * Exit codes: 0 passed, 1 a package would ship broken, 2 nothing to check.
  */
 
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { $ } from "bun"
+import { type Manifest, resolveWorkspaceDeps } from "./publish-manifest"
 
 export const PUBLIC_PACKAGES = [
   "kernel",
@@ -38,7 +49,21 @@ export type Shipped = {
 
 /** Reads the package.json a tarball would carry, not the one on disk. */
 export async function pack(pkg: string, into: string): Promise<Shipped> {
-  await $`bun pm pack --destination ${into}`.cwd(`packages/${pkg}`).quiet()
+  // Pack through the same rewrite the publisher applies, then put the file
+  // back. A check that packed the unrewritten manifest would be measuring a
+  // release nobody performs.
+  const manifestPath = `packages/${pkg}/package.json`
+  const original = readFileSync(manifestPath, "utf8")
+  const parsed = JSON.parse(original) as Manifest
+  writeFileSync(
+    manifestPath,
+    `${JSON.stringify(resolveWorkspaceDeps(parsed, parsed.version ?? "0.0.0"), null, 2)}\n`,
+  )
+  try {
+    await $`npm pack --pack-destination ${into}`.cwd(`packages/${pkg}`).quiet()
+  } finally {
+    writeFileSync(manifestPath, original)
+  }
   const tarball = [...new Bun.Glob("*.tgz").scanSync(into)][0]
   if (tarball === undefined) throw new Error(`${pkg} produced no tarball`)
   const out = join(into, "unpacked")
@@ -103,7 +128,9 @@ async function main(): Promise<number> {
   if (found.length > 0) {
     console.error("\na package would ship broken:")
     for (const line of found) console.error(`  ${line}`)
-    console.error('\npublish with "bun publish", never "npm publish"')
+    console.error(
+      "\nscripts/publish.ts rewrites workspace ranges before calling npm; check resolveWorkspaceDeps",
+    )
     return 1
   }
   console.log(`\n${PUBLIC_PACKAGES.length} packages would install cleanly`)

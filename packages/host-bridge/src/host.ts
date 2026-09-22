@@ -230,6 +230,12 @@ export class GameHost<
 
   start(): void {
     if (this.state === "running") return
+    // A finished session does not restart. Without this, start() on an ended
+    // host schedules a frame, session.step() returns false immediately, and
+    // finish() fires onEnded a second time - so a host bridge sends a second
+    // `ended` and a second recording for one run. A shell that starts twice,
+    // which a re-rendering effect does by itself, is enough to trigger it.
+    if (this.state === "ended") return
     this.mount()
     this.state = "running"
     this.lastNow = this.scheduler.now()

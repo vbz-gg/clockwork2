@@ -1749,6 +1749,8 @@ FRAME_ERRORS: {
     readonly ALREADY_INITIALISED: "E_FRAME_ALREADY_INITIALISED";
     /** Building the session from `init` threw. */
     readonly INIT_FAILED: "E_FRAME_INIT_FAILED";
+    /** A second `start` arrived. One session is started once. */
+    readonly ALREADY_STARTED: "E_FRAME_ALREADY_STARTED";
     /** The loop threw while running the player's own inputs. */
     readonly THREW: "E_FRAME_THREW";
 }
