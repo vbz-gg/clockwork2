@@ -215,6 +215,12 @@ describe("what canonical encoding refuses, and how it says so", () => {
       [new Map(), "Map instance"],
       [new Date(0), "Date instance"],
       [undefined, "undefined"],
+      [10n, "bigint"],
+      // NaN is the sharp one: it is not equal to itself, so a snapshot
+      // carrying one could never compare equal to a replay of the same run.
+      [Number.NaN, "NaN"],
+      [Number.POSITIVE_INFINITY, "Infinity"],
+      [Number.NEGATIVE_INFINITY, "-Infinity"],
     ] as const) {
       let message = ""
       try {
