@@ -7,6 +7,10 @@
 [![Coverage floor](https://img.shields.io/badge/coverage%20floor-99%25%20of%20lines-brightgreen)](#what-is-verified-and-how)
 [![License](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
 
+<div style="padding:75% 0 0 0;position:relative;"><iframe src="https://player.vimeo.com/video/1229077001?badge=0&amp;autopause=0&amp;player_id=0&amp;app_id=58479&amp;autoplay=1&amp;muted=1&amp;loop=1" frameborder="0" allow="autoplay; fullscreen; picture-in-picture; clipboard-write; encrypted-media; web-share" referrerpolicy="strict-origin-when-cross-origin" style="position:absolute;top:0;left:0;width:100%;height:100%;" title="Clockwork2 demo"></iframe></div><script src="https://player.vimeo.com/api/player.js"></script>
+
+[![Play a round of Snake, then replay the recording and compare the state hashes](docs/media/demo-poster.jpg)](https://vimeo.com/1229077001)
+
 **A game engine for browser games whose results someone else has to check.**
 
 The browser records what the player pressed. A server replays that recording and
