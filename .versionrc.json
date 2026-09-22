@@ -16,7 +16,7 @@
   "infile": "CHANGELOG.md",
   "tagPrefix": "v",
   "scripts": {
-    "prerelease": "bun run lint && bun run typecheck && bun run test && bun run test:engines && bun run build && bun run scripts/check-publishable.ts"
+    "prerelease": "bun run lint && bun run build && bun run typecheck && bun run test:coverage && bun run scripts/lint-sim-purity.ts && bun run test:engines && bun run scripts/check-publishable.ts"
   },
   "types": [
     {

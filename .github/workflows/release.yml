@@ -1,6 +1,24 @@
 name: Release
 
+# Publishing is npm Trusted Publishing: the job exchanges its OIDC token for a
+# short-lived credential, so there is no long-lived NPM_TOKEN in this
+# repository's secrets and nothing to leak or rotate.
+#
+# Two triggers on purpose. npm's own documented limitation says that for a
+# workflow using workflow_call or workflow_dispatch, "validation checks the
+# calling workflow's name instead of the workflow that actually contains the
+# publish command". A plain dispatch on this file should present this file as
+# its own workflow_ref, so it ought to match - but npm validates nothing until
+# publish time, so the tag push stays as the fallback. The publish step lives
+# here and is never reached through workflow_call.
+
 on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Pack and validate without publishing
+        type: boolean
+        default: true
   push:
     tags: ["v*"]
 
@@ -8,7 +26,10 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      # Nothing here writes to the repository, so contents is read. id-token is
+      # what trusted publishing needs, and what makes npm sign a provenance
+      # attestation naming the commit and this workflow.
+      contents: read
       id-token: write
     steps:
       - uses: actions/checkout@v4
@@ -19,11 +40,38 @@ jobs:
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
+      # Trusted publishing needs npm 11.5.1 or later and node 22.14.0 or later.
+      # Node 22 ships npm 10, so the upgrade is explicit rather than whatever
+      # the runner image happens to carry this month.
+      - run: npm install -g npm@latest
+      - run: node --version && npm --version
+
       - run: bun install --frozen-lockfile
+
+      # The same gate ci.yml runs. This workflow used to run less than CI did,
+      # which is backwards for the one job whose mistakes cannot be undone: a
+      # version cannot be unpublished after 72 hours. `test:coverage` runs the
+      # same files as `test` and adds the floor, so the bare `test` is not
+      # repeated here.
       - run: bun run lint
       - run: bun run build
-      - run: bun test packages
+      - run: bun run typecheck
+      - run: bun run test:coverage
+      - name: simulation purity scan
+        run: bun run scripts/lint-sim-purity.ts
+      - name: packages would install cleanly
+        run: bun run scripts/check-publishable.ts
+
+      # Two steps rather than one with a conditional argument: a ternary inside
+      # a shell string is where this kind of workflow goes wrong quietly.
+      #
+      # A dry run packs each package and asks the registry to validate the
+      # manifest. It does not exercise the OIDC exchange, because --dry-run
+      # never reaches the publish endpoint. The credential is proven only by a
+      # real publish, and the provenance attestation is the evidence.
+      - name: Publish (dry run)
+        if: github.event_name == 'workflow_dispatch' && inputs.dry_run
+        run: bun run scripts/publish.ts --dry-run
       - name: Publish
+        if: github.event_name != 'workflow_dispatch' || !inputs.dry_run
         run: bun run scripts/publish.ts
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
