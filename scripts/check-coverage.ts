@@ -12,6 +12,14 @@
  * honours `coveragePathIgnorePatterns` there as well as in the text table, so
  * the records this reads are already scoped to package sources.
  *
+ * One thing this cannot see, and no aggregate over lcov can: bun reports a file
+ * only if the run loaded it. Gutting a test file so it imports a module without
+ * exercising it fails this gate loudly, because the module is still in the
+ * denominator with nothing covered. Deleting the test file outright does not,
+ * because the module then goes with it. Coverage answers "of the code that ran,
+ * how much was reached", and a package whose tests are gone has no code that
+ * ran. What catches that is review, and `bun run test` reporting fewer tests.
+ *
  *   bun test --coverage packages/ scripts/ demo/ skill/
  *   bun run scripts/check-coverage.ts
  *
@@ -30,9 +38,10 @@ export const MIN_LINES = 0.99
  * and every getter, so one uncalled getter moves this number several points on
  * a small file while moving lines by one. It is a floor, not the target: raise
  * it to just under the measurement whenever the measurement rises, because a
- * floor far below what the suite achieves has stopped being a gate.
+ * floor far below what the suite achieves has stopped being a gate. The suite
+ * is at 96.70%.
  */
-export const MIN_FUNCTIONS = 0.95
+export const MIN_FUNCTIONS = 0.96
 
 export interface FileCoverage {
   readonly path: string

@@ -14,6 +14,7 @@ bun run lint           # biome check .
 bun run lint:fix
 bun test               # unit tests, the demo's fixtures and the skill
 bun test skill         # the skill's own checks, on their own
+bun run test:coverage  # the same tests, then the 99% floor over packages/*/src
 bun run test:engines   # golden vectors under every installed JS engine
 bun run test:e2e       # Playwright against the built demo
 bun run test:e2e:nightly  # the seeded fuzz spec, twenty seeds
@@ -128,6 +129,12 @@ replays to a different state.
 - `retries` is 0 in the Playwright config on purpose. For a determinism suite,
   flake is the finding. Rewrite a timing-sensitive test against the virtual
   clock rather than retrying it.
+- `bun run test:coverage` holds `packages/*/src` at 99% of lines.
+  `scripts/check-coverage.ts` measures it over `coverage/lcov.info`;
+  `coverageThreshold` is absent from `bunfig.toml`, which says why. Two things
+  get past a failure: a test for a concrete failure mode, or a path excluded in
+  `bunfig.toml` with a written reason. A test that calls a function and asserts
+  it returned is what a coverage gate invites and what the rule above forbids.
 - The golden vector files are compared rather than read: `dmath-golden.tsv`
   against a recorded SHA-256 of its bytes, `probe-golden.tsv` field by field.
   `.gitattributes` pins the working tree to LF so a Windows checkout holds the
