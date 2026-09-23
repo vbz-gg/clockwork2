@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.7.1](https://github.com/vbz-gg/clockwork2/compare/v0.7.0...v0.7.1) (2026-09-23)
+
+
+### Bug Fixes
+
+* **engine:** ship a package plain node can import ([#18](https://github.com/vbz-gg/clockwork2/issues/18)) ([0ed5705](https://github.com/vbz-gg/clockwork2/commit/0ed57051149586a7b934925f247bb6d2dcb8ebca))
+
 ## [0.7.0](https://github.com/vbz-gg/clockwork2/compare/v0.6.0...v0.7.0) (2026-09-23)
 
 
