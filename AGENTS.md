@@ -174,6 +174,23 @@ publish command". Run 35699600341 measured that a dispatch does validate:
 0.3.0 published from one and npm signed its provenance. The tag trigger stays
 for a tag pushed by hand.
 
+**A release tells the repositories that pin this engine.** The last step
+dispatches an `engine-released` event to each of them with the version it
+published, so a release reaches them in seconds rather than whenever their own
+daily check next runs. GITHUB_TOKEN is scoped to this repository and cannot
+dispatch to another, so that step reads `ENGINE_RELEASED_TOKEN`, an
+organisation secret with Contents: write on those repositories and nothing
+else. It is the only long-lived credential here, and it is a much smaller
+thing than the npm token trusted publishing removed: the worst it can do is
+open a pull request.
+
+The step is best-effort, and `scripts/release-version.test.ts` holds it that
+way. By the time it runs the version is published, tagged and announced, so a
+missing or expired token must not turn a release that worked into a red run.
+Every repository it tells also polls the registry daily, which is what makes a
+failure there a delay rather than a miss - and the poll is also what catches a
+version published from a laptop, where no workflow ran at all.
+
 `bun run check:publishable` packs the package and reads what a consumer would
 get: that the tarball carries a README and a `dist`, that nothing has crept
 into `dependencies`, and that plain node can import every subpath the exports

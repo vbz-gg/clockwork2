@@ -199,3 +199,37 @@ jobs:
             --title "$tag" \
             --notes-file "$RUNNER_TEMP/notes.md" \
             --target "${RELEASE_SHA:-$GITHUB_SHA}"
+
+      # Tell the repositories that pin this engine, so a release reaches them
+      # in seconds rather than whenever their own daily check next runs.
+      #
+      # GITHUB_TOKEN is scoped to this repository and cannot dispatch to
+      # another, so this needs a token of its own: ENGINE_RELEASED_TOKEN, an
+      # organisation secret with Contents: write on the repositories below and
+      # nothing else. It is the only long-lived credential here, and it is a
+      # much smaller thing than the npm token trusted publishing removed - the
+      # worst it can do is open a pull request.
+      #
+      # Best-effort on purpose. By this point the version is published, tagged
+      # and announced, so a missing or expired token must not turn a release
+      # that worked into a red run. Every repository it tells also polls the
+      # registry daily, which is what makes a failure here a delay rather than
+      # a miss.
+      - name: Tell the repositories that pin this engine
+        if: github.event_name != 'workflow_dispatch' || !inputs.dry_run
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.ENGINE_RELEASED_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "no ENGINE_RELEASED_TOKEN; their daily checks will pick this up" >&2
+            exit 0
+          fi
+          version="$(node -p "require('./packages/engine/package.json').version")"
+          for repo in vbz-gg/game-base; do
+            echo "telling $repo about $version"
+            gh api "repos/$repo/dispatches" \
+              -f event_type=engine-released \
+              -f "client_payload[version]=$version"
+          done

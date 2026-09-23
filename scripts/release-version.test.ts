@@ -113,6 +113,28 @@ describe("the kernel version literal", () => {
   })
 
   /**
+   * A release tells the repositories that pin this engine, and never fails
+   * because it could not. By the time that step runs the version is
+   * published, tagged and announced, so a missing or expired token must not
+   * turn a release that worked into a red run - and every repository it tells
+   * also polls the registry daily, which is what makes that a delay rather
+   * than a miss.
+   */
+  test("the release tells its consumers, best-effort", () => {
+    const workflow = readFileSync(
+      join(ROOT, ".github/workflows/release.yml"),
+      "utf8",
+    )
+    expect(workflow).toContain("event_type=engine-released")
+    // GITHUB_TOKEN is scoped to this repository and cannot dispatch to
+    // another, so this step reads a token of its own.
+    expect(workflow).toContain("secrets.ENGINE_RELEASED_TOKEN")
+    expect(workflow).toContain("continue-on-error: true")
+    // And it says so when the token is not there, rather than failing.
+    expect(workflow).toContain("their daily checks will pick this up")
+  })
+
+  /**
    * No majors, in the one place somebody would reach for one. The test above
    * holding the version at 0 is the backstop; this is the door.
    */
