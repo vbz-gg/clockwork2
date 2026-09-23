@@ -7,21 +7,21 @@
  * `./protocol` is the message table both sides read.
  */
 
-export { AudioSink, type AudioSinkOptions, type SoundRecipe } from "./audio"
-export { browserScheduler, ManualScheduler, type Scheduler } from "./clock"
+export { AudioSink, type AudioSinkOptions, type SoundRecipe } from "./audio.js"
+export { browserScheduler, ManualScheduler, type Scheduler } from "./clock.js"
 export {
   type FrameInfo,
   GameHost,
   type GameHostOptions,
   type HostState,
   type LoopStats,
-} from "./host"
+} from "./host.js"
 export {
   type ActionBinding,
   bindingsFrom,
   InputCapture,
   type InputCaptureOptions,
-} from "./input"
+} from "./input.js"
 export {
   createDispatcher,
   FRAME_ERRORS,
@@ -31,4 +31,4 @@ export {
   LOG_CHUNK_INTERVAL_MS,
   PROGRESS_INTERVAL_MS,
   PROTOCOL_VERSION,
-} from "./protocol/index"
+} from "./protocol/index.js"

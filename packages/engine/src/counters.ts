@@ -14,8 +14,8 @@
  * change, a migration and a seed.
  */
 
-import type { Counters, PlainValue } from "./contract"
-import { fail } from "./errors"
+import type { Counters, PlainValue } from "./contract.js"
+import { fail } from "./errors.js"
 
 /** Which way is better. A monotone counter may only move that way. */
 export type CounterDirection = "up" | "down"

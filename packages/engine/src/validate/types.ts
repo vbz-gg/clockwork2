@@ -7,7 +7,7 @@
  * can change; a code is a promise.
  */
 
-import type { ErrorCode, GameModule, Manifest } from ".."
+import type { ErrorCode, GameModule, Manifest } from "../index.js"
 
 export type Finding = {
   readonly code: ErrorCode

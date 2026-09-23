@@ -18,7 +18,7 @@
  * default and constructed its PRNG unseeded.
  */
 
-import { fail } from "../errors"
+import { fail } from "../errors.js"
 
 /** `[s0, s1, s2, c]`, the same shape upstream's `exportState` returns. */
 export type AleaState = readonly [number, number, number, number]

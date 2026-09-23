@@ -174,10 +174,10 @@ publish command". Run 35699600341 measured that a dispatch does validate:
 0.3.0 published from one and npm signed its provenance. The tag trigger stays
 for a tag pushed by hand.
 
-`bun run check:publishable` packs the package and reads the tarball's own
-package.json: that it carries a README and a `dist`, and that nothing has crept
-into `dependencies`. CI runs it on every push and the release gate runs it
-again.
+`bun run check:publishable` packs the package and reads what a consumer would
+get: that the tarball carries a README and a `dist`, that nothing has crept
+into `dependencies`, and that plain node can import every subpath the exports
+map names. CI runs it on every push and the release gate runs it again.
 
 `.versionrc.json`'s `prerelease` hook runs the gate before the version is
 bumped, so it never sees the tree a release actually ships. Anything holding
@@ -203,6 +203,21 @@ else.
 peers, so nobody installs a renderer to run a simulation. Anything else it
 needs is vendored with attribution in `NOTICE`; test-only packages go in the
 workspace root's `devDependencies`.
+
+**Every relative import carries `.js`.** `tsc` emits a relative specifier
+exactly as the source wrote it, and node ESM has no extension resolution, so
+`from "./bits"` builds, typechecks and passes the whole suite under bun and
+then fails on a consumer's first `import` with ERR_MODULE_NOT_FOUND. Every
+version from 0.1.0 to 0.7.0 shipped that way, and nothing in a build, a lint or
+a test could see it, because bun and every bundler resolve it. A directory
+import needs the whole thing: `./hash/index.js`, never `./hash`.
+
+`bun run check:publishable` is what catches the next one. It imports every
+subpath of the packed tarball with plain node, so what is measured is what a
+consumer gets rather than what this repository can resolve. A subpath whose
+optional peer is missing here is reported as unchecked rather than as a fault -
+`pixi.js` is not installed in this checkout, so `/adapter-pixi` cannot be
+imported on any machine that has not asked for pixi.
 
 **The simulation must not reach a DOM type.** When this was six packages that
 fell out of the layout: the base `tsconfig` has no `DOM` lib and only the

@@ -14,9 +14,9 @@ import {
   RecordedInputSource,
   runSession,
   type SessionResult,
-} from "../.."
-import { botLog, chaosLog, idleLog } from "../../testing"
-import type { Subject } from "../types"
+} from "../../index.js"
+import { botLog, chaosLog, idleLog } from "../../testing/index.js"
+import type { Subject } from "../types.js"
 
 export const CHECKPOINT_EVERY = 60
 

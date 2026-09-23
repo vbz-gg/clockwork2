@@ -27,10 +27,10 @@ import {
   type SessionResult,
   type Snapshot,
   validateManifest,
-} from "../.."
-import { compareCounters } from "../../testing"
-import { scanImportGraph } from "../scan/import-graph"
-import type { Check, Finding } from "../types"
+} from "../../index.js"
+import { compareCounters } from "../../testing/index.js"
+import { scanImportGraph } from "../scan/import-graph.js"
+import type { Check, Finding } from "../types.js"
 import {
   CHECKPOINT_EVERY,
   codeFromError,
@@ -39,7 +39,7 @@ import {
   logsFor,
   runOnce,
   tryRun,
-} from "./support"
+} from "./support.js"
 
 const determinism: Check = {
   name: "determinism",

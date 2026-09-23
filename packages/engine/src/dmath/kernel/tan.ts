@@ -6,8 +6,8 @@
  * has to be inverted.
  */
 
-import { getHighWord, getLowWord, setLowWord } from "../../bits"
-import { f64 } from "../helpers"
+import { getHighWord, getLowWord, setLowWord } from "../../bits.js"
+import { f64 } from "../helpers.js"
 
 const T = new Float64Array([
   3.33333333333334091986e-1, 1.33333333333201242699e-1,

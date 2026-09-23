@@ -4,8 +4,14 @@ export {
   compareResults,
   compareSnapshots,
   type Divergence,
-} from "./compare"
-export { ACTIONS, botLog, chaosLog, idleLog, standardLogs } from "./input-logs"
+} from "./compare.js"
+export {
+  ACTIONS,
+  botLog,
+  chaosLog,
+  idleLog,
+  standardLogs,
+} from "./input-logs.js"
 export {
   createReferenceGame,
   REFERENCE_CONFIG,
@@ -14,4 +20,4 @@ export {
   type ReferenceConfig,
   ReferenceGame,
   type ReferenceView,
-} from "./reference-game"
+} from "./reference-game.js"

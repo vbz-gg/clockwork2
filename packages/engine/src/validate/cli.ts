@@ -7,9 +7,9 @@
  *   clockwork2-validate scan ./my-game/src/sim.ts
  */
 
-import { loadSubject } from "./load"
-import { formatReport, validate } from "./runner"
-import { scanImportGraph } from "./scan/import-graph"
+import { loadSubject } from "./load.js"
+import { formatReport, validate } from "./runner.js"
+import { scanImportGraph } from "./scan/import-graph.js"
 
 function value(argv: readonly string[], name: string): string | undefined {
   const found = argv.find((a) => a.startsWith(`--${name}=`))

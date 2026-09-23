@@ -9,7 +9,7 @@
  * and write none of them.
  */
 
-import { fail, type Presentation, type PresentationContext } from ".."
+import { fail, type Presentation, type PresentationContext } from "../index.js"
 
 export type Canvas2dDraw<TView> = (
   context: CanvasRenderingContext2D,
@@ -111,4 +111,4 @@ export function createCanvas2dPresentation<TView>(
   return new Canvas2dPresentation(options)
 }
 
-export { lerp, lerpAngle, NodeSet } from ".."
+export { lerp, lerpAngle, NodeSet } from "../index.js"

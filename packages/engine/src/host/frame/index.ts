@@ -19,9 +19,9 @@ import type {
   Manifest,
   SessionResult,
   TickRate,
-} from "../.."
-import { encodeRecording, hashCanonical, KERNEL_VERSION } from "../.."
-import type { GameHost } from "../host"
+} from "../../index.js"
+import { encodeRecording, hashCanonical, KERNEL_VERSION } from "../../index.js"
+import type { GameHost } from "../host.js"
 import {
   createDispatcher,
   FRAME_ERRORS,
@@ -30,7 +30,7 @@ import {
   LOG_CHUNK_INTERVAL_MS,
   PROGRESS_INTERVAL_MS,
   PROTOCOL_VERSION,
-} from "../protocol/index"
+} from "../protocol/index.js"
 
 /** What the parent decided about this session, as `init` delivers it. */
 export interface FrameInit {

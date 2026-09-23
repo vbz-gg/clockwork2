@@ -13,7 +13,7 @@
  */
 
 import { PerspectiveCamera, Scene, WebGLRenderer } from "three"
-import type { Presentation, PresentationContext } from ".."
+import type { Presentation, PresentationContext } from "../index.js"
 
 export type ThreeDraw<TView> = (
   context: {
@@ -118,4 +118,4 @@ export function createThreePresentation<TView>(
   return new ThreePresentation(options)
 }
 
-export { lerp, lerpAngle, NodeSet } from ".."
+export { lerp, lerpAngle, NodeSet } from "../index.js"

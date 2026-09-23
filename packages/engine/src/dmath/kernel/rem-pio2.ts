@@ -7,7 +7,7 @@
  * trigonometric family is decided.
  */
 
-import { fromWords, getHighWord, getLowWord } from "../../bits"
+import { fromWords, getHighWord, getLowWord } from "../../bits.js"
 import {
   HW_3PI_4,
   HW_PI_2,
@@ -21,9 +21,9 @@ import {
   PIO2_3,
   PIO2_3T,
   TWO24,
-} from "../constants"
-import { i32 } from "../helpers"
-import { kernelRemPio2 } from "./rem-pio2-large"
+} from "../constants.js"
+import { i32 } from "../helpers.js"
+import { kernelRemPio2 } from "./rem-pio2-large.js"
 
 /** High words of n*(pi/2) for n = 1..32, where the split needs extra care. */
 const NPIO2_HW = new Int32Array([

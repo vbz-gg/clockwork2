@@ -24,7 +24,7 @@ export {
   toBits,
   toBitsHex,
   ulpDistance,
-} from "./bits"
+} from "./bits.js"
 export type {
   Counters,
   Effect,
@@ -37,8 +37,8 @@ export type {
   PresentationContext,
   Snapshot,
   TerminalReason,
-} from "./contract"
-export { INPUT_DEVICES, instantiate, TERMINAL_REASONS } from "./contract"
+} from "./contract.js"
+export { INPUT_DEVICES, instantiate, TERMINAL_REASONS } from "./contract.js"
 export {
   type CounterDeclaration,
   type CounterDirection,
@@ -48,17 +48,17 @@ export {
   type RankBy,
   TIE_POLICIES,
   type TiePolicy,
-} from "./counters"
-export * as dmath from "./dmath/index"
+} from "./counters.js"
+export * as dmath from "./dmath/index.js"
 export {
   ClockworkError,
   ERROR_CODES,
   type ErrorCode,
   fail,
   isClockworkError,
-} from "./errors"
-export * as fixed from "./fixed"
-export { encodeCanonical, Hash64, hash64, hashCanonical } from "./hash/index"
+} from "./errors.js"
+export * as fixed from "./fixed.js"
+export { encodeCanonical, Hash64, hash64, hashCanonical } from "./hash/index.js"
 export {
   type AxisOptions,
   type InputSource,
@@ -68,7 +68,7 @@ export {
   quantisePoint,
   RecordedInputSource,
   validateInputLog,
-} from "./inputs"
+} from "./inputs.js"
 export {
   Accumulator,
   type AccumulatorOptions,
@@ -79,34 +79,34 @@ export {
   Session,
   type SessionOptions,
   type SessionResult,
-} from "./loop"
+} from "./loop.js"
 export type {
   Manifest,
   ParamSchema,
   ParamValues,
   TickRate,
-} from "./manifest/index"
+} from "./manifest/index.js"
 export {
   assertManifest,
   mergeParamDefaults,
   validateManifest,
   validateParams,
-} from "./manifest/index"
-export { lerp, lerpAngle, NodeSet } from "./presentation/index"
-export { Prng, type PrngState } from "./prng/index"
-export type { Recording } from "./recording/index"
+} from "./manifest/index.js"
+export { lerp, lerpAngle, NodeSet } from "./presentation/index.js"
+export { Prng, type PrngState } from "./prng/index.js"
+export type { Recording } from "./recording/index.js"
 export {
   compareToRecording,
   decodeRecording,
   encodeRecording,
   RECORDING_FORMAT,
   RECORDING_VERSION,
-} from "./recording/index"
+} from "./recording/index.js"
 export {
   installShims,
   shimsInstalled,
   uninstallShims,
   unshimmableApis,
   withShims,
-} from "./shims"
-export { Timer, type TimerHandler, type TimerState } from "./timer"
+} from "./shims.js"
+export { Timer, type TimerHandler, type TimerState } from "./timer.js"

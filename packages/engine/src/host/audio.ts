@@ -10,7 +10,7 @@
  * download, no asset budget, and no licence declaration.
  */
 
-import type { Effect } from ".."
+import type { Effect } from "../index.js"
 
 export type SoundRecipe = (
   sampleRate: number,

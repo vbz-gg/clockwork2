@@ -16,7 +16,7 @@
  * that reaching for the right thing takes no thought:
  *
  * ```ts
- * import * as dmath from "."
+ * import * as dmath from "./index.js"
  * const x = dmath.cos(angle) * radius
  * ```
  *
@@ -46,11 +46,11 @@
  * architecture, and the suite would fail on every arm64 machine.
  */
 
-export { acos, asin, atan, atan2 } from "./atan"
-export { PI, PI_2, PI_4, TWO_PI } from "./constants"
-export { exp } from "./exp"
-export { copysign, scalbn } from "./helpers"
-export { log, log2, log10 } from "./log"
+export { acos, asin, atan, atan2 } from "./atan.js"
+export { PI, PI_2, PI_4, TWO_PI } from "./constants.js"
+export { exp } from "./exp.js"
+export { copysign, scalbn } from "./helpers.js"
+export { log, log2, log10 } from "./log.js"
 export {
   exp2i,
   f32,
@@ -64,9 +64,9 @@ export {
   isNegative,
   sign,
   wrapAngle,
-} from "./misc"
-export { ipow, pow } from "./pow"
-export { cos, sin, tan } from "./trig"
+} from "./misc.js"
+export { ipow, pow } from "./pow.js"
+export { cos, sin, tan } from "./trig.js"
 
 /**
  * Re-exported so that a simulation can import every number it needs from one

@@ -26,10 +26,10 @@
  *   collide through a delimiter.
  */
 
-import { toBits } from "../bits"
-import type { PlainValue } from "../contract"
-import { ClockworkError } from "../errors"
-import { Hash64 } from "./hash64"
+import { toBits } from "../bits.js"
+import type { PlainValue } from "../contract.js"
+import { ClockworkError } from "../errors.js"
+import { Hash64 } from "./hash64.js"
 
 /** Somewhere to write encoded tokens. */
 export interface CanonicalSink {

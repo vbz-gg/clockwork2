@@ -14,9 +14,9 @@
  * not reproducible even on the same machine.
  */
 
-import type { InputDevice, InputEvent } from "./contract"
-import { INPUT_DEVICES } from "./contract"
-import { fail } from "./errors"
+import type { InputDevice, InputEvent } from "./contract.js"
+import { INPUT_DEVICES } from "./contract.js"
+import { fail } from "./errors.js"
 
 const DEVICES = new Set<string>(INPUT_DEVICES)
 

@@ -17,8 +17,8 @@ import {
   type GameModuleSource,
   instantiate,
   type Manifest,
-} from ".."
-import type { Subject } from "./types"
+} from "../index.js"
+import type { Subject } from "./types.js"
 
 const ENTRY_NAMES = ["index.ts", "index.js", "index.mjs", "src/index.ts"]
 

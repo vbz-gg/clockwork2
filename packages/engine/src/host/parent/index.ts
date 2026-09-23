@@ -12,13 +12,13 @@
  * window instead, which is the identity that actually matters here.
  */
 
-import type { InputEvent } from "../.."
+import type { InputEvent } from "../../index.js"
 import {
   createDispatcher,
   type GameToHost,
   type HostToGame,
   PROTOCOL_VERSION,
-} from "../protocol/index"
+} from "../protocol/index.js"
 
 export interface GameFrameOptions {
   readonly container: HTMLElement

@@ -4,7 +4,7 @@
  * Computes cos(x + y) for |x| <= pi/4.
  */
 
-import { fromWords, getHighWord } from "../../bits"
+import { fromWords, getHighWord } from "../../bits.js"
 
 const C1 = 4.16666666666666019037e-2
 const C2 = -1.38888888888741095749e-3

@@ -22,7 +22,7 @@ import {
   BANNED_IMPORTS,
   BANNED_MEMBERS,
   BANNED_PROPERTIES,
-} from "./banned"
+} from "./banned.js"
 
 export type ScanFindingKind =
   | "global"

@@ -14,7 +14,7 @@ import {
   type LiveInputQueue,
   type Manifest,
   quantisePoint,
-} from ".."
+} from "../index.js"
 
 export type ActionBinding = {
   readonly action: string

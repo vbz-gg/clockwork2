@@ -3,8 +3,8 @@
  * e_acos.c. See NOTICE.
  */
 
-import { getHighWord, getLowWord, setHighWord, setLowWord } from "../bits"
-import { f64 } from "./helpers"
+import { getHighWord, getLowWord, setHighWord, setLowWord } from "../bits.js"
+import { f64 } from "./helpers.js"
 
 const ATANHI = new Float64Array([
   4.63647609000806093515e-1, // atan(0.5)
