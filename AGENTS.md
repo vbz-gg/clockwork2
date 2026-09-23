@@ -179,10 +179,15 @@ dispatches an `engine-released` event to each of them with the version it
 published, so a release reaches them in seconds rather than whenever their own
 daily check next runs. GITHUB_TOKEN is scoped to this repository and cannot
 dispatch to another, so that step reads `ENGINE_RELEASED_TOKEN`, an
-organisation secret with Contents: write on those repositories and nothing
-else. It is the only long-lived credential here, and it is a much smaller
-thing than the npm token trusted publishing removed: the worst it can do is
-open a pull request.
+organisation secret. The dispatch needs Contents: write on each repository it
+tells, and those repositories open their update pull request with the same
+secret, which needs Pull requests: write. GitHub's table of fine-grained token
+permissions lists both, so the token carries both on those repositories and
+nothing else. With Contents alone the dispatch arrives and the pull request is
+refused. It is the only long-lived credential here. Contents: write can also
+push to any unprotected branch of those repositories, which is more than a
+pull request needs and much less than the npm token trusted publishing
+removed.
 
 The step is best-effort, and `scripts/release-version.test.ts` holds it that
 way. By the time it runs the version is published, tagged and announced, so a

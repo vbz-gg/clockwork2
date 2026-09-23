@@ -205,10 +205,13 @@ jobs:
       #
       # GITHUB_TOKEN is scoped to this repository and cannot dispatch to
       # another, so this needs a token of its own: ENGINE_RELEASED_TOKEN, an
-      # organisation secret with Contents: write on the repositories below and
-      # nothing else. It is the only long-lived credential here, and it is a
-      # much smaller thing than the npm token trusted publishing removed - the
-      # worst it can do is open a pull request.
+      # organisation secret. The dispatch needs Contents: write on the
+      # repositories below, and they open their update pull request with the
+      # same secret, which needs Pull requests: write. It carries those two on
+      # those repositories and nothing else. It is the only long-lived
+      # credential here. Contents: write can also push to their unprotected
+      # branches, which is still much less than the npm token trusted
+      # publishing removed.
       #
       # Best-effort on purpose. By this point the version is published, tagged
       # and announced, so a missing or expired token must not turn a release
