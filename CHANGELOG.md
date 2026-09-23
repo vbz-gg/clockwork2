@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.7.3](https://github.com/vbz-gg/clockwork2/compare/v0.7.2...v0.7.3) (2026-09-23)
+
+
+### CI
+
+* **release:** the engine-released token also needs Pull requests: write ([#20](https://github.com/vbz-gg/clockwork2/issues/20)) ([c33ff55](https://github.com/vbz-gg/clockwork2/commit/c33ff550832ee46b7f8041afdfefb14abb11fab6))
+
 ## [0.7.2](https://github.com/vbz-gg/clockwork2/compare/v0.7.1...v0.7.2) (2026-09-23)
 
 
