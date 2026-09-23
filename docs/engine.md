@@ -615,7 +615,34 @@ simulation sees them. `value` is never a float.
 
 The manifest maps device codes to action names, so the game's `tick` sees
 `"left"` rather than `"ArrowLeft"`, and a player who rebinds a key changes
-nothing about the simulation.
+nothing about the simulation. A pointer goes through the same table.
+
+### Pointer codes
+
+A pointer is spelled with a small slot number, because `PointerEvent.pointerId`
+is the browser's and is neither small nor comparable between runs:
+
+```
+pointer0     1 when that finger is down, 0 when it lifts
+pointer0-x   its position across the viewport, in simulation units
+pointer0-y   its position down the viewport
+pointer1     the second finger, and so on
+```
+
+A slot is the lowest free index when a finger lands, and goes back in the pool
+when it lifts, so one finger is always slot 0 and the assignment is a pure
+function of the order the events arrived in. A game binds the slots it
+handles; a finger past them is dropped the way an unbound key is.
+
+Coordinates are quantised against the element the game is drawn in, so they
+are the same units the simulation works in and carry no CSS pixel. A move
+that does not change the quantised value pushes nothing, because
+`pointermove` fires far more often than a coordinate changes and an unchanged
+value is not an input.
+
+`pointercancel` releases the slot as `pointerup` does. The browser sends it
+when it takes the pointer away, and a host that listened only for `pointerup`
+would leave that control held for the rest of the session.
 
 ### On-screen controls
 
