@@ -86,6 +86,47 @@ describe("the kernel version literal", () => {
     expect(Number(rootVersion.split(".")[0])).toBe(0)
   })
 
+  /**
+   * A dispatch has to cut a new version, and #15 is why this is a test.
+   *
+   * The workflow used to publish whatever version the tree held, expecting a
+   * bump to have been run on a laptop first. Dispatching after that merge
+   * found 0.4.0 on the registry, skipped, and reported success having
+   * released nothing. The bump now happens in the job, and these assertions
+   * are what stop it being quietly removed again.
+   */
+  test("a dispatch bumps, rebuilds and tags the commit it bumped", () => {
+    const workflow = readFileSync(
+      join(ROOT, ".github/workflows/release.yml"),
+      "utf8",
+    )
+    expect(workflow).toContain("name: Bump the version")
+    expect(workflow).toContain("commit-and-tag-version")
+    // The bump rewrites KERNEL_VERSION in src, and dist is what ships.
+    expect(workflow).toContain("name: Rebuild at the bumped version")
+    // The tag names the bump commit rather than the one checked out. The
+    // fallback spelling is what says the target is not plain GITHUB_SHA.
+    expect(workflow).toContain("RELEASE_SHA:-")
+    // Without full history commit-and-tag-version reads the wrong previous
+    // tag and re-lists commits that already shipped.
+    expect(workflow).toContain("fetch-depth: 0")
+  })
+
+  /**
+   * No majors, in the one place somebody would reach for one. The test above
+   * holding the version at 0 is the backstop; this is the door.
+   */
+  test("the release workflow offers no major bump", () => {
+    const workflow = readFileSync(
+      join(ROOT, ".github/workflows/release.yml"),
+      "utf8",
+    )
+    const options = /options: \[([^\]]*)\]/.exec(workflow)?.[1] ?? ""
+    expect(options).toContain("patch")
+    expect(options).toContain("minor")
+    expect(options).not.toContain("major")
+  })
+
   test("every file holding it agrees with the root package.json", () => {
     for (const path of filesHoldingTheLiteral()) {
       const contents = readFileSync(join(ROOT, path), "utf8")

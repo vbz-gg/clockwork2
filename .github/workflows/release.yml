@@ -15,6 +15,15 @@ name: Release
 # The tag and the GitHub release are made by this job rather than pushed ahead
 # of it, so cutting a release is one action and a tag can never name a commit
 # the publish did not come from.
+#
+# A dispatch also bumps the version, and that is the whole point of it. It used
+# to publish whatever version the tree already held, so a dispatch after a
+# merge found that version on the registry, skipped, and reported success
+# having released nothing - which is exactly what happened after #15 merged.
+# The bump was expected to have been run on somebody's laptop first, and
+# nothing said so or checked. Now a dispatch is a complete release action and
+# the tag trigger stays as it was, for a tag pushed by hand at a version the
+# tree already carries.
 
 on:
   workflow_dispatch:
@@ -26,6 +35,20 @@ on:
         description: Pack and validate without publishing
         type: boolean
         default: false
+      # Explicit rather than inferred. commit-and-tag-version reads the
+      # conventional commits since the last tag and on a 0.x version maps a
+      # breaking change to a minor and everything else to a patch, so
+      # "whatever the commits say" can be no change at all when nothing since
+      # the last tag was conventional. A named bump always cuts a version.
+      #
+      # There is no major. Majors are off the table for now, and
+      # scripts/release-version.test.ts fails CI on a 1.0.0 release commit, so
+      # the absence here and the test agree.
+      release_as:
+        description: How far to bump the version
+        type: choice
+        options: [patch, minor]
+        default: patch
   push:
     tags: ["v*"]
 
@@ -33,15 +56,22 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      # contents is write only because the last step creates the tag and the
-      # GitHub release. Nothing else here writes to the repository, and no step
-      # pushes to a branch. id-token is what trusted publishing needs, and what
+      # contents is write because a dispatch pushes its bump commit to the
+      # default branch and because the last step creates the tag and the
+      # GitHub release. id-token is what trusted publishing needs, and what
       # makes npm sign a provenance attestation naming the commit and this
       # workflow.
       contents: write
       id-token: write
     steps:
+      # Full history and every tag. commit-and-tag-version works out what to
+      # write into the changelog from the commits since the most recent tag,
+      # and a shallow checkout has none: measured on a clone missing v0.4.0, it
+      # compared from v0.3.2 and re-listed a release's worth of commits that
+      # had already shipped.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.11
@@ -70,6 +100,48 @@ jobs:
         run: bun run scripts/lint-sim-purity.ts
       - name: packages would install cleanly
         run: bun run scripts/check-publishable.ts
+
+      # The bump, on a dispatch only. A tag names a version the tree already
+      # carries, so bumping there would release something nobody asked for.
+      #
+      # `--scripts.prerelease=""` turns off .versionrc.json's hook. That hook
+      # is the gate for a release cut on a laptop; here the steps above have
+      # already run it, and it would additionally run `test:engines`, which
+      # drives Playwright browsers this job does not install.
+      #
+      # `--skip.tag` because the last step of this job creates the tag, at the
+      # bump commit, together with the GitHub release.
+      - name: Bump the version
+        if: github.event_name == 'workflow_dispatch' && !inputs.dry_run
+        run: |
+          set -euo pipefail
+          before="$(node -p "require('./packages/engine/package.json').version")"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          bunx commit-and-tag-version \
+            --release-as "${{ inputs.release_as }}" \
+            --skip.tag \
+            --scripts.prerelease=""
+          after="$(node -p "require('./packages/engine/package.json').version")"
+          # A bump that changed nothing would publish nothing and say it
+          # succeeded, which is the failure this whole step exists to end.
+          if [ "$before" = "$after" ]; then
+            echo "the version is still $before; nothing would be published" >&2
+            exit 1
+          fi
+          # GITHUB_TOKEN-created refs start no further workflow run, so this
+          # cannot retrigger anything.
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+          echo "RELEASE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "bumped $before to $after"
+
+      # The bump rewrites KERNEL_VERSION in packages/engine/src, and `dist` is
+      # what the tarball carries. Without this the published package would
+      # report the previous version from inside itself while its package.json
+      # said otherwise, and nothing downstream would notice.
+      - name: Rebuild at the bumped version
+        if: github.event_name == 'workflow_dispatch' && !inputs.dry_run
+        run: bun run build
 
       # Two steps rather than one with a conditional argument: a ternary inside
       # a shell string is where this kind of workflow goes wrong quietly.
@@ -100,6 +172,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # Read after the bump, so it is the version that was published.
           version="$(node -p "require('./packages/engine/package.json').version")"
           tag="v$version"
           if gh release view "$tag" >/dev/null 2>&1; then
@@ -110,4 +183,4 @@ jobs:
           gh release create "$tag" \
             --title "$tag" \
             --notes-file "$RUNNER_TEMP/notes.md" \
-            --target "$GITHUB_SHA"
+            --target "${RELEASE_SHA:-$GITHUB_SHA}"
