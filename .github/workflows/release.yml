@@ -230,9 +230,16 @@ jobs:
             exit 0
           fi
           version="$(node -p "require('./packages/engine/package.json').version")"
-          for repo in vbz-gg/game-base; do
+          # Each on its own, so one repository refusing the token does not
+          # stop the next from being told.
+          failed=0
+          for repo in vbz-gg/game-base vbz-gg/arcade; do
             echo "telling $repo about $version"
-            gh api "repos/$repo/dispatches" \
+            if ! gh api "repos/$repo/dispatches" \
               -f event_type=engine-released \
-              -f "client_payload[version]=$version"
+              -f "client_payload[version]=$version"; then
+              echo "could not tell $repo; its daily check will pick this up" >&2
+              failed=1
+            fi
           done
+          exit "$failed"

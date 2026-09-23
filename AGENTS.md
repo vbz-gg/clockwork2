@@ -177,7 +177,8 @@ for a tag pushed by hand.
 **A release tells the repositories that pin this engine.** The last step
 dispatches an `engine-released` event to each of them with the version it
 published, so a release reaches them in seconds rather than whenever their own
-daily check next runs. GITHUB_TOKEN is scoped to this repository and cannot
+daily check next runs. Today that is game-base and the arcade, told one at a
+time so that one refusing the token does not stop the other. GITHUB_TOKEN is scoped to this repository and cannot
 dispatch to another, so that step reads `ENGINE_RELEASED_TOKEN`, an
 organisation secret. The dispatch needs Contents: write on each repository it
 tells, and those repositories open their update pull request with the same
