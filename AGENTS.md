@@ -147,6 +147,21 @@ imply, because on a 0.x version commit-and-tag-version maps everything but a
 breaking change to a patch and can decide on no change at all. There is no
 `major` option, which is the same policy the test below holds.
 
+**A dispatch on a tree with nothing new refuses.** Naming the bump means the
+job will cut a version whether or not anything changed, and that is how 0.6.0
+happened: a dispatch landed on a commit that had been released a moment
+earlier, bumped it again, and published a version whose changelog section is
+blank. The step now compares `git describe --tags --abbrev=0` against HEAD and
+exits 1 when `git rev-list` between them is empty. A repository with no tag at
+all falls through, because then everything is unreleased.
+
+`scripts/release-notes.ts` is the second guard and it was not working. Its doc
+comment said an empty body would publish a release that says nothing about
+itself, and its check only fired when the section was *missing*: for 0.6.0 it
+found the heading, returned the empty string between it and the next, and
+`gh release create` announced a blank release. It throws on an empty section
+now, which is the last place to notice before a version is announced.
+
 Two triggers. `workflow_dispatch` takes a `dry_run` input defaulting **false**,
 so a dispatch publishes unless the box is ticked; the tag trigger publishes
 with no box at all, so a dispatch needing one to do the same thing was the odd
