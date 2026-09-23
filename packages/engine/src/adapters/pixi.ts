@@ -14,7 +14,7 @@
  */
 
 import { Application, type Container } from "pixi.js"
-import type { Presentation, PresentationContext } from ".."
+import type { Presentation, PresentationContext } from "../index.js"
 
 export type PixiDraw<TView> = (
   stage: Container,
@@ -140,4 +140,4 @@ export function createPixiPresentation<TView>(
 }
 
 export { Application, Container, Graphics, Text } from "pixi.js"
-export { lerp, lerpAngle, NodeSet } from ".."
+export { lerp, lerpAngle, NodeSet } from "../index.js"

@@ -35,8 +35,8 @@ import {
   type SessionResult,
   type Snapshot,
   type TerminalReason,
-} from ".."
-import { browserScheduler, type Scheduler } from "./clock"
+} from "../index.js"
+import { browserScheduler, type Scheduler } from "./clock.js"
 
 export type HostState = "idle" | "running" | "paused" | "ended"
 

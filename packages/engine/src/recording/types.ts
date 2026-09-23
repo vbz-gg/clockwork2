@@ -18,9 +18,9 @@ import type {
   InputEvent,
   PlainValue,
   TerminalReason,
-} from "../contract"
-import type { Checkpoint } from "../loop"
-import type { TickRate } from "../manifest/types"
+} from "../contract.js"
+import type { Checkpoint } from "../loop.js"
+import type { TickRate } from "../manifest/types.js"
 
 export const RECORDING_FORMAT = "cw2-recording"
 

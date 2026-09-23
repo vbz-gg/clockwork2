@@ -20,12 +20,12 @@
  * whole tree and a game cannot forget to snapshot one.
  */
 
-import type { PlainValue } from "../contract"
-import { fail } from "../errors"
-import { type Alea, type AleaState, createAlea } from "./alea"
+import type { PlainValue } from "../contract.js"
+import { fail } from "../errors.js"
+import { type Alea, type AleaState, createAlea } from "./alea.js"
 
-export type { Alea, AleaState } from "./alea"
-export { createAlea } from "./alea"
+export type { Alea, AleaState } from "./alea.js"
+export { createAlea } from "./alea.js"
 
 /** Plain data, so it drops straight into a snapshot. */
 export type PrngState = {

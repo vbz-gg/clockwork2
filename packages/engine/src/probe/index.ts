@@ -10,20 +10,20 @@
  * of the kernel that could not pass the kernel's own purity scan.
  */
 
-import { toBitsHex } from "../bits"
-import * as dmath from "../dmath/index"
-import { fail } from "../errors"
-import { encodeCanonical } from "../hash/canonical"
-import { Hash64, hash64 } from "../hash/hash64"
-import { RecordedInputSource } from "../inputs"
-import { runSession } from "../loop"
-import { Prng } from "../prng/index"
-import { botLog } from "../testing/input-logs"
+import { toBitsHex } from "../bits.js"
+import * as dmath from "../dmath/index.js"
+import { fail } from "../errors.js"
+import { encodeCanonical } from "../hash/canonical.js"
+import { Hash64, hash64 } from "../hash/hash64.js"
+import { RecordedInputSource } from "../inputs.js"
+import { runSession } from "../loop.js"
+import { Prng } from "../prng/index.js"
+import { botLog } from "../testing/input-logs.js"
 import {
   createReferenceGame,
   REFERENCE_CONFIG,
   REFERENCE_COUNTERS,
-} from "../testing/reference-game"
+} from "../testing/reference-game.js"
 
 export const PROBE_VERSION = 1
 

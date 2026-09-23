@@ -10,7 +10,7 @@
  * the width of this hash.
  */
 
-import { toBits } from "../bits"
+import { toBits } from "../bits.js"
 
 const C1 = 0xcc9e2d51
 const C2 = 0x1b873593

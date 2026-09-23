@@ -7,9 +7,9 @@
  * the demo and a consumer game all describe a divergence the same way.
  */
 
-import type { Counters, PlainValue, Snapshot } from "../contract"
-import { encodeCanonical, hashCanonical } from "../hash/canonical"
-import type { Checkpoint, SessionResult } from "../loop"
+import type { Counters, PlainValue, Snapshot } from "../contract.js"
+import { encodeCanonical, hashCanonical } from "../hash/canonical.js"
+import type { Checkpoint, SessionResult } from "../loop.js"
 
 export interface Divergence {
   /** The first tick where the two runs differ, or null when they do not. */

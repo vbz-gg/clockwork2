@@ -20,12 +20,12 @@ import type {
   PlainValue,
   Snapshot,
   TerminalReason,
-} from "./contract"
-import { type CounterDeclaration, CounterTracker } from "./counters"
-import { ClockworkError, fail } from "./errors"
-import { hashCanonical } from "./hash/canonical"
-import type { InputSource } from "./inputs"
-import { installShims, uninstallShims } from "./shims"
+} from "./contract.js"
+import { type CounterDeclaration, CounterTracker } from "./counters.js"
+import { ClockworkError, fail } from "./errors.js"
+import { hashCanonical } from "./hash/canonical.js"
+import type { InputSource } from "./inputs.js"
+import { installShims, uninstallShims } from "./shims.js"
 
 export type Checkpoint = {
   readonly tick: number

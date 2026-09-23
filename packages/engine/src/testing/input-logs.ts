@@ -10,8 +10,8 @@
  * reproducible from two numbers instead of a file.
  */
 
-import type { InputEvent } from "../contract"
-import { Prng } from "../prng/index"
+import type { InputEvent } from "../contract.js"
+import { Prng } from "../prng/index.js"
 
 export const ACTIONS = ["left", "right", "thrust"] as const
 

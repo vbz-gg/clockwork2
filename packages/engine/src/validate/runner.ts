@@ -5,9 +5,9 @@
  * fixing a submission wants the whole list rather than one item at a time.
  */
 
-import { CHECKS } from "./checks/index"
-import { codeFromError } from "./checks/support"
-import type { CheckOutcome, Report, Subject } from "./types"
+import { CHECKS } from "./checks/index.js"
+import { codeFromError } from "./checks/support.js"
+import type { CheckOutcome, Report, Subject } from "./types.js"
 
 export interface ValidateOptions {
   /** Seeds every check runs against. More seeds, more confidence, more time. */

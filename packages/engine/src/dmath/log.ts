@@ -7,7 +7,7 @@
  * the way `Math.log2` is not.
  */
 
-import { getHighWord, getLowWord, setHighWord } from "../bits"
+import { getHighWord, getLowWord, setHighWord } from "../bits.js"
 
 const TWO54 = 1.8014398509481984e16
 const LN2_HI = 6.9314718036912381649e-1

@@ -25,8 +25,8 @@ import type {
   PlainValue,
   SessionResult,
   Snapshot,
-} from "../.."
-import { Accumulator, LiveInputQueue, Session } from "../.."
+} from "../../index.js"
+import { Accumulator, LiveInputQueue, Session } from "../../index.js"
 
 export type ToWorker =
   | {
@@ -93,8 +93,8 @@ export interface WorkerScope {
  * The worker side. A game's worker entry is three lines:
  *
  * ```ts
- * import { runSimulationWorker } from "."
- * import { createGame, MANIFEST } from "./game"
+ * import { runSimulationWorker } from "./index.js"
+ * import { createGame, MANIFEST } from "./game.js"
  * runSimulationWorker(createGame, MANIFEST)
  * ```
  */

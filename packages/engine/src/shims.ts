@@ -17,7 +17,7 @@
  * sign that something is about to go wrong.
  */
 
-import { ClockworkError } from "./errors"
+import { ClockworkError } from "./errors.js"
 
 interface Trap {
   readonly label: string

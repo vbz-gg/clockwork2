@@ -19,12 +19,12 @@ import type {
   GameModule,
   InputEvent,
   Snapshot,
-} from "../contract"
-import type { CounterDeclaration } from "../counters"
-import * as dmath from "../dmath/index"
-import type { Manifest } from "../manifest/types"
-import { Prng, type PrngState } from "../prng/index"
-import { Timer, type TimerState } from "../timer"
+} from "../contract.js"
+import type { CounterDeclaration } from "../counters.js"
+import * as dmath from "../dmath/index.js"
+import type { Manifest } from "../manifest/types.js"
+import { Prng, type PrngState } from "../prng/index.js"
+import { Timer, type TimerState } from "../timer.js"
 
 export type ReferenceConfig = {
   readonly arenaWidth: number

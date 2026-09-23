@@ -16,12 +16,12 @@ export type {
   Session as ManifestSession,
   StringParam,
   TickRate,
-} from "./types"
-export { TICK_RATES } from "./types"
+} from "./types.js"
+export { TICK_RATES } from "./types.js"
 export {
   assertManifest,
   type Issue,
   mergeParamDefaults,
   validateManifest,
   validateParams,
-} from "./validate"
+} from "./validate.js"

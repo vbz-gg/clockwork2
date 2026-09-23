@@ -11,7 +11,7 @@
  * doubles.
  */
 
-import { fail } from "./errors"
+import { fail } from "./errors.js"
 
 const SHIFT = 16
 const ONE = 1 << SHIFT

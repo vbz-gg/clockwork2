@@ -5,7 +5,7 @@
  * reduction. `iy` says whether y is used: 0 when the caller has none.
  */
 
-import { getHighWord } from "../../bits"
+import { getHighWord } from "../../bits.js"
 
 const S1 = -1.66666666666666324348e-1
 const S2 = 8.33333333332248946124e-3

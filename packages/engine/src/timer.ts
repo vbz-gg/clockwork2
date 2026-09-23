@@ -15,8 +15,8 @@
  * work.
  */
 
-import type { PlainValue } from "./contract"
-import { fail } from "./errors"
+import type { PlainValue } from "./contract.js"
+import { fail } from "./errors.js"
 
 export type TimerHandler = () => void
 

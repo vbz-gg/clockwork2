@@ -11,7 +11,7 @@
  * computation is integer multiply-and-carry over an exact table.
  */
 
-import { f64, i32, scalbn } from "../helpers"
+import { f64, i32, scalbn } from "../helpers.js"
 
 /** 2/pi, in 24-bit words, most significant first. */
 const IPIO2 = new Int32Array([

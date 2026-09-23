@@ -20,7 +20,7 @@ import type {
   Snapshot,
   TerminalReason,
   TickRate,
-} from "../.."
+} from "../../index.js"
 
 export const PROTOCOL_VERSION = 1
 

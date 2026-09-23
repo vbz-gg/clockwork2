@@ -10,7 +10,7 @@
  * is probed once here rather than assumed. Two lines, one branch at load.
  */
 
-import { fail } from "./errors"
+import { fail } from "./errors.js"
 
 const SCRATCH = new Float64Array(1)
 const WORDS = new Uint32Array(SCRATCH.buffer)

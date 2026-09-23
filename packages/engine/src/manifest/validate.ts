@@ -15,14 +15,14 @@
  * set to `undefined`, which keeps the result canonically encodable.
  */
 
-import { fail } from "../errors"
+import { fail } from "../errors.js"
 import type {
   Manifest,
   ParamDefinition,
   ParamSchema,
   ParamValues,
-} from "./types"
-import { TICK_RATES } from "./types"
+} from "./types.js"
+import { TICK_RATES } from "./types.js"
 
 export type Issue = {
   /** Dotted path into the document, for example `counters[1].direction`. */

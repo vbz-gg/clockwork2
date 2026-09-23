@@ -9,7 +9,7 @@
  * reference this file is checked against.
  */
 
-import { getHighWord, getLowWord, setHighWord } from "../bits"
+import { getHighWord, getLowWord, setHighWord } from "../bits.js"
 
 const ONE = 1.0
 const HALF_POS = 0.5

@@ -12,10 +12,10 @@
  * cheaper, and it never reaches any of this.
  */
 
-import { getHighWord, getLowWord, setHighWord, setLowWord } from "../bits"
-import { fail } from "../errors"
-import { HUGE, TINY, TWO53 } from "./constants"
-import { scalbn } from "./helpers"
+import { getHighWord, getLowWord, setHighWord, setLowWord } from "../bits.js"
+import { fail } from "../errors.js"
+import { HUGE, TINY, TWO53 } from "./constants.js"
+import { scalbn } from "./helpers.js"
 
 const ZERO = 0.0
 const ONE = 1.0

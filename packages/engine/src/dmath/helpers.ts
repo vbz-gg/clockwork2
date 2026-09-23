@@ -6,8 +6,8 @@
  * polynomial code readable and costs nothing at run time.
  */
 
-import { fromWords, getHighWord, setHighWord } from "../bits"
-import { fail } from "../errors"
+import { fromWords, getHighWord, setHighWord } from "../bits.js"
+import { fail } from "../errors.js"
 
 export function f64(table: Float64Array, index: number): number {
   return table[index] as number

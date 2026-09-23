@@ -6,12 +6,12 @@
  * realm, and each worker holds its own module instance, so that is safe.
  */
 
-import { getHighWord } from "../bits"
-import { HW_PI_4 } from "./constants"
-import { kernelCos } from "./kernel/cos"
-import { remPio2 } from "./kernel/rem-pio2"
-import { kernelSin } from "./kernel/sin"
-import { kernelTan } from "./kernel/tan"
+import { getHighWord } from "../bits.js"
+import { HW_PI_4 } from "./constants.js"
+import { kernelCos } from "./kernel/cos.js"
+import { remPio2 } from "./kernel/rem-pio2.js"
+import { kernelSin } from "./kernel/sin.js"
+import { kernelTan } from "./kernel/tan.js"
 
 const reduced = new Float64Array(2)
 

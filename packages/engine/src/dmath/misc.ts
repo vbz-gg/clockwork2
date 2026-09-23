@@ -3,10 +3,10 @@
  * float32 helpers.
  */
 
-import { fromWords, getHighWord } from "../bits"
-import { fail } from "../errors"
-import { PI, PI_2, TWO_PI } from "./constants"
-import { remPio2 } from "./kernel/rem-pio2"
+import { fromWords, getHighWord } from "../bits.js"
+import { fail } from "../errors.js"
+import { PI, PI_2, TWO_PI } from "./constants.js"
+import { remPio2 } from "./kernel/rem-pio2.js"
 
 /**
  * sqrt(x*x + y*y), scaled so neither square overflows or underflows.

@@ -12,17 +12,17 @@
  * replaying to a wrong answer.
  */
 
-import type { Counters, InputEvent, PlainValue } from "../contract"
-import { TERMINAL_REASONS } from "../contract"
-import { fail } from "../errors"
-import { validateInputLog } from "../inputs"
-import type { Checkpoint } from "../loop"
-import { TICK_RATES } from "../manifest/types"
+import type { Counters, InputEvent, PlainValue } from "../contract.js"
+import { TERMINAL_REASONS } from "../contract.js"
+import { fail } from "../errors.js"
+import { validateInputLog } from "../inputs.js"
+import type { Checkpoint } from "../loop.js"
+import { TICK_RATES } from "../manifest/types.js"
 import {
   READABLE_RECORDING_VERSIONS,
   RECORDING_FORMAT,
   type Recording,
-} from "./types"
+} from "./types.js"
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {

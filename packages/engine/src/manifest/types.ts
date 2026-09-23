@@ -10,8 +10,8 @@
  * round for a platform deciding whether to run untrusted code.
  */
 
-import type { PlainValue } from "../contract"
-import type { CounterDeclaration, TiePolicy } from "../counters"
+import type { PlainValue } from "../contract.js"
+import type { CounterDeclaration, TiePolicy } from "../counters.js"
 
 export const TICK_RATES = [30, 60, 120] as const
 export type TickRate = (typeof TICK_RATES)[number]
