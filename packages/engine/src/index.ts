@@ -14,7 +14,7 @@
  * The major of this constant is pinned by a game's manifest. A bundle built
  * against a different kernel major is refused rather than run.
  */
-export const KERNEL_VERSION = "0.5.0"
+export const KERNEL_VERSION = "0.6.0"
 
 export {
   fromBits,
