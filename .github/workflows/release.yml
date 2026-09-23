@@ -116,6 +116,21 @@ jobs:
         run: |
           set -euo pipefail
           before="$(node -p "require('./packages/engine/package.json').version")"
+          # Nothing since the last tag means nothing to release. Cutting one
+          # anyway is what produced 0.6.0: a dispatch landed on a tree that
+          # had already been released a moment earlier, bumped it again, and
+          # published a version whose changelog section is blank. A release
+          # nobody can describe is a release nobody asked for.
+          #
+          # `git describe` names the most recent tag reachable from here, and
+          # an empty `rev-list` between it and HEAD is the case. A repository
+          # with no tag at all has everything to release, so it falls through.
+          if last="$(git describe --tags --abbrev=0 2>/dev/null)"; then
+            if [ -z "$(git rev-list "$last"..HEAD)" ]; then
+              echo "nothing has landed since $last; there is no release to cut" >&2
+              exit 1
+            fi
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           bunx commit-and-tag-version \

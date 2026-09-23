@@ -33,10 +33,18 @@ export function hasRelease(changelog: string): boolean {
  *
  * The heading line itself is left out, because the GitHub release already
  * carries the version as its title and the compare link as its own metadata.
+ *
+ * A missing section throws, and so does an empty one. The second used to
+ * pass, which made this function's own promise false: 0.6.0 was cut with
+ * nothing between its heading and the next, and it published a GitHub release
+ * with a blank body. A version with no changelog under it is a version with
+ * no reason to exist, and this is the last place to notice before it is
+ * announced.
  */
 export function sectionFor(changelog: string, version: string): string {
   const lines = changelog.split("\n")
   let start = -1
+  let section: string | null = null
   for (const [index, line] of lines.entries()) {
     const heading = RELEASE_HEADING.exec(line)
     if (heading === null) continue
@@ -44,22 +52,32 @@ export function sectionFor(changelog: string, version: string): string {
       if (heading[1] === version) start = index
       continue
     }
-    return lines
+    section = lines
       .slice(start + 1, index)
       .join("\n")
       .trim()
+    break
   }
+
   if (start === -1) {
-    // No sentinel: an empty body would publish a release that says nothing
-    // about itself, and nobody would notice until they read it.
     throw new Error(
       `CHANGELOG.md has no section for ${version}; the release commit writes one, so this version was tagged without it`,
     )
   }
-  return lines
-    .slice(start + 1)
-    .join("\n")
-    .trim()
+
+  const body =
+    section ??
+    lines
+      .slice(start + 1)
+      .join("\n")
+      .trim()
+
+  if (body === "") {
+    throw new Error(
+      `CHANGELOG.md's section for ${version} is empty, so nothing changed since the version before it; a release with a blank body says nothing about itself`,
+    )
+  }
+  return body
 }
 
 if (import.meta.main) {

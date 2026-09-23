@@ -93,3 +93,47 @@ describe("sectionFor", () => {
     expect(section).not.toContain("## 0.2.0")
   })
 })
+
+describe("a release with nothing in it", () => {
+  /**
+   * What actually happened, reduced to its shape. A dispatch on a tree with
+   * no commits since the last tag cut 0.6.0, commit-and-tag-version wrote a
+   * heading with nothing under it, and this function returned the empty
+   * string - so `gh release create` announced a version with a blank body.
+   * The doc comment already promised this throws; it did not.
+   */
+  const EMPTY = `# Changelog
+
+## [0.6.0](https://example.invalid/compare/v0.5.0...v0.6.0) (2026-09-23)
+
+## [0.5.0](https://example.invalid/compare/v0.4.0...v0.5.0) (2026-09-23)
+
+
+### Features
+
+* something real ([abc1234](https://example.invalid/commit/abc1234))
+`
+
+  test("an empty section throws rather than announcing nothing", () => {
+    expect(() => sectionFor(EMPTY, "0.6.0")).toThrow(/is empty/)
+  })
+
+  test("the release below it still reads", () => {
+    expect(sectionFor(EMPTY, "0.5.0")).toContain("something real")
+  })
+
+  /** The newest release has no heading after it, so it takes the other path. */
+  test("an empty section at the end of the file throws too", () => {
+    const trailing = `# Changelog
+
+## [0.5.0](https://example.invalid/compare/v0.4.0...v0.5.0) (2026-09-23)
+
+## [0.6.0](https://example.invalid/compare/v0.5.0...v0.6.0) (2026-09-23)
+`
+    expect(() => sectionFor(trailing, "0.6.0")).toThrow(/is empty/)
+  })
+
+  test("a version the changelog does not mention still throws its own way", () => {
+    expect(() => sectionFor(EMPTY, "0.7.0")).toThrow(/no section for/)
+  })
+})
