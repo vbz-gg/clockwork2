@@ -4,6 +4,7 @@ export type {
   Budgets,
   Capabilities,
   ColorParam,
+  Controls,
   Display,
   EnumParam,
   InputBinding,
@@ -15,7 +16,6 @@ export type {
   Session as ManifestSession,
   StringParam,
   TickRate,
-  VirtualControl,
 } from "./types"
 export { TICK_RATES } from "./types"
 export {

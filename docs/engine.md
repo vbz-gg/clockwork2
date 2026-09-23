@@ -617,6 +617,42 @@ The manifest maps device codes to action names, so the game's `tick` sees
 `"left"` rather than `"ArrowLeft"`, and a player who rebinds a key changes
 nothing about the simulation.
 
+### On-screen controls
+
+A phone has no keyboard, so a game says in `inputs.controls` how it expects to
+be steered there. There are three answers and the difference between them is
+who draws the buttons.
+
+```ts
+type Controls =
+  | { mode: "scheme"; scheme: string; bind: { [slot: string]: string } }
+  | { mode: "custom" }
+```
+
+`scheme` names a layout the **host** draws, and binds that layout's slots to
+this game's own actions. The engine does not own the set of schemes: a
+platform ships a table of them and the engine checks only that every bound
+slot names an action declared in `inputs.map`. A game binds the slots it uses
+and no more, so a left-and-right game can sit in a d-pad's left and right
+positions and leave the other two empty. A press becomes a `virtual-input`
+message, and `InputCapture.virtual()` is the only place one may enter a
+session.
+
+`custom` means the game paints its own controls in its renderer and reads
+pointer input. The host draws nothing. Two consequences follow from the rule
+at the top of this section, that a game cannot construct an input event. The
+hit test has to happen in `tick()`, because a renderer deciding which button
+was pressed and handing the answer to the simulation is the hole that rule
+closes. And it works in simulation units, because the host has already
+quantised the pointer against a viewport that differs from one device to the
+next. The layout of the controls is therefore simulation state and replays
+exactly, which also means the renderer has to draw each control where the
+simulation believes it is.
+
+Leaving `controls` out says the game needs a keyboard or a mouse. A host can
+then say so to a player holding a phone, rather than framing a canvas they
+cannot steer.
+
 ## Rendering
 
 A presentation implements three methods:
@@ -790,7 +826,7 @@ not have to run it first.
 
   inputs: {
     map: { left: [{ code: "ArrowLeft", device: "key", label: "Left" }] },
-    virtualControls: [{ id: "left", kind: "button", label: "Left", action: "left" }],
+    controls: { mode: "scheme", scheme: "dpad", bind: { left: "left" } },
   },
 
   counters: [{ name: "motes", direction: "up", monotonic: true }],

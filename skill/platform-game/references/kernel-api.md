@@ -881,7 +881,7 @@ export type Manifest = {
         readonly map: {
             readonly [action: string]: readonly InputBinding[];
         };
-        readonly virtualControls?: readonly VirtualControl[];
+        readonly controls?: Controls;
     };
     readonly counters: readonly CounterDeclaration[];
     readonly rankBy: readonly string[];
@@ -2496,7 +2496,7 @@ export type Manifest = {
         readonly map: {
             readonly [action: string]: readonly InputBinding[];
         };
-        readonly virtualControls?: readonly VirtualControl[];
+        readonly controls?: Controls;
     };
     readonly counters: readonly CounterDeclaration[];
     readonly rankBy: readonly string[];
@@ -3670,7 +3670,7 @@ export type Manifest = {
         readonly map: {
             readonly [action: string]: readonly InputBinding[];
         };
-        readonly virtualControls?: readonly VirtualControl[];
+        readonly controls?: Controls;
     };
     readonly counters: readonly CounterDeclaration[];
     readonly rankBy: readonly string[];

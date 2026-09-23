@@ -355,6 +355,56 @@ describe("one rule at a time", () => {
       { ...M, inputs: { map: { push: [{ code: "Space", device: "mind" }] } } },
     ],
 
+    // On-screen controls. The scheme name is the host's to recognise, so
+    // what is checkable here is that the binding is coherent.
+    ["inputs.controls", { ...M, inputs: { ...M.inputs, controls: "dpad" } }],
+    [
+      "inputs.controls.mode",
+      { ...M, inputs: { ...M.inputs, controls: { mode: "painted" } } },
+    ],
+    [
+      "inputs.controls.scheme",
+      {
+        ...M,
+        inputs: {
+          ...M.inputs,
+          controls: { mode: "scheme", scheme: "", bind: { left: "left" } },
+        },
+      },
+    ],
+    [
+      "inputs.controls.bind",
+      {
+        ...M,
+        inputs: {
+          ...M.inputs,
+          controls: { mode: "scheme", scheme: "dpad", bind: ["left"] },
+        },
+      },
+    ],
+    // A scheme binding nothing draws controls that send nothing.
+    [
+      "inputs.controls.bind",
+      {
+        ...M,
+        inputs: {
+          ...M.inputs,
+          controls: { mode: "scheme", scheme: "dpad", bind: {} },
+        },
+      },
+    ],
+    // The one a game gets wrong by renaming an action and not its binding.
+    [
+      "inputs.controls.bind.up",
+      {
+        ...M,
+        inputs: {
+          ...M.inputs,
+          controls: { mode: "scheme", scheme: "dpad", bind: { up: "jump" } },
+        },
+      },
+    ],
+
     // Capabilities.
     ["capabilities", { ...M, capabilities: true }],
     [
@@ -391,6 +441,30 @@ describe("one rule at a time", () => {
       issueAt(manifest, at)
     })
   }
+
+  test("a scheme binding declared actions is accepted, and so is custom", () => {
+    // The negative rows above fire on any mistake, so both shapes need a
+    // positive case or they would pass against a validator that refused
+    // every `controls` block it saw.
+    withoutIssues({
+      ...M,
+      inputs: {
+        ...M.inputs,
+        controls: {
+          mode: "scheme",
+          scheme: "dpad",
+          bind: { left: "left", right: "right" },
+        },
+      },
+    })
+    withoutIssues({
+      ...M,
+      inputs: { ...M.inputs, controls: { mode: "custom" } },
+    })
+    // And leaving it out says the game wants a keyboard, which is a third
+    // answer rather than a missing one.
+    withoutIssues(M)
+  })
 
   test("a manifest carrying valid assets and params is accepted", () => {
     // The negative rows above are only worth something if the positive one
