@@ -118,13 +118,40 @@ found the version already on the registry, because that is the re-run that
 exists to add a tag or a release that went missing; both halves check first.
 The release body is the version's own `CHANGELOG.md` section, read by
 `scripts/release-notes.ts`, which throws rather than publishing a release that
-says nothing about itself. That last step is the only reason the job has
+says nothing about itself. That step and the bump below are why the job has
 `contents: write`.
+
+**A dispatch bumps the version, and that is what makes it a release.** It used
+to publish whatever version the tree already held, expecting `bun run release`
+to have been run on a laptop first; nothing said so and nothing checked.
+Dispatching after #15 merged therefore found 0.4.0 on the registry, skipped,
+and reported success having released nothing. The job now runs
+`commit-and-tag-version` itself, with `--scripts.prerelease=""` because the
+steps above already ran that gate and the hook would additionally run
+`test:engines`, which drives browsers this job does not install, and with
+`--skip.tag` because the last step makes the tag. Three things follow, and
+`scripts/release-version.test.ts` holds all of them:
+
+- The checkout needs `fetch-depth: 0`. commit-and-tag-version works out the
+  changelog from the commits since the most recent tag, and measured on a
+  clone missing `v0.4.0` it compared from `v0.3.2` and re-listed a release's
+  worth of commits that had already shipped.
+- The build has to run **again** after the bump. The bump rewrites
+  `KERNEL_VERSION` in `packages/engine/src`, and `dist` is what the tarball
+  carries, so without it the published package reports the previous version
+  from inside itself while its package.json says otherwise.
+- The tag names the bump commit, not the one the job checked out.
+
+`release_as` is a named `patch` or `minor` rather than whatever the commits
+imply, because on a 0.x version commit-and-tag-version maps everything but a
+breaking change to a patch and can decide on no change at all. There is no
+`major` option, which is the same policy the test below holds.
 
 Two triggers. `workflow_dispatch` takes a `dry_run` input defaulting **false**,
 so a dispatch publishes unless the box is ticked; the tag trigger publishes
 with no box at all, so a dispatch needing one to do the same thing was the odd
-one out. A dry run packs and validates but never reaches the publish endpoint,
+one out. The tag trigger does not bump, because a tag already names a version
+the tree carries. A dry run packs and validates but never reaches the publish endpoint,
 so it does not exercise the OIDC exchange. npm's documented limitations say that for a
 workflow using `workflow_call` or `workflow_dispatch`, "validation checks the
 calling workflow's name instead of the workflow that actually contains the
