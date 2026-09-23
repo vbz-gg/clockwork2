@@ -34,10 +34,14 @@ export const MANIFEST: Manifest = {
         { code: "KeyD", device: "key" },
       ],
     },
-    virtualControls: [
-      { id: "left", kind: "button", label: "Left", action: "left" },
-      { id: "right", kind: "button", label: "Right", action: "right" },
-    ],
+    // A layout the host draws, with this game's own actions in its slots.
+    // Only the slots named here are drawn, so a two-direction game gets two
+    // buttons in a d-pad's left and right positions.
+    controls: {
+      mode: "scheme",
+      scheme: "dpad",
+      bind: { left: "left", right: "right" },
+    },
   },
   counters: [
     { name: "motes", direction: "up", monotonic: true },

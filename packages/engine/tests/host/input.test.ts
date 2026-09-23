@@ -11,6 +11,14 @@ const MANIFEST = {
         { code: "KeyD", device: "key" },
       ],
       thrust: [{ code: "Space", device: "key" }],
+      // Two fingers' worth, so a test can tell them apart. A game binds the
+      // slots it handles; a third finger's codes are bound by nobody and its
+      // events are dropped.
+      aimX: [{ code: "pointer0-x", device: "pointer" }],
+      aimY: [{ code: "pointer0-y", device: "pointer" }],
+      touch: [{ code: "pointer0", device: "pointer" }],
+      aim2X: [{ code: "pointer1-x", device: "pointer" }],
+      touch2: [{ code: "pointer1", device: "pointer" }],
     },
   },
 } as unknown as Manifest
@@ -188,44 +196,201 @@ describe("pointer capture", () => {
     const { queue, target } = capture({ viewport: VIEWPORT })
     target.send("pointermove", {
       type: "pointermove",
+      pointerId: 1,
       clientX: 360,
       clientY: 200,
     })
     const taken = queue.take(10)
     expect(taken.map((e) => [e.code, e.value])).toEqual([
-      ["pointer-x", 160],
-      ["pointer-y", 90],
+      ["aimX", 160],
+      ["aimY", 90],
     ])
   })
 
-  test("both axes are pushed for every pointer event", () => {
-    const { queue, target } = capture({ viewport: VIEWPORT })
-    target.send("pointermove", {
-      type: "pointermove",
-      clientX: 40,
-      clientY: 20,
-    })
-    expect(queue.take(10).map((e) => e.code)).toEqual([
-      "pointer-x",
-      "pointer-y",
-    ])
-  })
-
-  test("a press adds a button input, a release adds its zero", () => {
+  /**
+   * A pointer goes through the manifest's binding table like a key does.
+   *
+   * It used to push its device code straight onto the queue, so the
+   * simulation saw `pointer-x` where a key gave it `left`, and a manifest
+   * binding a pointer code to an action was dead: nothing ever read it.
+   */
+  test("a pointer arrives as the action the manifest bound it to", () => {
     const { queue, target } = capture({ viewport: VIEWPORT })
     target.send("pointerdown", {
       type: "pointerdown",
+      pointerId: 7,
       clientX: 360,
       clientY: 200,
     })
-    target.send("pointerup", { type: "pointerup", clientX: 360, clientY: 200 })
+    expect(queue.take(10).map((e) => e.code)).toEqual(["aimX", "aimY", "touch"])
+  })
+
+  /**
+   * Two fingers, which is the case the old single stream could not carry.
+   *
+   * The first to land holds slot 0 and the second slot 1, so a game drawing
+   * its own d-pad and a jump button sees a direction held while a button is
+   * tapped. Before this they shared one code: the coordinates interleaved,
+   * and lifting either one sent the same release.
+   */
+  test("two fingers are told apart, and one lifting does not release the other", () => {
+    const { queue, target } = capture({ viewport: VIEWPORT })
+    target.send("pointerdown", {
+      type: "pointerdown",
+      pointerId: 11,
+      clientX: 40,
+      clientY: 20,
+    })
+    target.send("pointerdown", {
+      type: "pointerdown",
+      pointerId: 12,
+      clientX: 680,
+      clientY: 380,
+    })
+    target.send("pointerup", {
+      type: "pointerup",
+      pointerId: 12,
+      clientX: 680,
+      clientY: 380,
+    })
+    expect(queue.take(20).map((e) => [e.code, e.value])).toEqual([
+      ["aimX", 0],
+      ["aimY", 0],
+      ["touch", 1],
+      ["aim2X", 320],
+      ["touch2", 1],
+      ["touch2", 0],
+    ])
+  })
+
+  /**
+   * The slot a lifted finger held goes back in the pool, so a session of taps
+   * does not walk off the end of what the game bound. A game binding only
+   * `pointer0-*` would otherwise go silent after its first tap.
+   */
+  test("a lifted finger's slot is reused by the next one", () => {
+    const { queue, target } = capture({ viewport: VIEWPORT })
+    for (const id of [3, 4, 5]) {
+      target.send("pointerdown", {
+        type: "pointerdown",
+        pointerId: id,
+        clientX: 360,
+        clientY: 200,
+      })
+      target.send("pointerup", {
+        type: "pointerup",
+        pointerId: id,
+        clientX: 360,
+        clientY: 200,
+      })
+    }
+    expect(queue.take(30).map((e) => e.code)).toEqual([
+      "aimX",
+      "aimY",
+      "touch",
+      "touch",
+      "aimX",
+      "aimY",
+      "touch",
+      "touch",
+      "aimX",
+      "aimY",
+      "touch",
+      "touch",
+    ])
+  })
+
+  /**
+   * The browser sends `pointercancel` instead of `pointerup` when it takes
+   * the pointer away. Ignoring it leaves the control held and its slot
+   * occupied for the rest of the session.
+   */
+  test("a cancelled pointer releases and frees its slot", () => {
+    const { queue, target } = capture({ viewport: VIEWPORT })
+    target.send("pointerdown", {
+      type: "pointerdown",
+      pointerId: 21,
+      clientX: 360,
+      clientY: 200,
+    })
+    target.send("pointercancel", {
+      type: "pointercancel",
+      pointerId: 21,
+      clientX: 360,
+      clientY: 200,
+    })
+    target.send("pointerdown", {
+      type: "pointerdown",
+      pointerId: 22,
+      clientX: 40,
+      clientY: 20,
+    })
+    expect(queue.take(20).map((e) => [e.code, e.value])).toEqual([
+      ["aimX", 160],
+      ["aimY", 90],
+      ["touch", 1],
+      ["touch", 0],
+      ["aimX", 0],
+      ["aimY", 0],
+      ["touch", 1],
+    ])
+  })
+
+  /**
+   * `pointermove` fires far more often than a quantised coordinate changes -
+   * the element here is twice the viewport, so two CSS pixels are one
+   * simulation unit. An unchanged value is not an input.
+   */
+  test("a move that does not change the quantised value pushes nothing", () => {
+    const { queue, target } = capture({ viewport: VIEWPORT })
+    target.send("pointermove", {
+      type: "pointermove",
+      pointerId: 1,
+      clientX: 360,
+      clientY: 200,
+    })
+    expect(queue.take(10).length).toBe(2)
+    target.send("pointermove", {
+      type: "pointermove",
+      pointerId: 1,
+      clientX: 359,
+      clientY: 200,
+    })
+    expect(queue.take(10).length).toBe(0)
+    target.send("pointermove", {
+      type: "pointermove",
+      pointerId: 1,
+      clientX: 362,
+      clientY: 200,
+    })
     expect(queue.take(10).map((e) => [e.code, e.value])).toEqual([
-      ["pointer-x", 160],
-      ["pointer-y", 90],
-      ["pointer", 1],
-      ["pointer-x", 160],
-      ["pointer-y", 90],
-      ["pointer", 0],
+      ["aimX", 161],
+    ])
+  })
+
+  /**
+   * A game binds the slots it handles. A finger beyond them is not an error
+   * and not a guess: its codes are bound by nobody, so it is dropped exactly
+   * as an unbound key is.
+   */
+  test("a finger the game did not bind a slot for is dropped", () => {
+    const { queue, target } = capture({ viewport: VIEWPORT })
+    for (const id of [31, 32, 33]) {
+      target.send("pointerdown", {
+        type: "pointerdown",
+        pointerId: id,
+        clientX: 360,
+        clientY: 200,
+      })
+    }
+    // Slot 2 is bound by nothing in this manifest, so the third finger is
+    // silent while the first two are not.
+    expect(queue.take(20).map((e) => e.code)).toEqual([
+      "aimX",
+      "aimY",
+      "touch",
+      "aim2X",
+      "touch2",
     ])
   })
 
@@ -234,6 +399,7 @@ describe("pointer capture", () => {
     const { queue, target } = capture({ viewport: VIEWPORT })
     target.send("pointerdown", {
       type: "pointerdown",
+      pointerId: 1,
       clientX: 100,
       clientY: 100,
     })
@@ -242,7 +408,8 @@ describe("pointer capture", () => {
 
   test("detach removes the pointer listeners too", () => {
     const { queue, target, capture: c } = capture({ viewport: VIEWPORT })
-    expect(target.count).toBe(3)
+    // down, up, cancel, move.
+    expect(target.count).toBe(4)
     c.detach()
     expect(target.count).toBe(0)
     target.send("pointermove", {
@@ -321,6 +488,16 @@ describe("codes", () => {
       manifest: MANIFEST,
       queue: new LiveInputQueue(),
     })
-    expect(capture.codes).toEqual(["ArrowLeft", "ArrowRight", "KeyD", "Space"])
+    expect(capture.codes).toEqual([
+      "ArrowLeft",
+      "ArrowRight",
+      "KeyD",
+      "Space",
+      "pointer0-x",
+      "pointer0-y",
+      "pointer0",
+      "pointer1-x",
+      "pointer1",
+    ])
   })
 })

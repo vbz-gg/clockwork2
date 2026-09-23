@@ -24,13 +24,35 @@ export type InputBinding = {
   readonly label?: string
 }
 
-export type VirtualControl = {
-  readonly id: string
-  readonly kind: "button" | "stick" | "dpad"
-  readonly label: string
-  /** The action this control sends, which must appear in `inputs.map`. */
-  readonly action: string
-}
+/**
+ * How a player without a keyboard steers this game.
+ *
+ * `scheme` names an on-screen layout the **host** draws and owns, and binds
+ * each of that layout's slots to one of this game's actions. Which schemes
+ * exist is the host's business rather than the engine's: a platform ships a
+ * table of them and the engine checks only that the binding is coherent.
+ * The host builds every input the layout sends, so `virtual-input` stays the
+ * one door a virtual input comes through.
+ *
+ * `custom` means the game draws and hit-tests its own controls inside its
+ * renderer, from pointer input, and the host draws nothing. Two things to
+ * know before choosing it. The hit test belongs in the simulation, because a
+ * renderer cannot construct an input. And it works in simulation units
+ * rather than CSS pixels, because `quantisePoint` has already divided by a
+ * viewport that differs per device.
+ *
+ * Leaving `controls` out says the game needs a keyboard or a mouse. That is
+ * a third answer rather than a missing one: a host can then tell a phone
+ * player so, instead of framing a canvas they cannot steer.
+ */
+export type Controls =
+  | {
+      readonly mode: "scheme"
+      readonly scheme: string
+      /** A slot of that scheme to an action that appears in `inputs.map`. */
+      readonly bind: { readonly [slot: string]: string }
+    }
+  | { readonly mode: "custom" }
 
 export type ParamBase = {
   readonly label: string
@@ -139,7 +161,7 @@ export type Manifest = {
   readonly session: Session
   readonly inputs: {
     readonly map: { readonly [action: string]: readonly InputBinding[] }
-    readonly virtualControls?: readonly VirtualControl[]
+    readonly controls?: Controls
   }
   readonly counters: readonly CounterDeclaration[]
   readonly rankBy: readonly string[]

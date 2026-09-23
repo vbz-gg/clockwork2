@@ -33,9 +33,11 @@ in `kernel-api.md`, which is generated from the declarations.
       left: [{ code: "ArrowLeft", device: "key", label: "Left" }],
       right: [{ code: "ArrowRight", device: "key" }],
     },
-    virtualControls: [        // the host draws these on a phone
-      { id: "left", kind: "button", label: "Left", action: "left" },
-    ],
+    controls: {                // how a phone steers this game
+      mode: "scheme",          // or { mode: "custom" }, or leave it out
+      scheme: "dpad",          // a layout the host draws and owns
+      bind: { left: "left" },  // its slots, to your actions
+    },
   },
 
   counters: [
@@ -88,6 +90,19 @@ and defaults, and the platform validates a supplied value against them before
 the game sees it. `mergeParamDefaults` fills the rest. The values arrive as
 the `config` argument to `init`, so they are part of what a recording carries
 and what a replay restores.
+
+`inputs.controls` says how a phone steers the game, and there are three
+answers. `{ mode: "scheme", scheme, bind }` names a layout the **host** draws
+and puts your actions in its slots: bind the slots you use and leave the rest
+of the layout empty, so a left-and-right game sits in a d-pad's left and right
+positions. Which scheme names exist is the platform's table rather than the
+engine's, so the engine checks only that every bound slot names an action you
+declared in `inputs.map`. `{ mode: "custom" }` means you paint the controls in
+your own renderer; the host draws nothing, your hit test goes in `tick()`
+because a renderer may not construct an input, and it works in simulation
+units because the host quantised the pointer against a viewport that differs
+per device. Leaving the field out says the game wants a keyboard, and a
+platform can say so to somebody holding a phone.
 
 `assets` is every file you ship, with its sha256 and byte count.
 Undeclared file, wrong hash, or declared-and-missing all fail check 7.

@@ -615,7 +615,70 @@ simulation sees them. `value` is never a float.
 
 The manifest maps device codes to action names, so the game's `tick` sees
 `"left"` rather than `"ArrowLeft"`, and a player who rebinds a key changes
-nothing about the simulation.
+nothing about the simulation. A pointer goes through the same table.
+
+### Pointer codes
+
+A pointer is spelled with a small slot number, because `PointerEvent.pointerId`
+is the browser's and is neither small nor comparable between runs:
+
+```
+pointer0     1 when that finger is down, 0 when it lifts
+pointer0-x   its position across the viewport, in simulation units
+pointer0-y   its position down the viewport
+pointer1     the second finger, and so on
+```
+
+A slot is the lowest free index when a finger lands, and goes back in the pool
+when it lifts, so one finger is always slot 0 and the assignment is a pure
+function of the order the events arrived in. A game binds the slots it
+handles; a finger past them is dropped the way an unbound key is.
+
+Coordinates are quantised against the element the game is drawn in, so they
+are the same units the simulation works in and carry no CSS pixel. A move
+that does not change the quantised value pushes nothing, because
+`pointermove` fires far more often than a coordinate changes and an unchanged
+value is not an input.
+
+`pointercancel` releases the slot as `pointerup` does. The browser sends it
+when it takes the pointer away, and a host that listened only for `pointerup`
+would leave that control held for the rest of the session.
+
+### On-screen controls
+
+A phone has no keyboard, so a game says in `inputs.controls` how it expects to
+be steered there. There are three answers and the difference between them is
+who draws the buttons.
+
+```ts
+type Controls =
+  | { mode: "scheme"; scheme: string; bind: { [slot: string]: string } }
+  | { mode: "custom" }
+```
+
+`scheme` names a layout the **host** draws, and binds that layout's slots to
+this game's own actions. The engine does not own the set of schemes: a
+platform ships a table of them and the engine checks only that every bound
+slot names an action declared in `inputs.map`. A game binds the slots it uses
+and no more, so a left-and-right game can sit in a d-pad's left and right
+positions and leave the other two empty. A press becomes a `virtual-input`
+message, and `InputCapture.virtual()` is the only place one may enter a
+session.
+
+`custom` means the game paints its own controls in its renderer and reads
+pointer input. The host draws nothing. Two consequences follow from the rule
+at the top of this section, that a game cannot construct an input event. The
+hit test has to happen in `tick()`, because a renderer deciding which button
+was pressed and handing the answer to the simulation is the hole that rule
+closes. And it works in simulation units, because the host has already
+quantised the pointer against a viewport that differs from one device to the
+next. The layout of the controls is therefore simulation state and replays
+exactly, which also means the renderer has to draw each control where the
+simulation believes it is.
+
+Leaving `controls` out says the game needs a keyboard or a mouse. A host can
+then say so to a player holding a phone, rather than framing a canvas they
+cannot steer.
 
 ## Rendering
 
@@ -790,7 +853,7 @@ not have to run it first.
 
   inputs: {
     map: { left: [{ code: "ArrowLeft", device: "key", label: "Left" }] },
-    virtualControls: [{ id: "left", kind: "button", label: "Left", action: "left" }],
+    controls: { mode: "scheme", scheme: "dpad", bind: { left: "left" } },
   },
 
   counters: [{ name: "motes", direction: "up", monotonic: true }],

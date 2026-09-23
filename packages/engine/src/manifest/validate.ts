@@ -446,6 +446,58 @@ export function validateManifest(value: unknown): Issue[] {
         }
       })
     }
+
+    // Which schemes exist is the host's table, not ours, so the name is only
+    // checked for being a name. What is checkable here is that the binding
+    // is coherent: a slot pointing at an action the game does not declare
+    // draws a control that sends nothing, and the player finds out by
+    // pressing it.
+    const controls = inputs.controls
+    if (controls !== undefined) {
+      if (!isPlainObject(controls)) {
+        issues.push({ at: "inputs.controls", message: "must be an object" })
+      } else if (controls.mode !== "scheme" && controls.mode !== "custom") {
+        issues.push({
+          at: "inputs.controls.mode",
+          message: 'must be "scheme" or "custom"',
+        })
+      } else if (controls.mode === "scheme") {
+        if (
+          typeof controls.scheme !== "string" ||
+          controls.scheme.length === 0
+        ) {
+          issues.push({
+            at: "inputs.controls.scheme",
+            message: "must be a non-empty string",
+          })
+        }
+        if (!isPlainObject(controls.bind)) {
+          issues.push({
+            at: "inputs.controls.bind",
+            message: "must be an object of slot to action",
+          })
+        } else {
+          const bound = Object.entries(controls.bind)
+          if (bound.length === 0) {
+            issues.push({
+              at: "inputs.controls.bind",
+              message: "must bind at least one slot",
+            })
+          }
+          for (const [slot, action] of bound) {
+            if (
+              typeof action !== "string" ||
+              !Object.hasOwn(inputs.map, action)
+            ) {
+              issues.push({
+                at: `inputs.controls.bind.${slot}`,
+                message: "must name an action declared in inputs.map",
+              })
+            }
+          }
+        }
+      }
+    }
   }
 
   const capabilities = m.capabilities

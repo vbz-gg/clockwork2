@@ -55,6 +55,10 @@ export interface InputCaptureOptions {
 export class InputCapture {
   private readonly bindings: ReadonlyMap<string, ActionBinding>
   private readonly held = new Set<string>()
+  /** pointerId to the small slot number its device codes are spelled with. */
+  private readonly slots = new Map<number, number>()
+  /** The last value pushed per analog code, so a repeat is not an input. */
+  private readonly lastAnalog = new Map<string, number>()
   private readonly listeners: Array<() => void> = []
   private enabled = false
 
@@ -91,43 +95,48 @@ export class InputCapture {
     if (pointerTarget !== undefined && viewport !== undefined) {
       const onPointer = (event: Event): void => {
         const pointer = event as PointerEvent
+        const slot = this.slotFor(pointer.pointerId)
         const bounds = pointerTarget.getBoundingClientRect()
         // Quantised here, so the simulation never sees a CSS pixel.
-        const x = quantisePoint(
-          pointer.clientX - bounds.left,
-          bounds.width,
-          viewport.width,
+        this.analog(
+          `pointer${slot}-x`,
+          quantisePoint(
+            pointer.clientX - bounds.left,
+            bounds.width,
+            viewport.width,
+          ),
         )
-        const y = quantisePoint(
-          pointer.clientY - bounds.top,
-          bounds.height,
-          viewport.height,
+        this.analog(
+          `pointer${slot}-y`,
+          quantisePoint(
+            pointer.clientY - bounds.top,
+            bounds.height,
+            viewport.height,
+          ),
         )
-        this.options.queue.push({
-          device: "pointer",
-          code: "pointer-x",
-          value: x,
-        })
-        this.options.queue.push({
-          device: "pointer",
-          code: "pointer-y",
-          value: y,
-        })
+        // The position goes in before the press, so a game hit-testing its
+        // own controls knows where the finger landed in the same tick it
+        // learns that it landed.
         if (pointer.type === "pointerdown") {
-          this.options.queue.push({
-            device: "pointer",
-            code: "pointer",
-            value: 1,
-          })
-        } else if (pointer.type === "pointerup") {
-          this.options.queue.push({
-            device: "pointer",
-            code: "pointer",
-            value: 0,
-          })
+          this.press(`pointer${slot}`, 1)
+        } else if (
+          pointer.type === "pointerup" ||
+          pointer.type === "pointercancel"
+        ) {
+          this.press(`pointer${slot}`, 0)
+          this.freeSlot(pointer.pointerId, slot)
         }
       }
-      for (const name of ["pointerdown", "pointerup", "pointermove"]) {
+      // `pointercancel` is not optional. The browser sends it instead of
+      // `pointerup` when it takes the pointer away - a scroll gesture wins,
+      // the finger leaves the screen edge - and without it that slot stays
+      // held and occupied for the rest of the session.
+      for (const name of [
+        "pointerdown",
+        "pointerup",
+        "pointercancel",
+        "pointermove",
+      ]) {
         pointerTarget.addEventListener(name, onPointer)
         this.listeners.push(() => {
           pointerTarget.removeEventListener(name, onPointer)
@@ -136,9 +145,62 @@ export class InputCapture {
     }
   }
 
+  /**
+   * Which finger this is, as a small stable number.
+   *
+   * `PointerEvent.pointerId` is assigned by the browser and is neither small
+   * nor comparable between runs, so it cannot appear in a device code. A slot
+   * can: the lowest free index at `pointerdown`, freed at `pointerup`. One
+   * finger is always slot 0, and the assignment is a pure function of the
+   * order the events arrived in, which is the order the log records.
+   *
+   * Without this every touch shared one code. Two fingers interleaved into
+   * one stream of coordinates, and the first to lift sent a release while the
+   * other was still down - so a game drawing its own d-pad and a jump button
+   * could not have both.
+   */
+  private slotFor(pointerId: number): number {
+    const existing = this.slots.get(pointerId)
+    if (existing !== undefined) return existing
+    const taken = new Set(this.slots.values())
+    let slot = 0
+    while (taken.has(slot)) slot += 1
+    this.slots.set(pointerId, slot)
+    return slot
+  }
+
+  private freeSlot(pointerId: number, slot: number): void {
+    this.slots.delete(pointerId)
+    // The next finger into this slot reports where it is, rather than having
+    // its first coordinate suppressed as unchanged from the last one's.
+    this.lastAnalog.delete(`pointer${slot}-x`)
+    this.lastAnalog.delete(`pointer${slot}-y`)
+  }
+
   /** A press from a host-drawn on-screen control. The only virtual source. */
   virtual(action: string, value: number): void {
     this.options.queue.push({ device: "virtual", code: action, value })
+  }
+
+  /**
+   * A value that is not a press: a coordinate, an axis.
+   *
+   * It goes through the manifest's binding table like a key does, so a game's
+   * `tick` sees the action it named rather than `pointer0-x`, and a code the
+   * game did not bind is dropped instead of filling the log. Repeats are
+   * dropped too: `pointermove` fires far more often than a quantised
+   * coordinate changes, and an unchanged value is not an input.
+   */
+  private analog(code: string, value: number): void {
+    const binding = this.bindings.get(code)
+    if (binding === undefined) return
+    if (this.lastAnalog.get(code) === value) return
+    this.lastAnalog.set(code, value)
+    this.options.queue.push({
+      device: binding.device,
+      code: binding.action,
+      value,
+    })
   }
 
   private press(code: string, value: number): void {
@@ -161,6 +223,11 @@ export class InputCapture {
   /** Releases everything held, so a session that loses focus does not stick. */
   releaseAll(): void {
     for (const code of [...this.held]) this.press(code, 0)
+    this.slots.clear()
+    // Cleared rather than kept: after a focus loss the simulation should be
+    // told where the pointer is when it comes back, not have it suppressed
+    // as unchanged from before the gap.
+    this.lastAnalog.clear()
   }
 
   detach(): void {
