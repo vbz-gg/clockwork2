@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.7.0](https://github.com/vbz-gg/clockwork2/compare/v0.6.0...v0.7.0) (2026-09-23)
+
+
+### Bug Fixes
+
+* **release:** refuse a version nobody can describe ([#17](https://github.com/vbz-gg/clockwork2/issues/17)) ([2492e89](https://github.com/vbz-gg/clockwork2/commit/2492e895984e3d908c578a7fece1db3624e40866))
+
 ## [0.6.0](https://github.com/vbz-gg/clockwork2/compare/v0.5.0...v0.6.0) (2026-09-23)
 
 ## [0.5.0](https://github.com/vbz-gg/clockwork2/compare/v0.4.0...v0.5.0) (2026-09-23)

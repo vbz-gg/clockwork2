@@ -1,6 +1,6 @@
 {
   "name": "clockwork2",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "description": "A deterministic, fixed-step game kernel for verifiable browser games",
