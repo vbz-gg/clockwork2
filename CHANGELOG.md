@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.5.0](https://github.com/vbz-gg/clockwork2/compare/v0.4.0...v0.5.0) (2026-09-23)
+
+
+### Features
+
+* on-screen controls, and a pointer that has an identity ([#15](https://github.com/vbz-gg/clockwork2/issues/15)) ([ae4ecc3](https://github.com/vbz-gg/clockwork2/commit/ae4ecc3a11debfffcf097c9cd02545d29612748b))
+
+
+### CI
+
+* **release:** a dispatch cuts a version instead of republishing one ([#16](https://github.com/vbz-gg/clockwork2/issues/16)) ([32bd52c](https://github.com/vbz-gg/clockwork2/commit/32bd52ce410936ef7fc1f0275ceecb8af6b9c9f8)), closes [#15](https://github.com/vbz-gg/clockwork2/issues/15)
+
 ## [0.4.0](https://github.com/vbz-gg/clockwork2/compare/v0.3.2...v0.4.0) (2026-09-22)
 
 
