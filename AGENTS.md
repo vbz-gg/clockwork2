@@ -102,7 +102,7 @@ mistakes cannot be undone. `.versionrc.json`'s `prerelease` hook runs that gate
 locally, and `bun run release` is what invokes it.
 
 **No major releases for now.** Patch and minor only, for this repository and
-for the arcade. On a 0.x version commit-and-tag-version already maps a breaking
+for the platform. On a 0.x version commit-and-tag-version already maps a breaking
 change to a minor, so `bun run release` cannot reach 1.0.0 on its own;
 `release:major` was the only script that could and it is gone.
 `scripts/release-version.test.ts` holds the major at 0, so a 1.0.0 release
