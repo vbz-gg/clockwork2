@@ -206,18 +206,19 @@ jobs:
       # GITHUB_TOKEN is scoped to this repository and cannot dispatch to
       # another, so this needs a token of its own: ENGINE_RELEASED_TOKEN, an
       # organisation secret. The dispatch needs Contents: write on the
-      # repositories below, and they open their update pull request with the
-      # same secret, which needs Pull requests: write. It carries those two on
-      # those repositories and nothing else. It is the only long-lived
+      # repositories below, and a repository that opens an update pull request
+      # does so with the same secret, which needs Pull requests: write. It
+      # carries those two on those repositories and nothing else. It is the only long-lived
       # credential here. Contents: write can also push to their unprotected
       # branches, which is still much less than the npm token trusted
       # publishing removed.
       #
       # Best-effort on purpose. By this point the version is published, tagged
       # and announced, so a missing or expired token must not turn a release
-      # that worked into a red run. Every repository it tells also polls the
-      # registry daily, which is what makes a failure here a delay rather than
-      # a miss.
+      # that worked into a red run. game-base also polls the registry daily,
+      # which makes a failure here a delay rather than a miss for it. The
+      # platform has no daily check or update workflow yet, so until it does
+      # the dispatch reaches nothing there.
       - name: Tell the repositories that pin this engine
         if: github.event_name != 'workflow_dispatch' || !inputs.dry_run
         continue-on-error: true
@@ -226,19 +227,19 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${GH_TOKEN:-}" ]; then
-            echo "no ENGINE_RELEASED_TOKEN; their daily checks will pick this up" >&2
+            echo "no ENGINE_RELEASED_TOKEN; game-base's daily check will pick this up" >&2
             exit 0
           fi
           version="$(node -p "require('./packages/engine/package.json').version")"
           # Each on its own, so one repository refusing the token does not
           # stop the next from being told.
           failed=0
-          for repo in vbz-gg/game-base vbz-gg/arcade; do
+          for repo in vbz-gg/game-base vbz-gg/platform; do
             echo "telling $repo about $version"
             if ! gh api "repos/$repo/dispatches" \
               -f event_type=engine-released \
               -f "client_payload[version]=$version"; then
-              echo "could not tell $repo; its daily check will pick this up" >&2
+              echo "could not tell $repo; a daily check there, if it has one, will pick this up" >&2
               failed=1
             fi
           done
