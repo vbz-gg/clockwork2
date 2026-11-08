@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@clockwork2/engine": "^0.1.0",
+    "@clockwork2/engine": "^0.7.3",
     "three": "^0.186.0"
   },
   "devDependencies": {
