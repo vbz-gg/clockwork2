@@ -15,6 +15,8 @@
  * one failure a conformance suite cannot see.
  */
 
+import type { PackReader } from "./packs.js"
+
 /** A value with an exact canonical encoding. Anything else is refused. */
 export type PlainValue =
   | string
@@ -93,8 +95,15 @@ export interface GameModule<TView = unknown, TConfig = PlainValue> {
   /** Validated by the platform without running the game. */
   readonly manifest: unknown
 
-  /** Deterministic setup. No I/O, no clock, no network. */
-  init(seed: string, config: TConfig): void
+  /**
+   * Deterministic setup. No I/O, no clock, no network.
+   *
+   * `packs` reads the data packs the manifest declares. Start packs can be
+   * read here, in `restore` and in every tick; a demand pack only in a tick
+   * that `packsNeeded()` named it for. Keep the reader: a `restore` that
+   * calls `init` again has to hand it back.
+   */
+  init(seed: string, config: TConfig, packs: PackReader): void
 
   /** Advance exactly one tick. The only writer of simulation state. */
   tick(inputs: readonly InputEvent[]): void
@@ -123,6 +132,18 @@ export interface GameModule<TView = unknown, TConfig = PlainValue> {
 
   /** Cues from the last tick. The host drains this; calling it clears it. */
   effects(): readonly Effect[]
+
+  /**
+   * The demand packs the next tick will read, as a pure function of state.
+   *
+   * The kernel calls it once after `init`, once after `restore`, and once
+   * after every tick, and the answer decides what the next tick may read. A
+   * host that lacks one of the named packs holds the loop until it arrives,
+   * so the step that reads it is the same step everywhere. Naming a start
+   * pack is allowed and changes nothing. Leave it out when the game has no
+   * demand packs.
+   */
+  packsNeeded?(): readonly string[]
 }
 
 /**

@@ -1,6 +1,6 @@
 ---
 name: platform-game
-description: Build a browser game on Clockwork 2 that the arcade can verify - fixed-step ticks, seeded randomness, an input log that replays to the same state on a server. Use when writing or reviewing a game module, a manifest, a renderer or a recording; when a conformance check fails with an E_ code; or when porting a variable-step game onto the fixed-step contract. Covers the simulation and renderer boundary, deterministic maths, snapshots and restore, counters and objectives, budgets, and the twelve checks in @clockwork2/engine/validate.
+description: Build a browser game on Clockwork 2 that the arcade can verify - fixed-step ticks, seeded randomness, an input log that replays to the same state on a server. Use when writing or reviewing a game module, a manifest, a renderer or a recording; when a conformance check fails with an E_ code; or when porting a variable-step game onto the fixed-step contract. Covers the simulation and renderer boundary, deterministic maths, snapshots and restore, counters and objectives, data packs, budgets, and the twelve checks in @clockwork2/engine/validate.
 ---
 
 # Building a verifiable game
@@ -42,8 +42,10 @@ transitively, and a simulation that can reach a canvas is a simulation that
 can decide a score from one.
 
 A game implements `GameModule`: `init`, `tick`, `view`, `snapshot`, `restore`,
-`score`, `isOver`, `effects`. The full signatures are in
-`references/kernel-api.md`, which is generated from the type declarations.
+`score`, `isOver`, `effects`. A game that reads data it ships as files also
+implements `packsNeeded`, and `init` hands it the reader; `references/assets.md`
+covers both. The full signatures are in `references/kernel-api.md`, which is
+generated from the type declarations.
 
 ## The ten rules
 
@@ -78,7 +80,10 @@ all twelve checks; `--only=name` runs one.
 
 5. **Nothing async.** `tick()` may not be `async` or return a thenable. No
    `await`, no `.then`, no `queueMicrotask`. Anything that has to wait belongs
-   in the host.
+   in the host. Data the simulation reads ships as a data pack: the host
+   fetches it, and the kernel hands it over at the step `packsNeeded()` names,
+   so a slow download changes how long the loop waits and never what it
+   computes.
    *Checked by `no-async`.*
 
 6. **`snapshot()` holds everything, and `restore()` puts it all back.** The
@@ -104,7 +109,8 @@ all twelve checks; `--only=name` runs one.
    *Checked by `headless` and `render-smoke`.*
 
 10. **No browser inside the simulation.** `init` plus 600 ticks must run with
-    no `window`, `document`, WebGL, `AudioContext` or `fetch` present.
+    no `window`, `document`, WebGL, `AudioContext` or `fetch` present. Packs
+    come through the reader `init` is given, never through `fetch`.
     *Checked by `headless`.*
 
 ## What the renderer may do
@@ -177,7 +183,8 @@ The three that account for most failures:
 - `references/manifest-schema.md` - every manifest field and what it decides.
 - `references/adapters.md` - canvas2d, three, pixi, `NodeSet`, effects,
   worker mode.
-- `references/assets.md` - declaring, hashing and loading files.
+- `references/assets.md` - declaring, hashing and loading files, and the data
+  packs the simulation reads.
 - `references/submission.md` - what a recording contains and what the platform
   verifies.
 

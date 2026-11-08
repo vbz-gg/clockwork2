@@ -18,7 +18,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { isClockworkError } from "../../src"
-import { findEntry, loadSubject } from "../../src/validate/load"
+import { findEntry, loadSubject, readPacks } from "../../src/validate/load"
 
 const MANIFEST_LITERAL = `{
   schemaVersion: 1,
@@ -318,5 +318,59 @@ export default function make() { return new Game() }
     const c = await subject.load()
     const d = await subject.load()
     expect(d.score()).not.toEqual(c.score())
+  })
+})
+
+describe("reading packs", () => {
+  function bundle(files: Record<string, string>): string {
+    const dir = mkdtempSync(join(tmpdir(), "cw2-scratch-packs-"))
+    dirs.push(dir)
+    for (const [path, body] of Object.entries(files)) {
+      mkdirSync(join(dir, path, ".."), { recursive: true })
+      writeFileSync(join(dir, path), body)
+    }
+    return dir
+  }
+
+  const manifestWith = (assets: unknown[]) =>
+    ({
+      ...JSON.parse(JSON.stringify({ assets })),
+    }) as Parameters<typeof readPacks>[1]
+
+  test("reads each declared pack, at most one byte past its size", () => {
+    const dir = bundle({
+      "data/small.json": "{}",
+      "data/huge.bin": "x".repeat(10_000),
+      "art/image.png": "not a pack",
+    })
+    const packs = readPacks(
+      dir,
+      manifestWith([
+        { path: "data/small.json", bytes: 2, requiredForSim: true },
+        // Declared at 100 bytes: 101 are read, enough to refuse it, and the
+        // other 9,899 never are.
+        { path: "data/huge.bin", bytes: 100, requiredForSim: true },
+        { path: "data/absent.json", bytes: 5, requiredForSim: true },
+        { path: "data", bytes: 5, requiredForSim: true },
+        { path: "art/image.png", bytes: 10, requiredForSim: false },
+      ]),
+    )
+    expect([...packs.keys()]).toEqual(["data/small.json", "data/huge.bin"])
+    expect(packs.get("data/huge.bin")?.byteLength).toBe(101)
+    expect(new TextDecoder().decode(packs.get("data/small.json"))).toBe("{}")
+  })
+
+  test("given an entry file, the packs are found beside it", async () => {
+    const dir = bundle({
+      "data/rules.json": "{}",
+      "index.ts": `export const MANIFEST = { ...${MANIFEST_LITERAL}, assets: [{ path: "data/rules.json", sha256: "${"a".repeat(64)}", bytes: 2, requiredForSim: true, license: "CC0-1.0" }] }
+export default { manifest: MANIFEST }
+`,
+    })
+    const subject = await loadSubject(join(dir, "index.ts"))
+    expect(subject.root).toBe(dir)
+    expect([...(subject.packs?.keys() ?? [])]).toEqual(["data/rules.json"])
+    const given = new Map([["data/rules.json", new Uint8Array([1])]])
+    expect((await loadSubject(dir, { packs: given })).packs).toBe(given)
   })
 })

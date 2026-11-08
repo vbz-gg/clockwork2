@@ -34,6 +34,18 @@ const ID_PATTERN = /^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$/
 const SEMVER_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z-.]+)?$/
 const HEX_COLOR_PATTERN = /^#[0-9A-Fa-f]{6}$/
 const SHA256_PATTERN = /^[0-9a-f]{64}$/
+/**
+ * An asset path is a relative path built from ASCII letters, digits, `.`,
+ * `_`, `-` and `/`, with no empty, `.` or `..` segment.
+ *
+ * An allow-list, because the checker reads each path under the bundle's
+ * directory and a host builds a URL from it. A deny-list for `..` and a
+ * leading `/` misses `%2e%2e`, which a URL parser turns back into `..`, and
+ * misses `?`, `#`, a drive letter, a backslash and a NUL, each of which
+ * changes what is read or fetched.
+ */
+const ASSET_PATH_PATTERN = /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/
+const ASSET_LOADS = new Set(["start", "demand"])
 const MAX_PATTERN_LENGTH = 200
 
 const patternCache = new WeakMap<ParamSchema, Map<string, RegExp | null>>()
@@ -553,10 +565,20 @@ export function validateManifest(value: unknown): Issue[] {
             at: `${at}.path`,
             message: "must be a non-empty string",
           })
-        } else if (paths.has(asset.path)) {
+        } else if (
+          !ASSET_PATH_PATTERN.test(asset.path) ||
+          asset.path.split("/").some((part) => part === "." || part === "..")
+        ) {
+          issues.push({
+            at: `${at}.path`,
+            message:
+              "must be a relative path of letters, digits, '.', '_', '-' and '/', with no '.' or '..' segment",
+          })
+        } else if (paths.has(asset.path.toLowerCase())) {
+          // Case-blind, because macOS and Windows store these as one file.
           issues.push({ at: `${at}.path`, message: "is declared twice" })
         } else {
-          paths.add(asset.path)
+          paths.add(asset.path.toLowerCase())
         }
         if (
           typeof asset.sha256 !== "string" ||
@@ -578,6 +600,20 @@ export function validateManifest(value: unknown): Issue[] {
             at: `${at}.requiredForSim`,
             message: "must be true or false",
           })
+        }
+        if (asset.load !== undefined) {
+          if (typeof asset.load !== "string" || !ASSET_LOADS.has(asset.load)) {
+            issues.push({
+              at: `${at}.load`,
+              message: 'must be "start" or "demand"',
+            })
+          } else if (asset.requiredForSim !== true) {
+            issues.push({
+              at: `${at}.load`,
+              message:
+                "only applies to a pack the simulation reads, which needs requiredForSim: true",
+            })
+          }
         }
         if (typeof asset.license !== "string" || asset.license.length === 0) {
           issues.push({ at: `${at}.license`, message: "must be stated" })

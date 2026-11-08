@@ -29,6 +29,12 @@ export type CheckOutcome = {
   readonly findings: readonly Finding[]
   /** Anything worth printing on a pass: a measurement, a count. */
   readonly note?: string
+  /**
+   * The numbers behind the note, for a platform to read rather than parse.
+   * The performance check reports `microsecondsPerTick`, `peakMemoryBytes`
+   * and the engine that measured them, `memoryEngine`.
+   */
+  readonly measurements?: Readonly<Record<string, number | string>>
   readonly ms: number
 }
 
@@ -59,6 +65,13 @@ export type Subject = {
   readonly root?: string
   /** A default config, when the game takes one. */
   readonly config?: unknown
+  /**
+   * The bytes of the game's data packs, by manifest path, unchecked. The
+   * suite checks them once and gives the result to every session it runs, so
+   * a pack that is missing or wrong is reported with its own code by every
+   * check that runs the game.
+   */
+  readonly packs?: ReadonlyMap<string, Uint8Array>
 }
 
 export type CheckContext = {

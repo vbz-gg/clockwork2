@@ -16,6 +16,7 @@ import { encodeCanonical } from "../../src/hash/canonical"
 import { LiveInputQueue, RecordedInputSource } from "../../src/inputs"
 import { runSession, Session } from "../../src/loop"
 import { installShims, uninstallShims, unshimmableApis } from "../../src/shims"
+import { packReaderFor } from "../../src/testing/packs"
 import {
   createReferenceGame,
   REFERENCE_CONFIG,
@@ -273,8 +274,8 @@ describe("instantiate", () => {
     const second = instantiate(createReferenceGame)
     expect(first).not.toBe(second)
 
-    first.init("a", REFERENCE_CONFIG)
-    second.init("a", REFERENCE_CONFIG)
+    first.init("a", REFERENCE_CONFIG, packReaderFor())
+    second.init("a", REFERENCE_CONFIG, packReaderFor())
     expect(second.snapshot()).toEqual(first.snapshot())
 
     // Advancing one leaves the other where it was, which is the whole point of

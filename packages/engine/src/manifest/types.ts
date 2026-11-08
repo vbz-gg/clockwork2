@@ -113,6 +113,16 @@ export type AssetDeclaration = {
    * is false; a level layout the simulation walks is true.
    */
   readonly requiredForSim: boolean
+  /**
+   * When a pack the simulation reads must arrive. Only meaningful with
+   * `requiredForSim: true`, and refused otherwise.
+   *
+   * `"start"`, the default, arrives before `init` and can be read from `init`,
+   * `restore` and every tick. `"demand"` arrives when the game's
+   * `packsNeeded()` names it, and can be read only in the ticks that follow
+   * such a call.
+   */
+  readonly load?: "start" | "demand"
   readonly license: string
   readonly generator?: string
 }

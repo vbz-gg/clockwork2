@@ -6,6 +6,10 @@
  * not shipped, a file whose bytes do not hash to what was declared, a file
  * whose length is not what was declared, and a total over the budget. A
  * platform that accepts any of these is serving a bundle it cannot vouch for.
+ *
+ * None of the files is a pack the simulation reads. A declared pack that is
+ * missing or wrong stops every run, which the pack-* fixtures test with their
+ * own codes; here that would bury the budgets finding under ten others.
  */
 
 import type {
@@ -28,7 +32,7 @@ export const MANIFEST: Manifest = {
       sha256:
         "c0183e3b58cd90258d91704d099d024cae282ded1a05db26d2bf0647d3250ec3",
       bytes: 99,
-      requiredForSim: true,
+      requiredForSim: false,
       license: "CC0-1.0",
     },
     {
@@ -44,7 +48,7 @@ export const MANIFEST: Manifest = {
       path: "data/missing.txt",
       sha256: "1".repeat(64),
       bytes: 12,
-      requiredForSim: true,
+      requiredForSim: false,
       license: "CC0-1.0",
     },
   ],

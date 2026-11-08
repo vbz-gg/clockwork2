@@ -23,6 +23,7 @@ import {
   type Effect,
   type GameModule,
   type InputEvent,
+  type PackReader,
   Prng,
   type PrngState,
   type Snapshot,
@@ -75,8 +76,19 @@ export class LaneRunner implements GameModule<View, Config> {
   private motesTaken = 0
   private over = false
   private pending: Effect[] = []
+  /**
+   * Kept so `restore` can hand it back to `init`. This game ships no data
+   * packs, so it never reads through it; a game that adds one reads its
+   * packs here.
+   */
+  private packs: PackReader | undefined = undefined
 
-  init(seed: string, config: Config = DEFAULT_CONFIG): void {
+  init(
+    seed: string,
+    config: Config = DEFAULT_CONFIG,
+    packs?: PackReader,
+  ): void {
+    this.packs = packs
     this.config = { ...DEFAULT_CONFIG, ...config }
     this.rng = new Prng(seed)
     // A named sub-stream, so adding a draw to one system cannot shift the
@@ -206,7 +218,7 @@ export class LaneRunner implements GameModule<View, Config> {
     // init() first, so the timer's handlers exist to be restored onto. A
     // restored timer holds names, not functions; nothing can serialise a
     // closure.
-    this.init("restored", s.config)
+    this.init("restored", s.config, this.packs)
     this.lane = s.lane
     this.rocks = s.rocks.map((rock) => ({ ...rock }))
     this.motes = s.motes.map((mote) => ({ ...mote }))

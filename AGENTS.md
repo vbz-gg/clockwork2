@@ -28,9 +28,9 @@ Never start a dev server. Ask the user to run it.
 
 ## The one rule
 
-A simulation must be a pure function of its seed, its config and its input log,
-and must produce the same bits on V8, JavaScriptCore and SpiderMonkey. Every
-constraint below follows from that.
+A simulation must be a pure function of its seed, its config, its input log and
+the data packs its manifest pins, and must produce the same bits on V8,
+JavaScriptCore and SpiderMonkey. Every constraint below follows from that.
 
 ## Writing simulation code
 
@@ -317,6 +317,24 @@ When a host comparison fails, measure before loosening: find which side is
 wrong. If it is ours, fix dmath. If it is the host's, loosen the bound **and**
 pin the input with an exact assertion, so the looser bound cannot hide a later
 regression at the one point the host is known to be wrong about.
+
+## Working on data packs
+
+`docs/engine.md` under "Data packs" is the design. What a change can break
+without any test going red first:
+
+- What a game may read is a function of its state: start packs, plus what
+  `packsNeeded()` returned before this tick, recomputed rather than
+  accumulated. Do not add a way for a game to ask whether a pack has arrived,
+  and do not let a read depend on delivery.
+- `packsNeeded()` runs once per tick in every host. `packsMissing()` returns
+  the cached answer; a host that called the game again would make the call
+  count depend on how long a download took.
+- The kernel copies a pack when it is delivered and again on every `open`.
+  Never hand a game, or a worker transfer, a buffer something else holds.
+- The SHA-256 and the UTF-8 decoder are simulation code. The probe pins them
+  on every engine, and changing either means regenerating `probe-golden.tsv`,
+  which is a deliberate act with its reason in the commit body.
 
 ## Working on the host loop
 

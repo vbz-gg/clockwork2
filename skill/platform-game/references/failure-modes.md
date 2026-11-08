@@ -20,8 +20,9 @@ needed, or a `tick` that returns the result of an `await`-free helper which is
 itself `async`.
 
 There is no asynchronous version of this. Anything that needs to wait belongs
-in the host: load it before the session starts and pass it in as config, or
-emit an effect and let the host act on it.
+in the host: data the simulation reads ships as a pack, which the host loads
+and the kernel hands over at a step the game names; small settings arrive as
+config; anything else is an effect the host acts on.
 
 ### E_BANNED_API
 
@@ -167,6 +168,69 @@ Neither is something a game can fix. A platform that fails the first is not one
 this engine runs on. The second is a browser without canvas support, or a
 canvas already holding a context of another kind.
 
+### E_PACK_UNDECLARED
+
+The game named a pack the manifest does not declare with
+`requiredForSim: true`: in `packs.open` or `packs.json`, in what
+`packsNeeded()` returned, or in a `prefetch` effect. A host that delivers an
+undeclared path gets it too.
+
+A pack outside the manifest is outside the manifest hash, so no recording
+could say which bytes the run read. Declare it in `assets`, with its `sha256`
+and `bytes`, and `requiredForSim: true`. Art the renderer loads is not a pack
+and is never read through the reader.
+
+### E_PACK_NOT_REQUESTED
+
+The game read a pack at a point it had not asked for it. The detail says
+which of three it was:
+
+- a demand pack read in a tick that `packsNeeded()` did not name it for, just
+  before that tick;
+- a demand pack read in `init` or `restore`, which can read start packs only;
+- any pack read outside `init`, `restore` and `tick`: from `view`,
+  `snapshot`, `score`, `isOver` or `packsNeeded` itself.
+
+Each of these would make the run depend on when the bytes happened to arrive,
+which differs between a fast host, a slow one and a server. Name the pack in
+`packsNeeded()` for every tick that reads it. Keep parsed pack data out of the
+snapshot and open it again on the first tick after a restore. Copy what the
+renderer needs into `view()`'s state rather than reading a pack there.
+
+### E_PACK_NOT_DELIVERED
+
+A pack the session needs was not handed over. A start pack was missing when
+the session was built, or a tick could not run because a pack
+`packsNeeded()` named for it never arrived. A session started with no
+`assets` at all reports this for any pack the game reads.
+
+This is the host's or the platform's to fix rather than the game's: the file
+is missing from the bundle, the loader could not fetch it, or the caller did
+not pass the manifest's `assets` and packs to `runSession`. In the
+conformance suite it means a declared pack is not in the bundle's directory;
+the budgets check reports the same file as `E_BUDGET_EXCEEDED`.
+
+### E_PACK_HASH_MISMATCH
+
+A pack's bytes are not the ones its manifest entry declares: the SHA-256
+differs, or the file is shorter than `bytes`. Also reported when a set of
+packs checked against one version of a manifest is given to a session of
+another.
+
+The manifest entry and the file have drifted apart. Rebuild the entry from
+the file; `scripts/package.ts` prints it.
+
+### E_PACK_TOO_LARGE
+
+A pack is longer than the `bytes` its manifest entry declares. The kernel
+checks the size before it hashes anything, and a host's fetch stops reading
+as soon as the size is passed, so an oversized file is refused without being
+read whole.
+
+Rebuild the entry from the file. If the file is right and the entry is right,
+something between them is adding bytes: a server rewriting the response, for
+example.
+
 ## The conformance suite
 
 ### E_DETERMINISM_DIVERGED
@@ -243,8 +307,11 @@ state over the top.
 
 ### E_BUDGET_EXCEEDED
 
-The bundle or an asset exceeded its declared budget, or a file is present that
-the manifest does not declare, or a declared hash does not match the bytes.
+A declared asset is missing from the bundle, its bytes do not hash to the
+declared `sha256`, its length is not the declared `bytes`, or the declared
+assets together are over `budgets.assetBytes`. The check reads only declared
+files: a file the manifest does not mention is not reported, and
+`budgets.bundleBytes` is not checked.
 
 `scripts/package.ts` prints the `assets` array to paste into the manifest.
 

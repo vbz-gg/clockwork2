@@ -18,6 +18,7 @@
  */
 
 import { afterEach, describe, expect, test } from "bun:test"
+import { createHash } from "node:crypto"
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -26,6 +27,7 @@ import type {
   Effect,
   GameModule,
   Manifest,
+  PackReader,
   Snapshot,
 } from "../../src"
 import { CHECKS } from "../../src/validate/checks/index"
@@ -347,6 +349,60 @@ describe("performance", () => {
     expect(outcome.findings[0]?.detail).toContain("budget is -1")
   })
 
+  test("reports peak memory, which sees a typed array the heap counters miss", () => {
+    // Each game in a fresh process of its own, so neither earlier tests'
+    // garbage nor the other game's freed pages can move the numbers. One game
+    // keeps 32 MiB of level data in a typed array from init; it must report
+    // at least 24 MiB more than one that keeps nothing.
+    const dir = mkdtempSync(join(tmpdir(), "cw2-scratch-memory-"))
+    restores.push(() => rmSync(dir, { recursive: true, force: true }))
+    const runner = join(import.meta.dir, "../../src/validate/runner.ts")
+    const script = join(dir, "measure.ts")
+    writeFileSync(
+      script,
+      `import { validate } from ${JSON.stringify(runner)}
+const manifest = ${JSON.stringify(manifest())}
+const megabytes = Number(process.argv[2])
+function game() {
+  let keep = null
+  let ticks = 0
+  return {
+    manifest,
+    init() { ticks = 0; keep = megabytes === 0 ? null : new Uint8Array(megabytes * 1048576).fill(1) },
+    tick() { ticks++; if (keep !== null) keep[ticks % keep.length] = ticks & 255 },
+    view: () => ({ ticks }),
+    snapshot: () => ({ ticks }),
+    restore(s) { ticks = s.ticks },
+    score: () => ({ score: 0, ticksSurvived: ticks }),
+    isOver: () => ticks >= 600,
+    effects: () => [],
+  }
+}
+const report = await validate({ manifest, load: () => game() }, { only: ["performance"], seeds: ["m"] })
+console.log(JSON.stringify(report.outcomes[0].measurements))
+`,
+    )
+    const measure = (megabytes: number) => {
+      const child = Bun.spawnSync(
+        [process.execPath, script, String(megabytes)],
+        { stdout: "pipe", stderr: "pipe" },
+      )
+      expect(child.stderr.toString()).toBe("")
+      return JSON.parse(child.stdout.toString()) as {
+        peakMemoryBytes: number
+        memoryEngine: string
+        ticks: number
+      }
+    }
+    const small = measure(0)
+    const big = measure(32)
+    expect(big.peakMemoryBytes - small.peakMemoryBytes).toBeGreaterThan(
+      24 * 1048576,
+    )
+    expect(small.memoryEngine).toMatch(/^JavaScriptCore, Bun \d/)
+    expect(big.ticks).toBe(600)
+  })
+
   test("a budget it meets is not a finding", async () => {
     const outcome = await runCheck(
       "performance",
@@ -442,5 +498,96 @@ describe("manifest", () => {
     )
     expect(outcome.ok).toBe(true)
     expect(outcome.findings).toEqual([])
+  })
+})
+
+describe("determinism with demand packs", () => {
+  const level = new TextEncoder().encode('{"bonus":1}')
+  const packManifest = manifest({
+    assets: [
+      {
+        path: "data/level.json",
+        sha256: createHash("sha256").update(level).digest("hex"),
+        bytes: level.byteLength,
+        requiredForSim: true,
+        load: "demand",
+        license: "CC0-1.0",
+      },
+    ],
+  })
+
+  /** Names the level from tick 30; `impure` makes asking change the state. */
+  class DemandGame extends StubGame {
+    private reader: PackReader | null = null
+    /** How often packsNeeded() was asked: state, when the game is impure. */
+    private asked = 0
+    constructor(private readonly impure = false) {
+      super(packManifest)
+    }
+    override snapshot(): Snapshot {
+      return { ticks: this.ticks, asked: this.asked }
+    }
+    override init(_seed?: string, _config?: unknown, packs?: PackReader): void {
+      super.init()
+      this.reader = packs ?? null
+    }
+    override tick(): void {
+      if (this.ticks >= 30) this.reader?.json("data/level.json")
+      super.tick()
+    }
+    packsNeeded(): readonly string[] {
+      if (this.impure) this.asked++
+      return this.ticks >= 30 ? ["data/level.json"] : []
+    }
+  }
+
+  const subject = (
+    impure: boolean,
+    packs = new Map([["data/level.json", level]]),
+  ) =>
+    subjectFor(() => new DemandGame(impure), { manifest: packManifest, packs })
+
+  test("a pure packsNeeded() passes, with the on-demand run counted", async () => {
+    const outcome = await runCheck("determinism", subject(false))
+    expect(outcome.findings).toEqual([])
+    expect(outcome.note).toBe("10 runs compared")
+  })
+
+  test("a packsNeeded() that changes the state is named as the cause", async () => {
+    const outcome = await runCheck("determinism", subject(true))
+    const details = outcome.findings.map((f) => f.detail).join("\n")
+    expect(outcome.findings.map((f) => f.code)).toContain(
+      "E_DETERMINISM_DIVERGED",
+    )
+    expect(details).toContain("packsNeeded() changed the state")
+  })
+
+  test("a packsNeeded() that fails when asked twice is a finding, not a crash", async () => {
+    class Fragile extends DemandGame {
+      private lastAsked = -1
+      override packsNeeded(): readonly string[] {
+        if (this.lastAsked === this.ticks) throw new Error("asked twice")
+        this.lastAsked = this.ticks
+        return super.packsNeeded()
+      }
+    }
+    const outcome = await runCheck(
+      "determinism",
+      subjectFor(() => new Fragile(), {
+        manifest: packManifest,
+        packs: new Map([["data/level.json", level]]),
+      }),
+    )
+    expect(outcome.findings.map((f) => f.code)).toEqual([
+      "E_DETERMINISM_DIVERGED",
+    ])
+    expect(outcome.findings[0]?.detail).toContain("asked twice")
+  })
+
+  test("a demand pack the bundle does not have is reported with its code", async () => {
+    const outcome = await runCheck("determinism", subject(false, new Map()))
+    expect(new Set(outcome.findings.map((f) => f.code))).toEqual(
+      new Set(["E_PACK_NOT_DELIVERED"]),
+    )
   })
 })

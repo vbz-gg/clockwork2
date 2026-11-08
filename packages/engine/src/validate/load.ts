@@ -8,14 +8,22 @@
  * knowing it. A cache-busting query on the import is how that is done here.
  */
 
-import { existsSync, readFileSync, statSync } from "node:fs"
-import { isAbsolute, join, resolve } from "node:path"
+import {
+  closeSync,
+  existsSync,
+  openSync,
+  readFileSync,
+  readSync,
+  statSync,
+} from "node:fs"
+import { dirname, isAbsolute, join, resolve } from "node:path"
 import {
   assertManifest,
   fail,
   type GameModule,
   type GameModuleSource,
   instantiate,
+  logicPacks,
   type Manifest,
 } from "../index.js"
 import type { Subject } from "./types.js"
@@ -62,13 +70,61 @@ function pickSource(loaded: Loaded): GameModuleSource {
   return candidate as GameModuleSource
 }
 
-/** Builds a Subject from a directory or entry file. */
+/**
+ * Reads each declared pack under `root`, at most one byte past its declared
+ * size.
+ *
+ * Nothing is checked here: a pack that is missing is left out and one that is
+ * wrong is read as it is, so that every check running the game reports it
+ * with its own code. The read is bounded because a file far larger than its
+ * declaration is either a mistake or an attack, and one extra byte is enough
+ * for the kernel to refuse it as too large without the loader reading
+ * gigabytes first. The manifest's path rules already keep every path inside
+ * `root`.
+ */
+export function readPacks(
+  root: string,
+  manifest: Manifest,
+): Map<string, Uint8Array> {
+  const out = new Map<string, Uint8Array>()
+  for (const pack of logicPacks(manifest.assets).values()) {
+    const file = join(root, pack.path)
+    if (!existsSync(file) || !statSync(file).isFile()) continue
+    const limit = Math.min(statSync(file).size, pack.bytes + 1)
+    const bytes = new Uint8Array(limit)
+    const handle = openSync(file, "r")
+    try {
+      let read = 0
+      while (read < limit) {
+        const got = readSync(handle, bytes, read, limit - read, read)
+        if (got === 0) break
+        read += got
+      }
+      out.set(pack.path, read === limit ? bytes : bytes.subarray(0, read))
+    } finally {
+      closeSync(handle)
+    }
+  }
+  return out
+}
+
+/**
+ * Builds a Subject from a directory or entry file.
+ *
+ * Given a file, the root is the file's directory, so its packs and the files
+ * the budgets check walks are found beside it.
+ */
 export async function loadSubject(
   target: string,
-  options: { readonly config?: unknown } = {},
+  options: {
+    readonly config?: unknown
+    /** The packs' bytes, instead of reading them from the bundle's directory. */
+    readonly packs?: ReadonlyMap<string, Uint8Array>
+  } = {},
 ): Promise<Subject> {
   const entry = findEntry(target)
-  const root = isAbsolute(target) ? target : resolve(target)
+  const full = isAbsolute(target) ? target : resolve(target)
+  const root = statSync(full).isFile() ? dirname(full) : full
 
   let counter = 0
   const load = async (loadOptions?: {
@@ -97,6 +153,7 @@ export async function loadSubject(
     load,
     entry,
     root,
+    packs: options.packs ?? readPacks(root, manifest),
     ...(options.config === undefined ? {} : { config: options.config }),
   }
 }

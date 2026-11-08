@@ -434,6 +434,39 @@ describe("one rule at a time", () => {
       { ...M, assets: [{ ...asset, requiredForSim: "maybe" }] },
     ],
     ["assets[0].license", { ...M, assets: [{ ...asset, license: "" }] }],
+    // A path the checker would read outside the bundle, or a host would turn
+    // into a different request. Each is one way of escaping or redirecting.
+    ...[
+      "/etc/passwd",
+      "../secret.json",
+      "data/../../secret.json",
+      "./data/level.json",
+      "data//level.json",
+      "data/level.json/",
+      "data\\level.json",
+      "C:/data/level.json",
+      "data/%2e%2e/level.json",
+      "data/level.json?v=2",
+      "data/level.json#top",
+      "data/level\u0000.json",
+      "data/lev el.json",
+      "data/n\u00edvel.json",
+      ".hidden/../x",
+    ].map((path): [string, unknown] => [
+      "assets[0].path",
+      { ...M, assets: [{ ...asset, path }] },
+    ]),
+    // Two spellings of one file on macOS and Windows.
+    [
+      "assets[1].path",
+      { ...M, assets: [asset, { ...asset, path: "DATA/Level.json" }] },
+    ],
+    ["assets[0].load", { ...M, assets: [{ ...asset, load: "later" }] }],
+    ["assets[0].load", { ...M, assets: [{ ...asset, load: true }] }],
+    [
+      "assets[0].load",
+      { ...M, assets: [{ ...asset, requiredForSim: false, load: "start" }] },
+    ],
   ]
 
   for (const [at, manifest] of CASES) {
@@ -473,6 +506,22 @@ describe("one rule at a time", () => {
       ...M,
       assets: [asset, { ...asset, path: "data/other.json" }],
       params: { lives: { type: "int", label: "Lives", min: 1, max: 9 } },
+    })
+  })
+
+  test("pack paths and both load values are accepted", () => {
+    // The path rule is an allow-list, so the positive case matters as much as
+    // the escapes above: a rule that refused everything would pass them all.
+    withoutIssues({
+      ...M,
+      assets: [
+        { ...asset, path: "packs/towns/harbor-1.v2_final.json" },
+        { ...asset, path: "a" },
+        { ...asset, path: ".well-known" },
+        { ...asset, path: "packs/core.json", load: "start" },
+        { ...asset, path: "packs/level-2.json", load: "demand" },
+        { ...asset, path: "art/index.json", requiredForSim: false },
+      ],
     })
   })
 })

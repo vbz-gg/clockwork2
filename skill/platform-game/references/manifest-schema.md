@@ -54,6 +54,10 @@ in `kernel-api.md`, which is generated from the declarations.
   assets: [                   // every shipped file, hashed
     { path: "sprites.png", sha256: "...", bytes: 12345,
       requiredForSim: false, license: "CC0" },
+    { path: "packs/rules.json", sha256: "...", bytes: 512,   // a start pack
+      requiredForSim: true, license: "CC0" },
+    { path: "packs/harbor.json", sha256: "...", bytes: 90210, // a demand pack
+      requiredForSim: true, load: "demand", license: "CC0" },
   ],
 
   budgets: { bundleBytes: 2_000_000, microsecondsPerTick: 400 },
@@ -104,9 +108,21 @@ units because the host quantised the pointer against a viewport that differs
 per device. Leaving the field out says the game wants a keyboard, and a
 platform can say so to somebody holding a phone.
 
-`assets` is every file you ship, with its sha256 and byte count.
-Undeclared file, wrong hash, or declared-and-missing all fail check 7.
-`scripts/package.ts` prints this array for you.
+`assets` is every file you ship, with its sha256 and byte count. A wrong
+hash, a wrong size, a declared file that is missing, or a total over
+`budgets.assetBytes` fails check 7. The check reads declared files only, so an
+undeclared file is not reported. `scripts/package.ts` prints this array for
+you. A `path` is relative, made of letters, digits, `.`, `_`, `-` and `/`, with
+no `.` or `..` segment; anything else is refused, because the checker reads it
+under the bundle's directory and a host builds a URL from it.
+
+`requiredForSim: true` makes a file a data pack, which the simulation reads
+through the reader `init` receives. `load` says when it must arrive:
+`"start"`, the default, before `init`, and `"demand"` when `packsNeeded()`
+first names it. `load` on a file with `requiredForSim: false` is refused.
+`assets.md` has the rules for reading packs.
+
+`budgets.bundleBytes` is accepted and not yet checked.
 
 `budgets.microsecondsPerTick` sizes the isolate's CPU allowance. Declaring
 a number you do not meet fails check 8; declaring a huge one costs you at

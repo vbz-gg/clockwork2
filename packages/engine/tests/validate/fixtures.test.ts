@@ -10,6 +10,7 @@
 import { describe, expect, test } from "bun:test"
 import { join } from "node:path"
 import type { ErrorCode } from "../../src"
+import { packReaderFor } from "../../src/testing"
 import { loadSubject } from "../../src/validate/load"
 import { formatReport, validate } from "../../src/validate/runner"
 
@@ -50,6 +51,30 @@ describe("the conforming fixture", () => {
   }, 30_000)
 })
 
+describe("the conforming fixture with data packs", () => {
+  test("passes every check, and the extra determinism run happened", async () => {
+    const subject = await loadSubject(join(FIXTURES, "packs"))
+    expect([...(subject.packs?.keys() ?? [])]).toEqual([
+      "data/rules.json",
+      "data/level-2.json",
+    ])
+    const report = await validate(subject, { seeds: ["t1", "t2"] })
+    const failures = report.outcomes.filter((o) => !o.ok)
+    expect(
+      failures.map(
+        (o) => `${o.check}: ${o.findings.map((f) => f.detail).join("; ")}`,
+      ),
+    ).toEqual([])
+    expect(report.outcomes.length).toBe(12)
+    // Two seeds, three logs, three runs each, and the on-demand run.
+    const determinism = report.outcomes.find((o) => o.check === "determinism")
+    expect(determinism?.note).toBe("19 runs compared")
+    // The restore check resumes at half the run, after the pack opened.
+    const restore = report.outcomes.find((o) => o.check === "restore")
+    expect(restore?.note).toContain("900")
+  }, 60_000)
+})
+
 describe("each non-conformant fixture reports its own code", () => {
   const CASES: Array<[fixture: string, expected: ErrorCode[]]> = [
     // Both layers fire: the static scan sees the call, the runtime trap sees
@@ -70,6 +95,13 @@ describe("each non-conformant fixture reports its own code", () => {
     // Both layers again: the scan refuses the name, and the manifest check
     // separates out the four that reach the embedder specifically.
     ["globals-touched", ["E_LINT_BANNED", "E_GLOBALS_TOUCHED"]],
+    // Data packs. A pack that is absent or wrong also fails the budgets
+    // check, which reads the same files from disk.
+    ["pack-undeclared", ["E_PACK_UNDECLARED"]],
+    ["pack-not-requested", ["E_PACK_NOT_REQUESTED"]],
+    ["pack-missing", ["E_PACK_NOT_DELIVERED", "E_BUDGET_EXCEEDED"]],
+    ["pack-hash-mismatch", ["E_PACK_HASH_MISMATCH", "E_BUDGET_EXCEEDED"]],
+    ["pack-too-large", ["E_PACK_TOO_LARGE", "E_BUDGET_EXCEEDED"]],
   ]
 
   for (const [fixture, expected] of CASES) {
@@ -131,17 +163,17 @@ describe("a freshly evaluated module, not a fresh instance", () => {
     // fresh instance the wrong unit in the first place.
     const subject = await loadSubject(join(FIXTURES, "module-counter"))
     const a = await subject.load({ fresh: true })
-    a.init("s", {})
+    a.init("s", {}, packReaderFor())
     const b = await subject.load({ fresh: true })
-    b.init("s", {})
+    b.init("s", {}, packReaderFor())
     expect(b.score()).toEqual(a.score())
 
     // And without it, the counter carries over, which is what the check has
     // to be able to see.
     const c = await subject.load()
-    c.init("s", {})
+    c.init("s", {}, packReaderFor())
     const d = await subject.load()
-    d.init("s", {})
+    d.init("s", {}, packReaderFor())
     expect(d.score()).not.toEqual(c.score())
   })
 

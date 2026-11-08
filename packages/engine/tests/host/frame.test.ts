@@ -8,6 +8,14 @@
  */
 
 import { afterEach, describe, expect, test } from "bun:test"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
+import createPacksGame, {
+  LEVEL,
+  LEVEL_FROM,
+  MANIFEST as PACKS_MANIFEST,
+  RULES,
+} from "../../fixtures/packs/index"
 import type { InputEvent } from "../../src"
 import { RecordedInputSource } from "../../src"
 import {
@@ -16,6 +24,7 @@ import {
   type FrameInit,
 } from "../../src/host/frame/index"
 import { GameHost, ManualScheduler } from "../../src/host/index"
+import { memoryPackLoader, type PackLoader } from "../../src/host/packs"
 import {
   FRAME_ERRORS,
   type GameToHost,
@@ -537,5 +546,112 @@ describe("speed", () => {
 
     expect(window.of("error")[0]?.code).toBe(FRAME_ERRORS.INIT_FAILED)
     expect(hostOf()).toBeNull()
+  })
+})
+
+describe("a frame whose game has data packs", () => {
+  const root = join(import.meta.dir, "../../fixtures/packs")
+  const bytes = new Map(
+    [RULES, LEVEL].map((path) => [path, readFileSync(join(root, path))]),
+  )
+
+  async function settle(): Promise<void> {
+    for (let i = 0; i < 20; i++) await Promise.resolve()
+  }
+
+  /** The frame's global, swapped in before the bridge so it listens at once. */
+  function packsFrame(loader: PackLoader): {
+    window: FakeFrameWindow
+    scheduler: ManualScheduler
+    host: () => GameHost<unknown, HTMLElement> | null
+    inits: FrameInit[]
+  } {
+    const window = new FakeFrameWindow()
+    const target = globalThis as unknown as Record<string, unknown>
+    const saved = {
+      addEventListener: target.addEventListener,
+      removeEventListener: target.removeEventListener,
+      parent: target.parent,
+    }
+    target.addEventListener = window.globals.addEventListener
+    target.removeEventListener = window.globals.removeEventListener
+    target.parent = window.globals.parent
+    restores.push(() => {
+      target.addEventListener = saved.addEventListener
+      target.removeEventListener = saved.removeEventListener
+      target.parent = saved.parent
+    })
+    const scheduler = new ManualScheduler()
+    const inits: FrameInit[] = []
+    let host: GameHost<unknown, HTMLElement> | null = null
+    connectToParent<unknown>({
+      manifest: PACKS_MANIFEST,
+      parentOrigin: PARENT,
+      packs: loader,
+      createHost: (init) => {
+        inits.push(init)
+        host = new GameHost<unknown, HTMLElement>({
+          module: createPacksGame(),
+          manifest: PACKS_MANIFEST,
+          seed: init.seed,
+          scheduler,
+          maxTicks: init.maxTicks,
+          ...(init.packs === undefined ? {} : { packs: init.packs }),
+        })
+        return host
+      },
+    })
+    return { window, scheduler, host: () => host, inits }
+  }
+
+  test("hello sent while the start packs load is answered once they are here", async () => {
+    let release: () => void = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const frame = packsFrame(async (path) => {
+      await gate
+      return memoryPackLoader(bytes)(path)
+    })
+    // The parent says hello once, on load, which can be before the packs are.
+    frame.window.send({ type: "hello", protocol: 1 })
+    await settle()
+    expect(frame.window.of("ready")).toEqual([])
+    release()
+    await settle()
+    expect(frame.window.of("ready").length).toBe(1)
+
+    // Then init and start back to back, as a parent sends them.
+    frame.window.send({
+      type: "init",
+      seed: "frame-packs",
+      config: null,
+      tickHz: 60,
+      maxTicks: 3600,
+    })
+    frame.window.send({ type: "start" })
+    expect(frame.window.of("error")).toEqual([])
+    expect(frame.window.of("started").length).toBe(1)
+    expect([...(frame.inits[0]?.packs?.preloaded?.keys() ?? [])]).toEqual([
+      RULES,
+    ])
+    for (let i = 0; i < LEVEL_FROM + 30; i++) {
+      frame.scheduler.advance(1000 / 60)
+      await settle()
+    }
+    const view = frame.host()?.view() as { openedAt: number }
+    expect(view.openedAt).toBe(LEVEL_FROM)
+  })
+
+  test("start packs that cannot be loaded answer hello with an error", async () => {
+    const frame = packsFrame(async () => {
+      throw new TypeError("Failed to fetch")
+    })
+    frame.window.send({ type: "hello", protocol: 1 })
+    await settle()
+    expect(frame.window.of("ready")).toEqual([])
+    const [error] = frame.window.of("error")
+    expect(error?.code).toBe(FRAME_ERRORS.INIT_FAILED)
+    expect(error?.detail).toContain("E_PACK_NOT_DELIVERED")
   })
 })

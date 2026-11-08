@@ -58,7 +58,13 @@ export {
   isClockworkError,
 } from "./errors.js"
 export * as fixed from "./fixed.js"
-export { encodeCanonical, Hash64, hash64, hashCanonical } from "./hash/index.js"
+export {
+  encodeCanonical,
+  Hash64,
+  hash64,
+  hashCanonical,
+  sha256Hex,
+} from "./hash/index.js"
 export {
   type AxisOptions,
   type InputSource,
@@ -81,6 +87,7 @@ export {
   type SessionResult,
 } from "./loop.js"
 export type {
+  AssetDeclaration,
   Manifest,
   ParamSchema,
   ParamValues,
@@ -92,6 +99,17 @@ export {
   validateManifest,
   validateParams,
 } from "./manifest/index.js"
+export {
+  isStartPack,
+  logicPacks,
+  MAX_JSON_PACK_BYTES,
+  MAX_JSON_SIGNIFICANT_DIGITS,
+  type PackBytes,
+  type PackReader,
+  PackSet,
+  PREFETCH_EFFECT,
+  prefetchPaths,
+} from "./packs.js"
 export { lerp, lerpAngle, NodeSet } from "./presentation/index.js"
 export { Prng, type PrngState } from "./prng/index.js"
 export type { Recording } from "./recording/index.js"

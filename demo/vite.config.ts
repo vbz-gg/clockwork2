@@ -29,11 +29,12 @@ export default defineConfig({
     strictPort: true,
     headers: { "Access-Control-Allow-Origin": "*" },
   },
+  worker: { format: "es" },
   build: {
     outDir: "dist",
     sourcemap: true,
     emptyOutDir: true,
-    // Three pages. `index` plays Snake directly, the way a developer does
+    // Three Snake pages. `index` plays Snake directly, the way a developer does
     // while building it. `embed` and `frame` are the two halves of the way a
     // platform runs someone else's game: a host page and a sandboxed document
     // that talk over the bridge and share nothing else.
@@ -42,6 +43,11 @@ export default defineConfig({
         index: resolve(import.meta.dirname, "index.html"),
         embed: resolve(import.meta.dirname, "embed.html"),
         frame: resolve(import.meta.dirname, "frame.html"),
+        // A game with data packs, framed and in a worker. The end-to-end
+        // suite plays both and replays them on a server.
+        "packs-embed": resolve(import.meta.dirname, "packs-embed.html"),
+        "packs-frame": resolve(import.meta.dirname, "packs-frame.html"),
+        "packs-worker": resolve(import.meta.dirname, "packs-worker.html"),
       },
       // One chunk per entry keeps the check that a production build carries no
       // test hooks simple: there is one place to look.

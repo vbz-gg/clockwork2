@@ -45,14 +45,26 @@ const ENTRIES: ReadonlyArray<{
     blurb: "Input logs and comparison helpers, shared with the validator.",
   },
   {
-    specifier: "@clockwork2/engine",
-    file: "packages/engine/dist/index.d.ts",
+    specifier: "@clockwork2/engine/host",
+    file: "packages/engine/dist/host/index.d.ts",
     blurb:
-      "Running a game in a page: the accumulator loop, input capture and the frame protocol. Not reachable from a simulation.",
+      "Running a game in a page: the accumulator loop, pack loading, input capture and the frame protocol. Not reachable from a simulation.",
+  },
+  {
+    specifier: "@clockwork2/engine/frame",
+    file: "packages/engine/dist/host/frame/index.d.ts",
+    blurb:
+      "The game's half of the bridge, inside the sandboxed frame: where a frame fetches its start packs before it says ready.",
+  },
+  {
+    specifier: "@clockwork2/engine/worker",
+    file: "packages/engine/dist/host/worker/index.d.ts",
+    blurb:
+      "The simulation in a worker, and the page's side of it. Packs cross as transferred buffers.",
   },
   {
     specifier: "@clockwork2/engine/validate",
-    file: "packages/engine/dist/index.d.ts",
+    file: "packages/engine/dist/validate/index.d.ts",
     blurb: "The conformance suite, as a library. The CLI wraps this.",
   },
 ]

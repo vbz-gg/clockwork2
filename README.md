@@ -10,8 +10,9 @@ https://github.com/user-attachments/assets/2914e6fa-dad9-455c-b072-6046714cbb5f
 
 The browser records what the player pressed. A server replays that recording and
 computes the score itself. If the two disagree, the score is not real. That works
-only if the game is a pure function of its seed, its configuration and its
-inputs, on every JavaScript engine a player might be using, and most of this
+only if the game is a pure function of its seed, its configuration, its inputs
+and the data files its manifest pins, on every JavaScript engine a player might
+be using, and most of this
 project is the work of making that true and keeping it true.
 
 ```bash
@@ -51,6 +52,11 @@ A recording is a seed, a configuration, the inputs stamped with the tick they ru
 on, a state hash every second, and an end tick. Replaying it is the same loop
 reading inputs from a file instead of a keyboard.
 
+Data packs carry the data a game's rules read, such as levels and tables. The
+manifest pins each one by its SHA-256, the host fetches it, and the kernel hands
+it to the simulation at a tick the game names, so a slow download changes how
+long the loop waits and never what it computes.
+
 The conformance suite is twelve checks with stable error codes, run the same way
 on your machine and by whatever platform accepts the game.
 
@@ -60,13 +66,14 @@ audio.
 
 ## A game
 
-Eight methods, no base class, no prescribed shape for your state:
+Eight methods, a ninth for a game with data packs, no base class, no prescribed
+shape for your state:
 
 ```ts
 interface GameModule<TView, TConfig> {
   readonly manifest: unknown
 
-  init(seed: string, config: TConfig): void   // deterministic setup, no I/O
+  init(seed: string, config: TConfig, packs: PackReader): void   // setup, no I/O
   tick(inputs: readonly InputEvent[]): void   // advance one tick; the only writer
   view(): TView                               // what the renderer reads
   snapshot(): Snapshot                        // plain data: hash, save, restore
@@ -74,6 +81,7 @@ interface GameModule<TView, TConfig> {
   score(): Counters                           // declared counters, integers
   isOver(): boolean                           // true once, never false again
   effects(): readonly Effect[]                // sound and camera cues, host drains
+  packsNeeded?(): readonly string[]           // demand packs the next tick reads
 }
 ```
 
@@ -102,7 +110,7 @@ import and drops the rest.
 | --- | --- |
 | `@clockwork2/engine` | The simulation kernel: loop, PRNG, timers, hashing, `dmath`, manifest, recording. |
 | `@clockwork2/engine/validate` | The twelve conformance checks and their CLI. |
-| `@clockwork2/engine/host` | The frame loop, input capture, audio, and the iframe and worker protocol. |
+| `@clockwork2/engine/host` | The frame loop, pack loading, input capture, audio, and the iframe and worker protocol. |
 | `@clockwork2/engine/adapter-canvas2d` | Read-only presentation on a 2D canvas. |
 | `@clockwork2/engine/adapter-three` | Read-only presentation on Three.js. |
 | `@clockwork2/engine/adapter-pixi` | Read-only presentation on PIXI 8. |

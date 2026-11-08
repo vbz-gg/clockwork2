@@ -13,7 +13,8 @@ import * as dmath from "@clockwork2/engine/dmath"
 ```
 
 A game implements eight methods and no base class: `init`, `tick`, `view`,
-`snapshot`, `restore`, `score`, `isOver`, `effects`. `tick()` takes no time
+`snapshot`, `restore`, `score`, `isOver`, `effects`, and `packsNeeded` when it
+reads data packs. `tick()` takes no time
 delta, so a simulation cannot depend on the player's frame rate.
 
 `Math.sin`, `Math.pow` and the rest of the transcendentals are

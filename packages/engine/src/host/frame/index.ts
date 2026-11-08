@@ -22,6 +22,7 @@ import type {
 } from "../../index.js"
 import { encodeRecording, hashCanonical, KERNEL_VERSION } from "../../index.js"
 import type { GameHost } from "../host.js"
+import { loadPacks, type PackLoader, type PackSupply } from "../packs.js"
 import {
   createDispatcher,
   FRAME_ERRORS,
@@ -52,6 +53,11 @@ export interface FrameInit {
   readonly inputs?: readonly InputEvent[]
   /** How fast a replay advances. Never present on a live session. */
   readonly speed?: number
+  /**
+   * The start packs, already fetched, and the loader for the rest. Present
+   * when the bridge was given a loader. Pass it to `GameHost` as `packs`.
+   */
+  readonly packs?: PackSupply
 }
 
 export interface FrameBridgeOptions<TView> {
@@ -82,6 +88,20 @@ export interface FrameBridgeOptions<TView> {
     devicePixelRatio: number,
   ) => void
   readonly onTheme?: (theme: string) => void
+  /**
+   * Fetches the game's data packs, usually a `fetchPackLoader` for the
+   * frame's own address.
+   *
+   * The start packs are fetched as soon as the bridge exists, because they
+   * belong to the game version rather than to a seed, and `ready` is not
+   * sent until they are here. The bridge listens from the start all the same:
+   * the parent says `hello` once, when the frame finishes loading, and a
+   * frame that only began listening after a download would never hear it. A
+   * parent sends `init` and `start` as soon as `ready` arrives, so holding
+   * `ready` back is what keeps `start` from reaching a frame with no host. A
+   * fetch that fails answers `hello` with an error instead.
+   */
+  readonly packs?: PackLoader
 }
 
 const DEFAULT_CHUNK = 48 * 1024
@@ -94,16 +114,47 @@ export class FrameBridge<TView> {
   private lastProgressAt = 0
   private lastLogChunkAt = 0
   private logSentUpTo = 0
+  /** Settles when the start packs are here, or when fetching them failed. */
+  private readonly prepared: Promise<PackSupply> | null
 
   constructor(private readonly options: FrameBridgeOptions<TView>) {
+    const loader = options.packs
+    this.prepared =
+      loader === undefined
+        ? null
+        : loadPacks(options.manifest, loader, "start").then((preloaded) => ({
+            preloaded,
+            loader,
+          }))
+    // Kept from being reported as unhandled before a hello asks for it.
+    this.prepared?.catch(() => undefined)
+    let supply: PackSupply | undefined
+    const ready = (): void => {
+      this.post({
+        type: "ready",
+        protocol: PROTOCOL_VERSION,
+        manifestHash: hashCanonical(options.manifest as never),
+        kernelVersion: KERNEL_VERSION,
+      })
+    }
     const dispatch = createDispatcher<HostToGame>({
       hello: () => {
-        this.post({
-          type: "ready",
-          protocol: PROTOCOL_VERSION,
-          manifestHash: hashCanonical(options.manifest as never),
-          kernelVersion: KERNEL_VERSION,
-        })
+        if (this.prepared === null) {
+          ready()
+          return
+        }
+        this.prepared.then(
+          (packs) => {
+            supply = packs
+            ready()
+          },
+          (error: unknown) => {
+            this.error(
+              FRAME_ERRORS.INIT_FAILED,
+              `the start packs could not be loaded: ${error instanceof Error ? error.message : String(error)}`,
+            )
+          },
+        )
       },
       init: (message) => {
         if (this.host !== null) {
@@ -135,6 +186,7 @@ export class FrameBridge<TView> {
                 ? {}
                 : { inputs: message.inputs }),
               ...(message.speed === undefined ? {} : { speed: message.speed }),
+              ...(supply === undefined ? {} : { packs: supply }),
             },
             this,
           )
