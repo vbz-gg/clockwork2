@@ -100,9 +100,41 @@ export function bearingFiles(staged: readonly string[]): string[] {
   return staged.filter((file) => BEARING_PATTERNS.some((p) => p.test(file)))
 }
 
+/**
+ * A `Token: value` trailer line, or the indented continuation of one.
+ * `BREAKING CHANGE` is the one token with a space in it: the conventional
+ * commits spec allows it as a footer.
+ */
+const TRAILER_LINE =
+  /^((BREAKING CHANGE|[A-Za-z0-9][A-Za-z0-9-]*):[ \t]|[ \t]+\S)/
+
+/**
+ * The trailer's value, from a line below the subject that opens a paragraph
+ * or that only other trailer lines come before in its paragraph.
+ *
+ * Not from anywhere in the body, so prose that wraps to put "Docs-Updated:"
+ * at the start of a line is not taken for the record. Not only from the last
+ * paragraph either, which is where git reads trailers: a commit tool can add
+ * its own paragraph of trailers below the author's, and a long value can wrap
+ * onto a line of its own.
+ */
 export function findTrailerValue(message: string): string | null {
-  const match = message.match(new RegExp(`^${TRAILER}:[ \\t]*(.*)$`, "im"))
-  return match?.[1] === undefined ? null : match[1].trim()
+  const name = new RegExp(`^${TRAILER}:[ \\t]*(.*)$`, "i")
+  // An editor on Windows can save CRLF, and "\r\n\r\n" is no paragraph
+  // break to a split on "\n".
+  const paragraphs = message
+    .replace(/\r\n?/g, "\n")
+    .trim()
+    .split(/\n[ \t]*\n/)
+    .slice(1)
+  for (const paragraph of paragraphs) {
+    for (const line of paragraph.split("\n")) {
+      const match = line.match(name)
+      if (match?.[1] !== undefined) return match[1].trim()
+      if (!TRAILER_LINE.test(line)) break
+    }
+  }
+  return null
 }
 
 export function isBareValue(value: string): boolean {
