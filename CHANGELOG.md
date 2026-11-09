@@ -2,6 +2,46 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.0](https://github.com/vbz-gg/clockwork2/compare/v0.7.3...v0.8.0) (2026-11-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* **engine:** asset paths outside the new allow-list are refused, a host
+given a manifest's assets must have its start packs before init, and the
+prefetch effect type is reserved.
+
+Docs-Updated: Data packs section in engine.md; skill pack pages; kernel-api.md regenerated
+
+* fix(release): templates ask for the engine being released
+
+Both templates' package.json asked for ^0.1.0 from 0.1.0 to 0.7.3. On a 0.x
+version a caret admits only that minor, so a game scaffolded from them
+installed an engine older than everything they use. The range is now in
+bumpFiles with an updater, so every release commit writes ^<version>, and
+release-version.test.ts holds the range to the root version.
+
+Docs-Updated: re-read AGENTS.md on bumpFiles; the rule it states still holds
+
+* fix(engine): drop the manifest.schema.json export nothing builds
+
+The exports map has named ./manifest.schema.json since 0.1.0, pointing at a
+file the build never made, so a consumer importing it got
+ERR_MODULE_NOT_FOUND. check:publishable skipped every target that was not
+JavaScript, which is why nothing noticed. It now checks that each one is in
+the tarball.
+
+Docs-Updated: re-read README.md and engine.md on exports; neither names it
+
+### Features
+
+* **engine:** data packs for the simulation ([#22](https://github.com/vbz-gg/clockwork2/issues/22)) ([8297386](https://github.com/vbz-gg/clockwork2/commit/8297386c3b46f121f3b8abdd6830f1b82a2f74a9))
+
+
+### CI
+
+* **release:** tell the arcade too, one repository at a time ([#21](https://github.com/vbz-gg/clockwork2/issues/21)) ([f66f552](https://github.com/vbz-gg/clockwork2/commit/f66f552e543f12cdf5b4a65e8a87bce06fe62fec))
+
 ## [0.7.3](https://github.com/vbz-gg/clockwork2/compare/v0.7.2...v0.7.3) (2026-09-23)
 
 
