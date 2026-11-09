@@ -102,7 +102,7 @@ mistakes cannot be undone. `.versionrc.json`'s `prerelease` hook runs that gate
 locally, and `bun run release` is what invokes it.
 
 **No major releases for now.** Patch and minor only, for this repository and
-for the arcade. On a 0.x version commit-and-tag-version already maps a breaking
+for the platform. On a 0.x version commit-and-tag-version already maps a breaking
 change to a minor, so `bun run release` cannot reach 1.0.0 on its own;
 `release:major` was the only script that could and it is gone.
 `scripts/release-version.test.ts` holds the major at 0, so a 1.0.0 release
@@ -177,12 +177,12 @@ for a tag pushed by hand.
 **A release tells the repositories that pin this engine.** The last step
 dispatches an `engine-released` event to each of them with the version it
 published, so a release reaches them in seconds rather than whenever their own
-daily check next runs. Today that is game-base and the arcade, told one at a
+daily check next runs. Today that is game-base and the platform, told one at a
 time so that one refusing the token does not stop the other. GITHUB_TOKEN is scoped to this repository and cannot
 dispatch to another, so that step reads `ENGINE_RELEASED_TOKEN`, an
 organisation secret. The dispatch needs Contents: write on each repository it
-tells, and those repositories open their update pull request with the same
-secret, which needs Pull requests: write. GitHub's table of fine-grained token
+tells, and a repository that opens an update pull request does so with the
+same secret, which needs Pull requests: write. GitHub's table of fine-grained token
 permissions lists both, so the token carries both on those repositories and
 nothing else. With Contents alone the dispatch arrives and the pull request is
 refused. It is the only long-lived credential here. Contents: write can also
@@ -193,9 +193,11 @@ removed.
 The step is best-effort, and `scripts/release-version.test.ts` holds it that
 way. By the time it runs the version is published, tagged and announced, so a
 missing or expired token must not turn a release that worked into a red run.
-Every repository it tells also polls the registry daily, which is what makes a
-failure there a delay rather than a miss - and the poll is also what catches a
-version published from a laptop, where no workflow ran at all.
+game-base also polls the registry daily, which makes a failure there a delay
+rather than a miss - and the poll is also what catches a version published from
+a laptop, where no workflow ran at all. The platform has no daily check or
+update workflow yet, so until it has one the dispatch reaches nothing there,
+and the token needs both permissions on it before it will.
 
 `bun run check:publishable` packs the package and reads what a consumer would
 get: that the tarball carries a README and a `dist`, that nothing has crept
