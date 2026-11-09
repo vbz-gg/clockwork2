@@ -20,6 +20,7 @@ Contents:
 - [Input](#input)
 - [Rendering](#rendering)
 - [Sound and other effects](#sound-and-other-effects)
+- [Data packs](#data-packs)
 - [Recording and replay](#recording-and-replay)
 - [The manifest](#the-manifest)
 - [Conformance](#conformance)
@@ -151,14 +152,15 @@ instead of from a keyboard.
 
 ## Writing a game
 
-A game is a module with eight methods. Nothing else is required, and nothing
-about the shape of your state is prescribed.
+A game is a module with eight methods, and a ninth for a game that reads data
+packs. Nothing else is required, and nothing about the shape of your state is
+prescribed.
 
 ```ts
 interface GameModule<TView, TConfig> {
   readonly manifest: unknown
 
-  init(seed: string, config: TConfig): void
+  init(seed: string, config: TConfig, packs: PackReader): void
   tick(inputs: readonly InputEvent[]): void
   view(): TView
   snapshot(): Snapshot
@@ -166,13 +168,16 @@ interface GameModule<TView, TConfig> {
   score(): Counters
   isOver(): boolean
   effects(): readonly Effect[]
+  packsNeeded?(): readonly string[]
 }
 ```
 
 `init` sets up a session from a seed and a configuration. It does no I/O, reads
-no clock, and fetches nothing. Anything the game needs at runtime either ships
-in the bundle or arrives in `config`, because whatever is in `config` is in the
-recording and the server replaying it has the same copy.
+no clock, and fetches nothing. Small settings arrive in `config`, which is in
+the recording, so the server replaying it has the same copy. Data the game
+reads, such as a level or a table of stats, ships as a data pack, and `init`
+receives the reader for it as `packs`; see [Data packs](#data-packs). A game
+with no packs can leave the third parameter off.
 
 `tick` advances one step. It is the only thing that writes simulation state.
 
@@ -191,6 +196,9 @@ returns true once the session has ended and never returns false afterwards.
 
 `effects` returns cues from the last tick, such as a sound to play, and the
 host drains them. See [Sound and other effects](#sound-and-other-effects).
+
+`packsNeeded` names the demand packs the next tick will read. Leave it out
+when there are none.
 
 Here is a whole small game. Three lanes, rocks coming towards the player, one
 mote to collect; move sideways, survive.
@@ -308,7 +316,10 @@ Two details in that code are load-bearing and easy to miss.
 
 `restore` calls `init` first. A restored timer holds handler names, not
 functions, because nothing can serialise a closure, so the handlers have to
-exist before the state is imported over them.
+exist before the state is imported over them. A game that reads packs keeps
+the reader `init` received and hands it back here, as
+`this.init("restored", s.config, this.packs)`, or the second `init` replaces
+it with nothing.
 
 The game takes its randomness from `this.spawn`, a labelled sub-stream, rather
 than from the root generator.
@@ -553,8 +564,9 @@ dynamic import, and anything the scan cannot follow.
 
 There is no asynchronous escape hatch. `tick` may not be `async` and may not
 return a thenable; the kernel throws `E_ASYNC_TICK` if it does. Work that has
-to wait belongs in the host: load it before the session and pass it through
-`config`, or emit an effect and let the host act.
+to wait belongs in the host. Data the simulation reads is a data pack, which
+the host fetches and the kernel hands over at a step the game names. Anything
+else is an effect the host acts on.
 
 Iteration order is part of the contract. `Map` and `Set` iterate in insertion
 order, which is deterministic when the insertion history is. A plain object is
@@ -749,6 +761,143 @@ sound twice by accident.
 procedurally generated sound, so a game can ship without audio files. The demo
 in this repository synthesises all of its audio that way.
 
+## Data packs
+
+A game's rules often live in data: a level layout, a table of vehicle stats,
+the map of a town. Putting that data in `config` would put it in every
+recording, and building it into the bundle makes every version of the game
+ship every level at once. A data pack is a file the manifest declares with
+`requiredForSim: true`. The host fetches it, the kernel checks it and hands it
+to the simulation, and the server replays the run with the same bytes.
+
+```ts
+assets: [
+  { path: "packs/rules.json", sha256: "...", bytes: 512,
+    requiredForSim: true, license: "CC0" },
+  { path: "packs/harbor.json", sha256: "...", bytes: 90210,
+    requiredForSim: true, load: "demand", license: "CC0" },
+]
+```
+
+The manifest hash every recording carries covers these entries, so a
+recording pins the bytes of every pack its run could have read without a field
+of its own.
+
+### Start and demand
+
+A start pack, the default, must be in hand before the session is built,
+because `init` runs inside the `Session` constructor and may read it. `init`,
+`restore` and every tick can read a start pack.
+
+A demand pack, `load: "demand"`, arrives during play, and the game says when it
+needs one:
+
+```ts
+packsNeeded(): readonly string[] {
+  return this.inHarbor() ? ["packs/harbor.json"] : []
+}
+```
+
+The kernel calls `packsNeeded` once after `init`, once after `restore` and
+once after every tick, in every host, and the answer decides what the next tick
+may read. A host that lacks a pack the game named holds its loop: it runs no
+tick, feeds no time to the accumulator, and carries on from the same tick when
+the bytes arrive. The step at which a game first reads a pack is therefore a
+function of the game's state alone. A pack that took five seconds to download
+and one that was already cached are read at the same tick, and so is the one a
+server replay had from the start.
+
+Nothing tells a game whether a pack has arrived, and that is the rule the rest
+depends on. A game that could ask could take a different branch on a fast
+connection, and the replay would take the other one.
+
+### Where a game may read
+
+| Where | Start packs | Demand packs |
+| --- | --- | --- |
+| `init` | yes | no |
+| `restore` | yes | no |
+| a tick | yes | the ones `packsNeeded` named before it |
+| anywhere else | no | no |
+
+"Anywhere else" means `view`, `snapshot`, `score`, `isOver` and
+`packsNeeded` itself, and the reason is that hosts call them at different
+times: a page calls `view` before every step, a worker after its steps, and a
+server replay never. A read there is `E_PACK_NOT_REQUESTED`. What the
+renderer needs from a pack goes into the state `view` returns.
+
+The set of readable demand packs is recomputed from scratch before each tick
+rather than added to, so it depends on the current state and not on the
+history. That is what lets a snapshot restore exactly: a snapshot holds pack
+names and positions, never pack contents, and after a restore the game opens a
+pack again on the first tick that needs it, where `packsNeeded` names it from
+the restored state.
+
+### Reading
+
+`packs.open(path)` returns the bytes as a new `Uint8Array` on every call. A
+server replaying many runs of one version holds one copy of each pack and lets
+every session read it, and a game that could write into that copy would hand
+the next replay different bytes.
+
+`packs.json(path)` decodes the bytes as UTF-8 and parses them as JSON, afresh
+on every call. The engine decodes with its own strict decoder because
+`TextDecoder` is a WHATWG API rather than an ECMAScript one. Two more limits
+keep engines agreeing. ECMAScript fixes the value of a number with at most 20
+significant digits and lets each engine pick between two neighbours above that,
+so `json` refuses a longer one. V8's longest string is 536,870,888 code units
+where JavaScriptCore and SpiderMonkey allow more, so `json` refuses a pack
+larger than that. Each refusal is `E_ARG_INVALID`, naming the pack.
+
+Open a pack once and keep what you parsed, outside the snapshot. Opening a
+large pack every tick copies it every tick.
+
+### Hints
+
+A game emits `{ type: "prefetch", data: "packs/harbor.json" }` from `effects()`
+when it will need a pack soon, and the host starts the download, so the pack is
+usually there before the loop would hold. `data` may be an array of paths.
+Effects never reach state, so a hint that is late or lost changes how long the
+loop waits and nothing else. The kernel checks every name a hint carries, and
+an undeclared one fails the run at the same tick in every host.
+
+### Checking the bytes
+
+The kernel checks a pack before a session may read it: its length against
+`bytes` first, so an oversized file is refused with `E_PACK_TOO_LARGE` before
+anything is hashed, then its SHA-256 against `sha256`, refused with
+`E_PACK_HASH_MISMATCH`. It hashes and keeps its own copy, so a caller that
+reuses or transfers its buffer afterwards cannot change what the simulation
+reads.
+
+The SHA-256 is the kernel's own, written from FIPS 180-4 in exactly specified
+32-bit arithmetic, because Web Crypto is asynchronous and trapped inside the
+simulation. It hashed a 32 MiB pack in 234 ms under Bun and in 299 ms under
+node 22 on the machine it was written on. `PackSet.verify` checks a set of
+packs once so that any number of sessions can share it: the conformance suite
+runs about seventy sessions of a game on one set, and a server can keep one
+per game version.
+
+### Memory
+
+A demand pack a host delivered is dropped once the game has named it and then
+stops naming it, so a run through ten towns does not end holding all ten. If
+the game names it again, the host fetches it again and the loop holds as it
+did the first time. A pack that was prefetched and not yet named is kept, and
+nothing in a shared `PackSet` is ever dropped.
+
+### What can go wrong
+
+Five codes, each with a section in the skill's
+[failure-modes reference](../skill/platform-game/references/failure-modes.md):
+`E_PACK_UNDECLARED` for a name the manifest does not declare as a pack,
+`E_PACK_NOT_REQUESTED` for a read the table above does not allow,
+`E_PACK_NOT_DELIVERED` for a pack a session needed and never got,
+`E_PACK_HASH_MISMATCH` for the wrong bytes, and `E_PACK_TOO_LARGE` for too many
+of them. The first two are the game's to fix. `E_PACK_NOT_DELIVERED` is the
+host's or the platform's, which is why it has a code of its own: a platform can
+retry it.
+
 ## Recording and replay
 
 A recording is what the browser sends and the server verifies:
@@ -773,8 +922,8 @@ A recording is what the browser sends and the server verifies:
 }
 ```
 
-Replay is determined by the seed, the config, the inputs and `endTick`. Nothing
-else is needed to reproduce the run.
+Replay is determined by the seed, the config, the inputs, `endTick` and the
+data packs the manifest pins. Nothing else is needed to reproduce the run.
 
 `hostStats` is the exception that proves it: a replay ignores the field
 entirely. It is what the host's own loop measured while the run was happening,
@@ -782,7 +931,9 @@ and it is in the envelope because a platform reading a submission cannot
 otherwise tell a player who is cheating from a player on a slow phone, and
 those need different answers. `droppedMs` is not an integer - the accumulator
 drops a fraction of a millisecond at a time and this is their sum, so a stalled
-tab reports something like `299916.6666666667`.
+tab reports something like `299916.6666666667`. Time the loop spent holding
+for a data pack is counted there too, because it is also real time that
+produced no ticks.
 
 It is `null` on a version 1 recording, which is the only reason it is nullable
 rather than absent: `Recording` has to remain a `PlainValue`, and an optional
@@ -820,8 +971,13 @@ const result = runSession({
   maxTicks: recording.endTick,
   checkpointEvery: recording.tickHz,
   counters: MANIFEST.counters,
+  assets: MANIFEST.assets ?? [],
+  packs: PackSet.verify(MANIFEST.assets, packBytes),
 })
 ```
+
+`packBytes` maps each pack's path to its bytes. A replay that leaves out a
+pack the run read stops with `E_PACK_NOT_DELIVERED` at the tick that needed it.
 
 `compareToRecording` then reports whether the checkpoints, the end tick and the
 counters agree, and where the first disagreement was.
@@ -862,7 +1018,9 @@ not have to run it first.
 
   params: { speed: { type: "int", label: "Speed", min: 1, max: 3, default: 1 } },
   assets: [{ path: "sprites.png", sha256: "...", bytes: 12345,
-             requiredForSim: false, license: "CC0" }],
+             requiredForSim: false, license: "CC0" },
+           { path: "packs/rules.json", sha256: "...", bytes: 512,
+             requiredForSim: true, license: "CC0" }],
   budgets: { bundleBytes: 2_000_000, microsecondsPerTick: 400 },
   capabilities: { deterministic: true, physics: "none",
                   renderer: "canvas2d", multiplayer: false },
@@ -888,9 +1046,17 @@ tick.
 and arrive as the `config` argument to `init`. They travel in the recording, so
 a replay applies the same values.
 
+`assets` lists every file the game ships, art and [data packs](#data-packs)
+alike. A path is relative and made of ASCII letters, digits, `.`, `_`, `-` and
+`/`, with no `.` or `..` segment, and two paths that differ only in case are
+one file. The rule is an allow-list because the checker reads each path under
+the bundle's directory and a host builds a URL from it, and a deny-list for
+`..` misses `%2e%2e`, which a URL parser turns back into `..`.
+
 `budgets.microsecondsPerTick` sizes the CPU allowance the platform gives the
 session. Declaring a number you do not meet fails a check; declaring a large one
-costs you at submission.
+costs you at submission. `budgets.assetBytes` caps the declared assets'
+total. `budgets.bundleBytes` is accepted and not checked yet.
 
 ## Conformance
 
@@ -905,14 +1071,14 @@ bunx clockwork2-validate run ./src --json
 
 | # | Check | What it does |
 | --- | --- | --- |
-| 1 | determinism | Runs the same seed, config and inputs repeatedly, in the same process and in freshly evaluated modules, against idle, chaos and bot input logs |
+| 1 | determinism | Runs the same seed, config and inputs repeatedly, in the same process and in freshly evaluated modules, against idle, chaos and bot input logs; a game with `packsNeeded` runs once more with each demand pack handed over only when named |
 | 2 | headless | `init` plus 600 ticks with no `window`, `document`, WebGL, `AudioContext` or `fetch` |
 | 3 | bound | `isOver()` becomes true inside `maxTicks` under every log |
 | 4 | banned-apis | Static scan of the import graph, plus the runtime traps |
 | 5 | no-async | No `await`, `async` or `.then`; hashes state, drains microtasks, hashes again |
 | 6 | restore | Snapshot, restore into a fresh module, continue, compare against an uninterrupted run |
-| 7 | budgets | Every file declared, every hash matching, everything inside its budget |
-| 8 | performance | Per-tick cost against the declared budget |
+| 7 | budgets | Every declared file present, its hash and size matching, the total inside `assetBytes` |
+| 8 | performance | Per-tick cost against the declared budget, and peak memory |
 | 9 | counters | Monotone counters never reverse, `isOver()` never flips back, values stay whole and inside 53 bits |
 | 10 | replay | Record through the real recorder, serialise, deserialise, replay, compare |
 | 11 | manifest | Schema validation, and the bundle touches no embedder global |
@@ -928,6 +1094,25 @@ a code cannot exist without an explanation.
 Modules are evaluated afresh for each session rather than instantiated afresh. A
 new instance does not reset a module-level counter, and a game that keeps static
 ids relies on that without knowing.
+
+Every check that runs the game gives it its data packs. `loadSubject` reads
+each declared pack from its path under the bundle's directory, at most one byte
+past its declared size, and the suite checks them once and shares the result,
+so a missing or wrong pack is reported with its own code by every check that
+runs the game. The extra determinism run for a game with demand packs hands
+each one over only when `packsNeeded` names it, as a host that has to download
+it would, and calls `packsNeeded` an extra time with the state hashed on either
+side. A `packsNeeded` that changes state is reported as the cause.
+
+The performance check times its run from the first tick, so setting up and
+checking packs is not charged to a tick. In the same run it reports peak
+resident memory, as `measurements.peakMemoryBytes`, beside the engine it was
+measured on. The baseline is taken after a full collection and before the
+session is built, because what `init` loads is the game's memory too, and the
+peak is sampled every 60 ticks. It measures resident memory because the heap
+counters do not see a typed array, and pack data is mostly typed arrays. Each
+in a fresh process under Bun 1.4.4, a game holding nothing reported 13.3 MiB,
+most of it the game's own module, and one holding a 32 MiB table 45.4 MiB.
 
 ## Embedding a game
 
@@ -951,6 +1136,37 @@ host.start()
 The host owns the accumulator, the input capture, the checkpoints and the
 recording. The game knows about none of them.
 
+A game with data packs gives the host its start packs and a loader for the
+rest:
+
+```ts
+const loader = fetchPackLoader({
+  manifest: MANIFEST,
+  url: (pack) => `/pack/${pack.sha256}`,
+})
+const host = new GameHost({
+  ...rest,
+  packs: { preloaded: await loadPacks(MANIFEST, loader), loader },
+})
+```
+
+`fetchPackLoader` builds each URL from the manifest, because no frame message
+may carry one. It asks with `mode: "cors"` and no credentials, counts the body
+as it arrives and stops past the declared size, and reports a refused or failed
+fetch as `E_PACK_NOT_DELIVERED`. game-base's frame document sets
+`connect-src 'none'`, which blocks every fetch, so a framed game built with
+game-base cannot fetch its packs until that rule allows the frame's own
+address.
+
+The host holds its loop while a pack the game named is missing and reports
+what it is waiting for in `FrameInfo.waitingFor`. A prefetch that fails is
+forgotten and fetched again when needed. A needed pack that cannot be loaded,
+or that the kernel refuses, ends the session through `onError`, and so does a
+needed pack with no loader to fetch it, rather than a hold that never ends.
+Anything a loader settles after the session ended is ignored. A platform that
+issues sessions with a deadline has to allow for the longest hold in
+`maxWallSeconds`.
+
 For untrusted games the bridge runs the game document in an iframe with
 `sandbox="allow-scripts"` and without `allow-same-origin`, which puts it in an
 opaque origin. The two flags together would let the frame remove its own
@@ -972,6 +1188,15 @@ connectToParent({
 
 That ordering is why the seed never travels in the frame's URL, where it would
 be in a referrer, a history entry and every log between the page and the CDN.
+
+A framed game with data packs passes its loader to the bridge as `packs`. The
+start packs belong to the game version rather than to the seed, so the bridge
+starts fetching them as soon as it exists, and answers `hello` with `ready`
+only once they are here. `createHost` then finds them in `init.packs`, ready to
+pass to `GameHost`. The bridge listens from the start all the same: the parent
+says `hello` once, and a frame that began listening only after its download
+would never hear it. A start pack that cannot be fetched answers `hello` with
+`E_FRAME_INIT_FAILED` and the pack's own code in the detail.
 `start` before `init` is answered with an error rather than ignored, and a
 second `init` is refused, because a frame runs one session.
 
@@ -1048,6 +1273,15 @@ the strongest possible form of "the renderer cannot write to the simulation".
 One frame may be outstanding at a time; a newer frame replaces an older one that
 has not been sent, so a page that falls behind skips frames instead of building
 a queue of stale ones.
+
+Packs reach a worker as transferred buffers: the start packs with `init`, and a
+demand pack when the worker posts `packs-needed`. The page transfers a copy it
+made for the purpose, exactly the pack's length, so a cache or a loader that
+keeps the original is not emptied by the transfer. A worker that is holding
+still answers every frame, with the same tick, or the page would never send
+another and the hold would never end. `demo/packs-embed.html` and
+`demo/packs-worker.html` run a pack game both ways in a real browser, and
+`e2e/specs/09-packs.spec.ts` replays each on a server.
 
 ## Writing a game with an agent
 
@@ -1126,6 +1360,22 @@ partial replay, and no way to test that a snapshot is complete.
 recording with tampered checkpoints still replays and the tamper is what shows
 up.
 
+**A pack becomes readable at a step the game names, not when it arrives.** The
+first design let a game read any pack that had been delivered. That works
+until two hosts deliver at different times, and then a game that read a pack
+one tick early on a fast connection computes something the server does not.
+Making readability a function of state, through `packsNeeded`, removes the
+case instead of testing for it.
+
+**The set of readable packs is recomputed each tick, not accumulated.** An
+accumulated set depends on everything the run named before, which a snapshot
+does not carry, so a restored session could read less than the run it resumed.
+
+**`packsNeeded` runs once per tick, everywhere.** A host that holds asks what is
+missing as often as it likes, and gets the answer the kernel already has. If
+the call count varied between hosts, a `packsNeeded` with a side effect would
+diverge only in browsers on slow connections.
+
 ## Open questions
 
 Carried deliberately, not resolved.
@@ -1135,8 +1385,10 @@ exists (`@dimforge/rapier2d-deterministic`, not the default package, which has
 not been deterministic since rapier.js 0.15.0) and it belongs in a later package
 after a two-machine hash test.
 
-Memory ceilings for a 3D simulation inside a small isolate are unmeasured, which
-is why the manifest's budget fields are advisory in this release.
+Memory has a measurement and no budget. The performance check reports peak
+resident memory for one run on JavaScriptCore under Bun. A V8 isolate, where a
+server replay may run, uses a different amount, and nothing here measures one
+yet, so a platform sizing replay workers should measure in its own.
 
 The demo is the only substantial game on the engine so far. Games are rewritten
 against this API rather than adapted onto it, so a larger one would answer two

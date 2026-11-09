@@ -26,6 +26,7 @@ import {
   KERNEL_VERSION,
   LiveInputQueue,
   type Manifest,
+  PackSet,
   type PlainValue,
   type Presentation,
   RECORDING_FORMAT,
@@ -37,6 +38,7 @@ import {
   type TerminalReason,
 } from "../index.js"
 import { browserScheduler, type Scheduler } from "./clock.js"
+import { PackRequests, type PackSupply } from "./packs.js"
 
 export type HostState = "idle" | "running" | "paused" | "ended"
 
@@ -86,6 +88,13 @@ export interface GameHostOptions<
     readonly devicePixelRatio: number
     readonly theme: string
   }
+  /**
+   * The data packs. Every start pack must be preloaded, because the session
+   * is built, and `init` runs, inside this constructor. Demand packs come
+   * from the loader when the game hints at them or names them; while one it
+   * named is missing, the host holds the loop.
+   */
+  readonly packs?: PackSupply
 }
 
 export interface FrameInfo {
@@ -93,6 +102,8 @@ export interface FrameInfo {
   readonly ticksThisFrame: number
   readonly alpha: number
   readonly elapsedMs: number
+  /** The packs the loop is holding for. Empty while it runs. */
+  readonly waitingFor: readonly string[]
 }
 
 export interface LoopStats {
@@ -120,10 +131,30 @@ export class GameHost<
   private mounted = false
   private ticksRun = 0
   private speed: number
+  /** Real time that passed while the loop held for a pack. */
+  private heldMs = 0
+  /** Frames that ran no tick because the loop was holding from their start. */
+  private heldFrames = 0
+  private readonly requests: PackRequests
+  private readonly packs: PackSet
 
   constructor(
     private readonly options: GameHostOptions<TView, TContainer, TConfig>,
   ) {
+    this.packs = PackSet.verify(
+      options.manifest.assets,
+      options.packs?.preloaded ?? [],
+    )
+    this.requests = new PackRequests(
+      options.packs?.loader,
+      (path, bytes) => {
+        this.session.deliver(path, bytes)
+      },
+      (error) => {
+        this.fail(error)
+      },
+      (path) => this.session.holds(path),
+    )
     this.scheduler = options.scheduler ?? browserScheduler()
     this.accumulator = new Accumulator({
       tickHz: options.manifest.session.tickHz,
@@ -150,12 +181,15 @@ export class GameHost<
       checkpointEvery:
         this.options.checkpointEvery ?? this.options.manifest.session.tickHz,
       counters: this.options.manifest.counters,
+      assets: this.options.manifest.assets ?? [],
+      packs: this.packs,
       ...(this.options.onCheckpoint === undefined
         ? {}
         : { onCheckpoint: this.options.onCheckpoint }),
-      ...(this.options.onEffects === undefined
-        ? {}
-        : { onEffects: this.options.onEffects }),
+      onEffects: (effects, tick) => {
+        this.requests.prefetch(effects)
+        this.options.onEffects?.(effects, tick)
+      },
       ...(this.options.resumeFrom === undefined
         ? {}
         : { resumeFrom: this.options.resumeFrom }),
@@ -185,14 +219,24 @@ export class GameHost<
     return this.state
   }
 
+  /**
+   * What the loop did. `droppedMs` counts the time it held for a pack as well
+   * as the time it dropped, because both are real time that produced no
+   * ticks, and a platform deciding whether a run was slow needs to see both.
+   */
   get stats(): LoopStats {
     const accumulator = this.accumulator.stats
     return {
-      frames: accumulator.frames,
+      frames: accumulator.frames + this.heldFrames,
       ticksRun: this.ticksRun,
       mostTicksInAFrame: accumulator.mostTicksInAFrame,
-      droppedMs: accumulator.droppedMs,
+      droppedMs: accumulator.droppedMs + this.heldMs,
     }
+  }
+
+  /** The packs the loop is holding for right now. */
+  get waitingFor(): readonly string[] {
+    return this.session.packsMissing()
   }
 
   /** How far between the last tick and the next, for the renderer. */
@@ -260,6 +304,7 @@ export class GameHost<
   /** Ends the session without finishing it, for a player who walked away. */
   stop(reason: TerminalReason = "abandoned"): void {
     if (this.state === "ended") return
+    this.requests.close()
     this.unschedule()
     this.session.abandon(reason)
     this.state = "ended"
@@ -280,15 +325,53 @@ export class GameHost<
     }
   }
 
+  /**
+   * Holds the loop for packs the next tick needs.
+   *
+   * The time is not fed to the accumulator, so nothing is banked and no burst
+   * of ticks follows the arrival; it is counted in `droppedMs` instead.
+   */
+  private hold(missing: readonly string[], ms: number): void {
+    this.heldMs += ms
+    for (const path of missing) this.requests.request(path, true)
+  }
+
+  private fail(error: unknown): void {
+    if (this.state === "ended") return
+    this.requests.close()
+    this.unschedule()
+    this.state = "ended"
+    this.options.onError?.(error)
+  }
+
   private frame(now: number): void {
     if (this.state !== "running") return
     const elapsed = (now - this.lastNow) * this.speed
     this.lastNow = now
 
     let ticksThisFrame = 0
+    const waiting = this.session.packsMissing()
+    if (waiting.length > 0) {
+      // The accumulator never sees this frame, so it is counted here.
+      this.heldFrames++
+      this.hold(waiting, elapsed)
+      if (this.state !== "running") return
+      this.render(elapsed)
+      this.reportFrame(0, elapsed)
+      this.schedule()
+      return
+    }
     try {
       const steps = this.accumulator.frame(elapsed)
       for (let i = 0; i < steps; i++) {
+        const missing = this.session.packsMissing()
+        if (missing.length > 0) {
+          // The accumulator already took this frame's time for the steps
+          // that will not run now.
+          this.hold(missing, (steps - i) * this.accumulator.stepMs)
+          if (this.state !== "running") return
+          break
+        }
         const previous = this.options.module.view()
         if (!this.session.step()) {
           ticksThisFrame++
@@ -302,20 +385,23 @@ export class GameHost<
         this.previousView = previous
       }
     } catch (error) {
-      this.unschedule()
-      this.state = "ended"
-      this.options.onError?.(error)
+      this.fail(error)
       return
     }
 
     this.render(elapsed)
+    this.reportFrame(ticksThisFrame, elapsed)
+    this.schedule()
+  }
+
+  private reportFrame(ticksThisFrame: number, elapsedMs: number): void {
     this.options.onFrame?.({
       tick: this.session.tick,
       ticksThisFrame,
       alpha: this.accumulator.alpha,
-      elapsedMs: elapsed,
+      elapsedMs,
+      waitingFor: this.session.packsMissing(),
     })
-    this.schedule()
   }
 
   private render(elapsedMs: number): void {
@@ -330,17 +416,25 @@ export class GameHost<
   }
 
   private finish(): void {
+    this.requests.close()
     this.unschedule()
     this.state = "ended"
     this.render(0)
     this.options.onEnded?.(this.session.result())
   }
 
-  /** Runs one tick by hand, for a test that wants no frame pacing at all. */
+  /**
+   * Runs one tick by hand, for a test that wants no frame pacing at all.
+   *
+   * It cannot wait for a download, so it throws `E_PACK_NOT_DELIVERED` at a
+   * tick whose demand pack is not here. A test stepping a game with demand
+   * packs preloads them all, with `loadPacks(manifest, loader, "all")`.
+   */
   stepOnce(): boolean {
     const running = this.session.step()
     this.ticksRun++
     if (!running) {
+      this.requests.close()
       this.state = "ended"
       this.options.onEnded?.(this.session.result())
     }
@@ -396,6 +490,7 @@ export class GameHost<
   }
 
   destroy(): void {
+    this.requests.close()
     this.unschedule()
     const { presentation } = this.options
     if (presentation !== undefined && this.mounted) {

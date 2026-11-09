@@ -140,6 +140,36 @@ describe("what plain node makes of the exports map", () => {
   }, 30_000)
 
   /**
+   * A data target is not imported, and it must still exist. The exports map
+   * named `./manifest.schema.json` from 0.1.0 to 0.7.3, a file the build never
+   * made, and a consumer asking for it got ERR_MODULE_NOT_FOUND.
+   */
+  test("an exports entry for a file the tarball lacks is caught", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "cw2-importable-data-"))
+    try {
+      await writeFile(join(dir, "present.json"), "{}\n")
+      await writeFile(
+        join(dir, "package.json"),
+        JSON.stringify({
+          name: "probe",
+          type: "module",
+          exports: {
+            "./present.json": "./present.json",
+            "./schema.json": "./dist/schema.json",
+            "./package.json": "./package.json",
+          },
+        }),
+      )
+      const report = await unimportableSubpaths(dir)
+      expect(report.problems).toEqual([
+        "./schema.json points at ./dist/schema.json, which the tarball does not carry",
+      ])
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  /**
    * An optional peer that nobody installed here is not a finding about the
    * package. Reporting it as one would fail this check on every machine
    * without pixi, which is every machine.

@@ -66,6 +66,10 @@ const result = kernel.runSession({
   maxTicks,
   checkpointEvery: subject.manifest.session.tickHz,
   counters: subject.manifest.counters,
+  // The game's data packs, read from under <path> as the validator reads
+  // them, and checked once here as the platform checks them.
+  assets: subject.manifest.assets ?? [],
+  packs: kernel.PackSet.verify(subject.manifest.assets, subject.packs ?? []),
 })
 const ms = performance.now() - started
 

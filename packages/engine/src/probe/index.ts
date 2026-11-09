@@ -12,11 +12,13 @@
 
 import { toBitsHex } from "../bits.js"
 import * as dmath from "../dmath/index.js"
-import { fail } from "../errors.js"
+import { fail, isClockworkError } from "../errors.js"
 import { encodeCanonical } from "../hash/canonical.js"
 import { Hash64, hash64 } from "../hash/hash64.js"
+import { sha256Hex } from "../hash/sha256.js"
 import { RecordedInputSource } from "../inputs.js"
 import { runSession } from "../loop.js"
+import { decodeJsonPack, decodeUtf8 } from "../packs.js"
 import { Prng } from "../prng/index.js"
 import { botLog } from "../testing/input-logs.js"
 import {
@@ -25,7 +27,8 @@ import {
   REFERENCE_COUNTERS,
 } from "../testing/reference-game.js"
 
-export const PROBE_VERSION = 1
+/** 2 added the data pack vectors: SHA-256, UTF-8 decoding and pack JSON. */
+export const PROBE_VERSION = 2
 
 export type ProbeItem = {
   /** The input, in a form a person can read in a divergence report. */
@@ -74,6 +77,70 @@ function* binaryVector(
 
 const N = 100_000
 const M = 20_000
+
+/** UTF-8 for code points the probe draws, none of them surrogates. */
+function encodeUtf8(points: readonly number[]): Uint8Array {
+  const out: number[] = []
+  for (const point of points) {
+    if (point < 0x80) out.push(point)
+    else if (point < 0x800) out.push(0xc0 | (point >> 6), 0x80 | (point & 63))
+    else if (point < 0x10000) {
+      out.push(
+        0xe0 | (point >> 12),
+        0x80 | ((point >> 6) & 63),
+        0x80 | (point & 63),
+      )
+    } else {
+      out.push(
+        0xf0 | (point >> 18),
+        0x80 | ((point >> 12) & 63),
+        0x80 | ((point >> 6) & 63),
+        0x80 | (point & 63),
+      )
+    }
+  }
+  return new Uint8Array(out)
+}
+
+/** A code point from one of the four UTF-8 lengths, never a surrogate. */
+function drawPoint(rng: Prng): number {
+  switch (rng.randomInt(0, 3)) {
+    case 0:
+      return rng.randomInt(0, 0x7f)
+    case 1:
+      return rng.randomInt(0x80, 0x7ff)
+    case 2: {
+      const point = rng.randomInt(0x800, 0xffff - 0x800)
+      return point >= 0xd800 ? point + 0x800 : point
+    }
+    default:
+      return rng.randomInt(0x10000, 0x10ffff)
+  }
+}
+
+/** A JSON number with `digits` significant digits and a modest exponent. */
+function drawNumber(rng: Prng, digits: number): string {
+  let mantissa = String(rng.randomInt(1, 9))
+  for (let i = 1; i < digits; i++) mantissa += String(rng.randomInt(0, 9))
+  const sign = rng.randomBoolean() ? "-" : ""
+  const point = rng.randomInt(1, mantissa.length)
+  const body =
+    point === mantissa.length
+      ? mantissa
+      : `${mantissa.slice(0, point)}.${mantissa.slice(point)}`
+  const exponent = rng.randomBoolean(0.6) ? `e${rng.randomInt(-300, 280)}` : ""
+  return `${sign}${body}${exponent}`
+}
+
+/** The result of reading, or the code of the refusal: both must agree. */
+function attempt(read: () => string): string {
+  try {
+    return read()
+  } catch (error) {
+    if (isClockworkError(error)) return error.code
+    throw error
+  }
+}
 
 function buildDefinitions(): readonly VectorDefinition[] {
   const definitions: VectorDefinition[] = [
@@ -247,6 +314,87 @@ function buildDefinitions(): readonly VectorDefinition[] {
         set.add(0)
         const walk = `${[...map.keys()].join(",")}|${[...set].join(",")}`
         yield { in: String(i), out: hash64(walk) }
+      }
+    },
+  })
+
+  definitions.push({
+    id: "packs/sha256",
+    count: 1_004,
+    *produce() {
+      const rng = new Prng(`${SEED}:sha256`)
+      for (let i = 0; i < 1_000; i++) {
+        // Every length to 300 covers each way the padding can fall across a
+        // block edge; the rest are longer messages of many blocks.
+        const length = i < 300 ? i : rng.randomInt(300, 6_000)
+        const bytes = new Uint8Array(length)
+        for (let j = 0; j < length; j++) bytes[j] = rng.randomUint32() & 0xff
+        yield { in: String(length), out: sha256Hex(bytes) }
+      }
+      // The length field past 2^29 bytes, which no engine is asked to
+      // allocate: the padding of a 37-byte tail written as if the message
+      // were 256 MiB, 512 MiB, 512 MiB + 37 and 8 GiB + 5 long.
+      const tail = new Uint8Array(37)
+      for (let j = 0; j < 37; j++) tail[j] = j
+      for (const counted of [
+        268_435_456, 536_870_912, 536_870_949, 8_589_934_597,
+      ]) {
+        yield { in: `tail as ${counted}`, out: sha256Hex(tail, counted) }
+      }
+    },
+  })
+
+  definitions.push({
+    id: "packs/utf8",
+    count: 3_000,
+    *produce() {
+      const rng = new Prng(`${SEED}:utf8`)
+      for (let i = 0; i < 3_000; i++) {
+        const points: number[] = []
+        const length = rng.randomInt(0, 40)
+        for (let j = 0; j < length; j++) points.push(drawPoint(rng))
+        const bytes = encodeUtf8(points)
+        // One in ten has a byte replaced, which is usually invalid UTF-8;
+        // refusing it is as much a result to agree on as decoding it.
+        if (i % 10 === 9 && bytes.length > 0) {
+          bytes[rng.randomInt(0, bytes.length - 1)] = rng.randomInt(0x80, 0xff)
+        }
+        yield {
+          in: String(i),
+          out: attempt(() => hash64(decodeUtf8(bytes, "probe"))),
+        }
+      }
+    },
+  })
+
+  definitions.push({
+    id: "packs/json",
+    count: 2_000,
+    *produce() {
+      const rng = new Prng(`${SEED}:json`)
+      const escapes = ["\\n", '\\"', "\\\\", "\\u00e9", "\\ud83d\\ude00", "x"]
+      for (let i = 0; i < 2_000; i++) {
+        const numbers: string[] = []
+        for (let j = 0; j < 6; j++) {
+          // Up to the 20 significant digits ECMAScript pins, and one in
+          // seven documents carries a 21st, which must be refused.
+          const digits = i % 7 === 6 && j === 0 ? 21 : rng.randomInt(1, 20)
+          numbers.push(drawNumber(rng, digits))
+        }
+        let text = ""
+        for (let j = 0; j < 3; j++) {
+          text += escapes[rng.randomInt(0, escapes.length - 1)] as string
+        }
+        const source = `{"n":[${numbers.join(",")}],"s":"${text}","t":true}`
+        const bytes = encodeUtf8(
+          [...source].map((c) => c.codePointAt(0) as number),
+        )
+        yield {
+          in: String(i),
+          out: attempt(() =>
+            hash64(encodeCanonical(decodeJsonPack(bytes, "probe"))),
+          ),
+        }
       }
     },
   })

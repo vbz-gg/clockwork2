@@ -18,6 +18,7 @@ import {
   decodeRecording,
   encodeRecording,
   hashCanonical,
+  type PlainValue,
   RECORDING_FORMAT,
   RECORDING_VERSION,
   RecordedInputSource,
@@ -38,6 +39,8 @@ import {
   firstDivergence,
   logsFor,
   runOnce,
+  runOnDemand,
+  sessionPacks,
   tryRun,
 } from "./support.js"
 
@@ -47,6 +50,7 @@ const determinism: Check = {
   async run({ subject, seeds }) {
     const findings: Finding[] = []
     let runs = 0
+    let baseline: SessionResult | null = null
     for (const seed of seeds) {
       for (const [logName, inputs] of logsFor(subject.manifest, seed)) {
         // Twice in one process, then once from a freshly evaluated module. A
@@ -72,6 +76,7 @@ const determinism: Check = {
         const first = results[0] as SessionResult
         const second = results[1] as SessionResult
         const fresh = results[2] as SessionResult
+        if (seed === seeds[0] && logName === "bot") baseline = first
         for (const [label, other] of [
           ["a second run in the same process", second],
           ["a run from a freshly evaluated module", fresh],
@@ -100,6 +105,48 @@ const determinism: Check = {
             })
           }
         }
+      }
+    }
+
+    // A game that asks for demand packs is run once more as a host that has
+    // to download them would run it: each pack handed over only when named,
+    // and packsNeeded() asked an extra time with the state hashed around it.
+    const seed = seeds[0] as string
+    const asks = typeof (await subject.load()).packsNeeded === "function"
+    if (asks && baseline !== null) {
+      runs++
+      const inputs = logsFor(subject.manifest, seed).get("bot") ?? []
+      try {
+        const late = await runOnDemand(subject, { seed, inputs })
+        if (late.impure !== null) {
+          findings.push({
+            code: "E_DETERMINISM_DIVERGED",
+            check: "determinism",
+            tick: late.impure,
+            detail: `packsNeeded() changed the state when it was called at tick ${late.impure}; it must be a pure function of state, because hosts call it a different number of times`,
+          })
+        }
+        const where = firstDivergence(
+          baseline.checkpoints,
+          late.result.checkpoints,
+        )
+        const counters = compareCounters(
+          baseline.counters,
+          late.result.counters,
+        )
+        if (where !== null || counters.length > 0) {
+          findings.push({
+            code: "E_DETERMINISM_DIVERGED",
+            check: "determinism",
+            detail: `seed ${seed}, bot log, with demand packs handed over only when named: ${where ?? counters.join("; ")}`,
+          })
+        }
+      } catch (error) {
+        findings.push({
+          code: codeFromError(error, "E_DETERMINISM_DIVERGED"),
+          check: "determinism",
+          detail: `seed ${seed}, bot log, with demand packs handed over only when named: the run threw: ${String(error)}`,
+        })
       }
     }
     return {
@@ -139,6 +186,7 @@ const headless: Check = {
         maxTicks: Math.max(600, 1),
         checkpointEvery: 0,
         counters: countersOf(subject.manifest),
+        ...sessionPacks(subject),
       })
       for (let i = 0; i < 600 && session.step(); i++) {
         // 600 ticks is ten seconds at 60 Hz: long enough for setup to finish
@@ -263,6 +311,7 @@ const noAsync: Check = {
         maxTicks: 120,
         checkpointEvery: 0,
         counters: countersOf(subject.manifest),
+        ...sessionPacks(subject),
       })
       for (let i = 0; i < 60 && session.step(); i++) {
         // advance into the middle of the game
@@ -323,6 +372,7 @@ const restore: Check = {
         maxTicks: subject.manifest.session.maxTicks,
         checkpointEvery: CHECKPOINT_EVERY,
         counters: countersOf(subject.manifest),
+        ...sessionPacks(subject),
       })
       for (let i = 0; i < at; i++) partial.step()
       // Through JSON, because that is the trip a snapshot actually takes.
@@ -338,6 +388,7 @@ const restore: Check = {
         maxTicks: subject.manifest.session.maxTicks,
         checkpointEvery: CHECKPOINT_EVERY,
         counters: countersOf(subject.manifest),
+        ...sessionPacks(subject),
         resumeFrom: { snapshot, tick: at },
       })
 
@@ -391,7 +442,7 @@ function walkFiles(root: string, prefix = ""): string[] {
 
 const budgets: Check = {
   name: "budgets",
-  title: "Every file is declared, hashed and inside its budget",
+  title: "Every declared file is present, hashed and inside its budget",
   async run({ subject }) {
     if (subject.root === undefined) {
       return {
@@ -452,25 +503,71 @@ const budgets: Check = {
   },
 }
 
+/**
+ * The engine a measurement was taken on. Memory and speed are each engine's
+ * own: a V8 replay worker will not use what JavaScriptCore did.
+ */
+function engineName(): string {
+  const { bun, node } = process.versions
+  return bun ? `JavaScriptCore, Bun ${bun}` : `V8, node ${node}`
+}
+
+/** A full collection where the runtime offers one, so a baseline is not last check's garbage. */
+function collect(): void {
+  const bun = (globalThis as { Bun?: { gc?: (force: boolean) => void } }).Bun
+  bun?.gc?.(true)
+}
+
 const performance_: Check = {
   name: "performance",
   title: "A tick costs less than its budget",
   async run({ subject, seeds }) {
     const seed = seeds[0] as string
     const log = logsFor(subject.manifest, seed).get("bot") ?? []
-    const module = await subject.load({ fresh: true })
-    const started = Date.now()
-    let result: SessionResult
-    try {
-      result = runSession({
-        module,
+    const build = async (onTick?: (tick: number) => void): Promise<Session> =>
+      new Session({
+        module: await subject.load({ fresh: true }),
         seed,
-        config: subject.config ?? {},
+        config: (subject.config ?? {}) as PlainValue,
         inputs: new RecordedInputSource(log),
         maxTicks: subject.manifest.session.maxTicks,
         checkpointEvery: CHECKPOINT_EVERY,
         counters: countersOf(subject.manifest),
+        ...sessionPacks(subject),
+        ...(onTick === undefined ? {} : { onTick }),
       })
+
+    let result: SessionResult
+    let elapsed: number
+    let peakMemoryBytes: number
+    try {
+      // One run. It is timed from its first tick, so that setting up and
+      // checking the packs is not charged to what a tick costs, and its memory
+      // is measured from before it was built, because what `init` loads, a
+      // level parsed from a pack above all, is the game's memory too.
+      //
+      // Peak resident memory above a baseline taken after a full collection,
+      // sampled every CHECKPOINT_EVERY ticks. Resident memory, because the
+      // heap counters do not see a typed array, and a game's packs and level
+      // data are mostly typed arrays. A sample costs about 3 microseconds,
+      // under a tenth of a microsecond a tick spread that thin.
+      collect()
+      const baseline = process.memoryUsage.rss()
+      let peak = baseline
+      const session = await build((tick) => {
+        if (tick % CHECKPOINT_EVERY === 0) {
+          peak = Math.max(peak, process.memoryUsage.rss())
+        }
+      })
+      peak = Math.max(peak, process.memoryUsage.rss())
+      const started = Date.now()
+      while (session.step()) {
+        // one call per tick, as the browser ran it
+      }
+      elapsed = Date.now() - started
+      result = session.result()
+      peak = Math.max(peak, process.memoryUsage.rss())
+      peakMemoryBytes = Math.max(0, peak - baseline)
     } catch (error) {
       return {
         ok: false,
@@ -483,7 +580,6 @@ const performance_: Check = {
         ],
       }
     }
-    const elapsed = Date.now() - started
     const perTickMicroseconds = (elapsed * 1000) / Math.max(result.endTick, 1)
     const budget = subject.manifest.budgets?.microsecondsPerTick
     const findings: Finding[] =
@@ -496,10 +592,17 @@ const performance_: Check = {
             },
           ]
         : []
+    const engine = engineName()
     return {
       ok: findings.length === 0,
       findings,
-      note: `${result.endTick} ticks in ${elapsed} ms, ${perTickMicroseconds.toFixed(1)} microseconds each`,
+      note: `${result.endTick} ticks in ${elapsed} ms, ${perTickMicroseconds.toFixed(1)} microseconds each; peak memory ${(peakMemoryBytes / 1048576).toFixed(1)} MiB above the start, on ${engine}`,
+      measurements: {
+        ticks: result.endTick,
+        microsecondsPerTick: perTickMicroseconds,
+        peakMemoryBytes,
+        memoryEngine: engine,
+      },
     }
   },
 }

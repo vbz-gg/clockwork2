@@ -10,6 +10,14 @@
     {
       "filename": "skill/platform-game/references/kernel-api.md",
       "updater": "scripts/skill-api-version-updater.cjs"
+    },
+    {
+      "filename": "skill/platform-game/assets/templates/canvas2d/package.json",
+      "updater": "scripts/template-range-updater.cjs"
+    },
+    {
+      "filename": "skill/platform-game/assets/templates/three/package.json",
+      "updater": "scripts/template-range-updater.cjs"
     }
   ],
   "infile": "CHANGELOG.md",

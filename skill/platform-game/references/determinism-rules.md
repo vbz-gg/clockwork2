@@ -82,9 +82,10 @@ before the state is imported over them.
 anything it calls. No `await`, no `.then`, no `queueMicrotask`, no
 `structuredClone`.
 
-Anything that needs to wait belongs in the host. Load an asset before the
-session starts and pass it as config, or emit an effect and let the host act
-on it.
+Anything that needs to wait belongs in the host. Data the simulation reads
+ships as a data pack, which the host loads and the kernel hands over at a step
+the game names (`assets.md`). A small setting arrives as config. Anything else
+is an effect the host acts on.
 
 *Checked by:* `no-async`.
 

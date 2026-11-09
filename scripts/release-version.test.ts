@@ -157,6 +157,27 @@ describe("the kernel version literal", () => {
     }
   })
 
+  test("a game made from either template asks for the engine being released", () => {
+    // `^0.1.0` sat in both templates through seven minors. On a 0.x version a
+    // caret admits only that minor, so a scaffolded game installed an engine
+    // older than everything the template used.
+    for (const template of ["canvas2d", "three"]) {
+      const filename = `skill/platform-game/assets/templates/${template}/package.json`
+      const range = (
+        JSON.parse(readFileSync(join(ROOT, filename), "utf8")) as {
+          dependencies: Record<string, string>
+        }
+      ).dependencies["@clockwork2/engine"]
+      expect(range, filename).toBe(`^${rootVersion}`)
+      expect(
+        versionrc.bumpFiles.some(
+          (f) => typeof f !== "string" && f.filename === filename,
+        ),
+        `${filename} is not in .versionrc.json's bumpFiles`,
+      ).toBe(true)
+    }
+  })
+
   test("each updater reads back the version its file holds", async () => {
     for (const entry of versionrc.bumpFiles) {
       if (typeof entry === "string") continue

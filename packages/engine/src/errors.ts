@@ -42,6 +42,21 @@ export const ERROR_CODES = {
   /** The host cannot supply something the engine needs to run correctly. */
   E_ENV_UNSUPPORTED: "this environment cannot run the engine correctly",
 
+  // --- data packs ---------------------------------------------------------
+  /** A pack was named that the manifest does not declare as one. */
+  E_PACK_UNDECLARED:
+    "a pack was named that the manifest does not declare with requiredForSim",
+  /** The game read a pack outside the steps it asked for it. */
+  E_PACK_NOT_REQUESTED:
+    "the simulation read a pack it had not asked for at this step",
+  /** A pack the session needs has not been handed over. */
+  E_PACK_NOT_DELIVERED: "a pack the session needs was not delivered",
+  /** A pack's bytes are not the ones its manifest entry declares. */
+  E_PACK_HASH_MISMATCH:
+    "a pack's bytes do not match the sha256 and size its manifest declares",
+  /** A pack is longer than its manifest entry declares. */
+  E_PACK_TOO_LARGE: "a pack is larger than its manifest declares",
+
   // --- conformance suite --------------------------------------------------
   /** Two runs of the same seed, config and inputs reached different states. */
   E_DETERMINISM_DIVERGED:
@@ -56,8 +71,9 @@ export const ERROR_CODES = {
   E_ASYNC_DETECTED: "asynchronous work in the simulation",
   /** restore-then-continue did not equal continue. */
   E_RESTORE_MISMATCH: "restore-then-continue diverged from continue",
-  /** A file or the bundle exceeded its declared budget, or was undeclared. */
-  E_BUDGET_EXCEEDED: "bundle or asset budget exceeded, or a file is undeclared",
+  /** A declared file is missing or wrong, or the assets exceed their budget. */
+  E_BUDGET_EXCEEDED:
+    "a declared asset is missing, misdeclared or over the asset budget",
   /** The simulation was slower per tick than the performance budget allows. */
   E_PERF_BUDGET: "per-tick cost above the budget",
   /** A recording did not replay to the state it was recorded from. */

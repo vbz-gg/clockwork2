@@ -6,7 +6,7 @@
  */
 
 export { CHECKS } from "./checks/index.js"
-export { findEntry, loadSubject } from "./load.js"
+export { findEntry, loadSubject, readPacks } from "./load.js"
 export {
   DEFAULT_SEEDS,
   formatReport,

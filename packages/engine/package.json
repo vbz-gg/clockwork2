@@ -110,7 +110,6 @@
       "types": "./dist/adapters/three.d.ts",
       "default": "./dist/adapters/three.js"
     },
-    "./manifest.schema.json": "./dist/manifest/schema.json",
     "./package.json": "./package.json"
   },
   "peerDependencies": {

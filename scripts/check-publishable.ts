@@ -104,9 +104,19 @@ export async function unimportableSubpaths(
   const problems: string[] = []
   const skipped: string[] = []
   for (const [subpath, file] of exportTargets(manifest.exports)) {
-    // A schema and the manifest itself are data. Importing JSON needs an
-    // import attribute, and what a consumer does with it is their business.
-    if (!file.endsWith(".js")) continue
+    // Data, such as the package's own package.json, is not imported: that
+    // needs an import attribute, and what a consumer does with it is their
+    // business. It must still be in the tarball. `./manifest.schema.json`
+    // pointed at a file the build never made, from 0.1.0 until 0.8.0, and
+    // skipping non-JavaScript targets is how nothing noticed.
+    if (!file.endsWith(".js")) {
+      if (!existsSync(join(packageDir, file))) {
+        problems.push(
+          `${subpath} points at ${file}, which the tarball does not carry`,
+        )
+      }
+      continue
+    }
 
     const url = pathToFileURL(join(packageDir, file)).href
     const result =

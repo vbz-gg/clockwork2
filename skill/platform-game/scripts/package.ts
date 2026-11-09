@@ -2,10 +2,14 @@
 /**
  * Hashes a game's assets and checks the manifest declares them.
  *
- * The platform refuses an asset that is not declared, and refuses a
- * declaration whose hash does not match the bytes, so this is the step that
- * turns "it works here" into something a server can verify. It prints the
- * `assets` array to paste into the manifest.
+ * The platform refuses a declaration whose hash or size does not match the
+ * bytes, so this is the step that turns "it works here" into something a
+ * server can verify. It prints the `assets` array to paste into the manifest.
+ *
+ * A file under `packs/` is printed as a data pack, `requiredForSim: true`,
+ * because the simulation reads it; everything else as art. Paths are written
+ * with `/` on every system, because a manifest path is the same on every
+ * system and the manifest refuses a backslash.
  *
  *   package.ts ./dist                 hash everything under ./dist
  *   package.ts ./dist --manifest=./src/manifest.ts   compare with what is declared
@@ -13,7 +17,7 @@
 
 import { createHash } from "node:crypto"
 import { readdirSync, readFileSync, statSync } from "node:fs"
-import { join, relative, resolve } from "node:path"
+import { join, relative, resolve, sep } from "node:path"
 import type * as Kernel from "@clockwork2/engine"
 import { resolveFrom } from "./_resolve"
 
@@ -41,7 +45,7 @@ const found: Entry[] = []
 for (const file of walk(root)) {
   const bytes = readFileSync(file)
   found.push({
-    path: relative(root, file),
+    path: relative(root, file).split(sep).join("/"),
     sha256: createHash("sha256").update(bytes).digest("hex"),
     bytes: bytes.length,
   })
@@ -53,7 +57,7 @@ console.log(
   JSON.stringify(
     found.map((entry) => ({
       ...entry,
-      requiredForSim: false,
+      requiredForSim: entry.path.startsWith("packs/"),
       license: "TODO",
     })),
     null,

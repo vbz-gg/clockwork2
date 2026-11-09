@@ -23,6 +23,14 @@ export {
   type InputCaptureOptions,
 } from "./input.js"
 export {
+  type FetchPackLoaderOptions,
+  fetchPackLoader,
+  loadPacks,
+  memoryPackLoader,
+  type PackLoader,
+  type PackSupply,
+} from "./packs.js"
+export {
   createDispatcher,
   FRAME_ERRORS,
   type GameToHost,

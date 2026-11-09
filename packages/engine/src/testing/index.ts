@@ -12,6 +12,7 @@ export {
   idleLog,
   standardLogs,
 } from "./input-logs.js"
+export { packReaderFor } from "./packs.js"
 export {
   createReferenceGame,
   REFERENCE_CONFIG,

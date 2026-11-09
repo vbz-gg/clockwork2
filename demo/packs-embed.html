@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Clockwork 2 - a framed game with data packs</title>
+    <style>
+      :root { color-scheme: dark; }
+      body { margin: 0; padding: 20px; background: #0b0b14; color: #e8e9ee; font-family: ui-sans-serif, system-ui, sans-serif; }
+      #stage { height: 120px; border: 1px solid #23242e; }
+      dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; font-size: 14px; }
+      dt { color: #8b8fa3; }
+      dd { margin: 0; font-family: ui-monospace, monospace; word-break: break-all; }
+      #recording { display: none; }
+    </style>
+  </head>
+  <body>
+    <h1 style="font-size: 18px">A framed game with data packs</h1>
+    <div id="stage"></div>
+    <button id="push" type="button">Push</button>
+    <dl>
+      <dt>phase</dt><dd id="phase">idle</dd>
+      <dt>tick</dt><dd id="tick">0</dd>
+      <dt>level first read at</dt><dd id="opened-at">-</dd>
+      <dt>error</dt><dd id="error"></dd>
+    </dl>
+    <pre id="recording"></pre>
+    <script type="module" src="/src/packs/embed.ts"></script>
+  </body>
+</html>

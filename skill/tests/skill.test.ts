@@ -14,7 +14,16 @@
 
 import { describe, expect, test } from "bun:test"
 import { spawnSync } from "node:child_process"
-import { existsSync, readFileSync, statSync } from "node:fs"
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs"
+import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { ERROR_CODES } from "@clockwork2/engine"
 import { loadSubject, validate } from "@clockwork2/engine/validate"
@@ -94,6 +103,47 @@ describe("SKILL.md", () => {
       const mode = statSync(join(SKILL, "scripts", name)).mode
       expect((mode & 0o111) !== 0, name).toBe(true)
     }
+  })
+})
+
+describe("the scripts, on a game with data packs", () => {
+  const scripts = join(SKILL, "scripts")
+
+  test("package.ts prints a file under packs/ as a pack, and art as art", () => {
+    const dir = mkdtempSync(join(tmpdir(), "cw2-scratch-package-"))
+    try {
+      mkdirSync(join(dir, "packs", "towns"), { recursive: true })
+      writeFileSync(join(dir, "packs", "towns", "harbor.json"), "{}")
+      writeFileSync(join(dir, "sprites.png"), "not really a png")
+      const result = spawnSync("bun", [join(scripts, "package.ts"), dir], {
+        encoding: "utf8",
+      })
+      expect(result.status).toBe(0)
+      const printed = JSON.parse(result.stdout) as Array<{
+        path: string
+        requiredForSim: boolean
+        bytes: number
+      }>
+      expect(
+        printed.map(({ path, requiredForSim }) => [path, requiredForSim]),
+      ).toEqual([
+        ["packs/towns/harbor.json", true],
+        ["sprites.png", false],
+      ])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test("run-headless.ts runs a game that reads a start pack and a demand pack", () => {
+    const fixture = join(ROOT, "../packages/engine/fixtures/packs")
+    const result = spawnSync(
+      "bun",
+      [join(scripts, "run-headless.ts"), fixture, "--quiet"],
+      { encoding: "utf8" },
+    )
+    expect(result.stderr).toBe("")
+    expect(result.stdout).toContain("completed at tick 1800")
   })
 })
 
