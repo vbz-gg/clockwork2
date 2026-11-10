@@ -177,8 +177,9 @@ for a tag pushed by hand.
 **A release tells the repositories that pin this engine.** The last step
 dispatches an `engine-released` event to each of them with the version it
 published, so a release reaches them in seconds rather than whenever their own
-daily check next runs. Today that is game-base and the platform, told one at a
-time so that one refusing the token does not stop the other. GITHUB_TOKEN is scoped to this repository and cannot
+daily check next runs. Today that is the SDK (vbz-gg/sdk, published as
+`@vbz-gg/sdk`) and the platform, told one at a time so that one refusing the
+token does not stop the other. GITHUB_TOKEN is scoped to this repository and cannot
 dispatch to another, so that step reads `ENGINE_RELEASED_TOKEN`, an
 organisation secret. The dispatch needs Contents: write on each repository it
 tells, and a repository that opens an update pull request does so with the
@@ -193,11 +194,9 @@ removed.
 The step is best-effort, and `scripts/release-version.test.ts` holds it that
 way. By the time it runs the version is published, tagged and announced, so a
 missing or expired token must not turn a release that worked into a red run.
-game-base also polls the registry daily, which makes a failure there a delay
-rather than a miss - and the poll is also what catches a version published from
-a laptop, where no workflow ran at all. The platform has no daily check or
-update workflow yet, so until it has one the dispatch reaches nothing there,
-and the token needs both permissions on it before it will.
+The SDK and the platform both poll the registry daily, which makes a failure
+there a delay rather than a miss - and the poll is also what catches a version
+published from a laptop, where no workflow ran at all.
 
 `bun run check:publishable` packs the package and reads what a consumer would
 get: that the tarball carries a README and a `dist`, that nothing has crept

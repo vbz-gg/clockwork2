@@ -116,9 +116,8 @@ describe("the kernel version literal", () => {
    * A release tells the repositories that pin this engine, and never fails
    * because it could not. By the time that step runs the version is
    * published, tagged and announced, so a missing or expired token must not
-   * turn a release that worked into a red run. game-base also polls the
-   * registry daily, which makes that a delay rather than a miss for it; the
-   * platform has no daily check yet.
+   * turn a release that worked into a red run. The SDK and the platform both
+   * poll the registry daily, which makes that a delay rather than a miss.
    */
   test("the release tells its consumers, best-effort", () => {
     const workflow = readFileSync(
@@ -131,13 +130,15 @@ describe("the kernel version literal", () => {
     expect(workflow).toContain("secrets.ENGINE_RELEASED_TOKEN")
     expect(workflow).toContain("continue-on-error: true")
     // And it says so when the token is not there, rather than failing.
-    expect(workflow).toContain("game-base's daily check will pick this up")
-    // The arcade is archived; its backend parts became vbz-gg/platform, which
-    // is the repository that has to hear about a release now.
     expect(workflow).toContain(
-      "for repo in vbz-gg/game-base vbz-gg/platform; do",
+      "the daily checks of the SDK and the platform will pick this up",
     )
+    // The arcade is archived; its backend parts became vbz-gg/platform, which
+    // is the repository that has to hear about a release now. game-base was
+    // renamed vbz-gg/sdk.
+    expect(workflow).toContain("for repo in vbz-gg/sdk vbz-gg/platform; do")
     expect(workflow).not.toContain("vbz-gg/arcade")
+    expect(workflow).not.toContain("vbz-gg/game-base")
   })
 
   /**
