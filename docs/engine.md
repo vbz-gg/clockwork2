@@ -1153,10 +1153,10 @@ const host = new GameHost({
 `fetchPackLoader` builds each URL from the manifest, because no frame message
 may carry one. It asks with `mode: "cors"` and no credentials, counts the body
 as it arrives and stops past the declared size, and reports a refused or failed
-fetch as `E_PACK_NOT_DELIVERED`. game-base's frame document sets
+fetch as `E_PACK_NOT_DELIVERED`. The frame document of the SDK
+(`@vbz-gg/sdk`, published as `@vbz-gg/game-base` up to 0.2.0) sets
 `connect-src 'none'`, which blocks every fetch, so a framed game built with
-game-base cannot fetch its packs until that rule allows the frame's own
-address.
+the SDK cannot fetch its packs until that rule allows the frame's own address.
 
 The host holds its loop while a pack the game named is missing and reports
 what it is waiting for in `FrameInfo.waitingFor`. A prefetch that fails is
