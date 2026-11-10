@@ -140,10 +140,13 @@ The cross-boundary test plays a session in a real browser with real key events,
 writes the recording to disk, replays it under Bun and under Node, and compares
 all three.
 
-Coverage over `packages/engine/src` is held at 99% of lines. It sits at 99.67%,
-and the 18 uncovered lines are a load-time refusal only a big-endian build
-reaches, a branch `String.prototype.split` cannot produce, and a guard for a
-runtime that has frozen one of the globals the shims trap.
+Coverage over `packages/engine/src` is held at 99% of lines. It sits at 99.75%
+on x86 Linux. 12 of the 17 uncovered lines are a load-time refusal only a
+big-endian build reaches, a branch `String.prototype.split` cannot produce, and
+guards for a runtime that has frozen one of the globals the shims trap. The
+other 5 are the tangent kernel's branch for -1/tan of an argument below 2^-28,
+`dmath.sign`, the probe rethrowing an error that is not the engine's, and two
+lines of the message that names a value the hash refuses.
 
 ## Documentation
 
