@@ -418,9 +418,11 @@ It is demanded when the commit stages anything under `packages/`, `demo/`,
 and `chore(release)` commits are exempt: git and commit-and-tag-version write
 those messages themselves, some with no editor at all.
 
-A value under ten characters is rejected, as is a stamp from the list in
-`scripts/check-docs-updated.ts`. Say what you did, inside the 100 columns
-commitlint allows a trailer line:
+The trailer is a line below the subject that opens a paragraph or follows
+only other trailers in its paragraph. Prose that wraps onto a line starting
+`Docs-Updated:` is not the record. A value under ten characters is rejected,
+as is a stamp from the list in `scripts/check-docs-updated.ts`. Say what you
+did, inside the 100 columns commitlint allows a trailer line:
 
     Docs-Updated: regenerated kernel-api.md for the new Session option
     Docs-Updated: re-read engine.md on recording and replay; no change needed

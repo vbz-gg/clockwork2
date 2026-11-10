@@ -152,14 +152,73 @@ describe("the gate", () => {
     expect("checked!".length).toBeLessThan(MIN_VALUE_LENGTH)
   })
 
-  test("the trailer is found anywhere in the body", () => {
+  test("the trailer may sit above a paragraph a commit tool adds", () => {
     const message = commit("feat: a thing", REAL, "", "Co-authored-by: A <a@b>")
     expect(checkCommitMessage(message, BEARING).ok).toBe(true)
   })
 
-  test("the trailer name is matched case-insensitively", () => {
+  test("the trailer is read after other trailers in its paragraph", () => {
+    const message = commit(
+      "feat!: a thing",
+      "Why it changed.",
+      "",
+      `BREAKING CHANGE: the loop drops time differently\nReviewed-by: A <a@b>\n${REAL}`,
+    )
+    expect(checkCommitMessage(message, BEARING).ok).toBe(true)
+  })
+
+  test("a value that wraps onto a second line is read from its first", () => {
+    // This repository's history wraps long values with no indent.
+    const message = commit(
+      "feat: a thing",
+      `${TRAILER}: AGENTS.md on the no-major policy and what the baseline check is`,
+      "for",
+    )
+    expect(findTrailerValue(message)).toBe(
+      "AGENTS.md on the no-major policy and what the baseline check is",
+    )
+  })
+
+  test("prose that wraps onto a Docs-Updated line is not the trailer", () => {
+    // A body explaining the rule can wrap so a line starts with the name. Read
+    // from anywhere, that sentence passed as the record.
+    const message = commit(
+      "build: the commit gates",
+      "commit-msg runs the check, which demands a",
+      "Docs-Updated: trailer on any commit that stages a bearing path.",
+    )
+    expect(findTrailerValue(message)).toBeNull()
+    expect(checkCommitMessage(message, BEARING).ok).toBe(false)
+  })
+
+  test("the subject is never the trailer", () => {
     expect(
       findTrailerValue("docs-updated: re-read engine.md on the loop"),
+    ).toBeNull()
+    expect(
+      findTrailerValue(
+        "feat: a thing\nDocs-Updated: re-read engine.md on the loop",
+      ),
+    ).toBeNull()
+  })
+
+  test("a message saved with Windows line endings still has its trailer", () => {
+    // An editor on Windows can save the message with CRLF. A blank line is
+    // then "\r\n\r\n", which is no paragraph break to a plain "\n" split.
+    const message = commit("feat: a thing", "Why it changed.", "", REAL)
+      .split("\n")
+      .join("\r\n")
+    expect(findTrailerValue(message)).toBe(
+      "re-read engine.md on the loop; still accurate",
+    )
+    expect(checkCommitMessage(`${message}\r\n`, BEARING).ok).toBe(true)
+  })
+
+  test("the trailer name is matched case-insensitively", () => {
+    expect(
+      findTrailerValue(
+        commit("feat: a thing", "docs-updated: re-read engine.md on the loop"),
+      ),
     ).toBe("re-read engine.md on the loop")
   })
 })
