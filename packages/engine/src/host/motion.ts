@@ -163,10 +163,33 @@ export function requestMotion(
   )
 }
 
+/**
+ * The windows a real reading has already reached, by this or by the device
+ * helpers. Chromium sends `deviceorientation` only when the reading changes,
+ * so a phone held still while a game already listens sends nothing new, and
+ * waiting for a reading then would report a working sensor as missing.
+ */
+const readingSeen = new WeakSet<object>()
+
+/**
+ * Notes a reading heard on `window`, and says whether it was a real one: sent
+ * by the browser, with both angles. A device with no sensor sends readings
+ * whose angles are null.
+ */
+export function noteReading(window: object, event: Event): boolean {
+  const { beta, gamma } = event as DeviceOrientationEvent
+  if (!event.isTrusted || beta === null || gamma === null) return false
+  readingSeen.add(window)
+  return true
+}
+
 function firstReading(
   environment: MotionEnvironment,
   wait: number,
 ): Promise<MotionAccess> {
+  if (readingSeen.has(environment.window)) {
+    return Promise.resolve({ granted: true })
+  }
   return new Promise((resolve) => {
     const done = (access: MotionAccess): void => {
       environment.clearTimeout(timer)
@@ -174,9 +197,7 @@ function firstReading(
       resolve(access)
     }
     const onReading = (event: Event): void => {
-      const { beta, gamma } = event as DeviceOrientationEvent
-      if (!event.isTrusted || beta === null || gamma === null) return
-      done({ granted: true })
+      if (noteReading(environment.window, event)) done({ granted: true })
     }
     const timer = environment.setTimeout(() => {
       done(

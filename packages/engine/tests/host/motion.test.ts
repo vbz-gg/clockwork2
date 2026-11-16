@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import {
   MOTION_REFUSALS,
   type MotionEnvironment,
+  noteReading,
   requestMotion,
 } from "../../src/host/motion"
 
@@ -132,6 +133,41 @@ describe("asking for tilt", () => {
     expect(access).toMatchObject({
       granted: false,
       code: MOTION_REFUSALS.BLOCKED,
+    })
+  })
+
+  test("is granted at once where a real reading already arrived, as Chromium sends none for a phone held still", async () => {
+    const b = browser()
+    const first = requestMotion({ environment: b.environment })
+    await Promise.resolve()
+    b.reading(10, 5)
+    expect(await first).toEqual({ granted: true })
+    // Asked again with the phone still: no new reading, and no wait for one.
+    const again = requestMotion({ environment: b.environment, wait: 50 })
+    await Promise.resolve()
+    b.timeout()
+    expect(await again).toEqual({ granted: true })
+    expect(b.listeners.size).toBe(0)
+  })
+
+  test("a reading the device helpers heard counts, and an empty or untrusted one does not", async () => {
+    const window = browser().environment.window
+    expect(
+      noteReading(window, { isTrusted: true, beta: null, gamma: 3 } as never),
+    ).toBe(false)
+    expect(
+      noteReading(window, { isTrusted: false, beta: 1, gamma: 3 } as never),
+    ).toBe(false)
+    const b = browser({ window })
+    const empty = requestMotion({ environment: b.environment, wait: 50 })
+    await Promise.resolve()
+    b.timeout()
+    expect(await empty).toMatchObject({ code: MOTION_REFUSALS.NO_SENSOR })
+    expect(
+      noteReading(window, { isTrusted: true, beta: 1, gamma: 3 } as never),
+    ).toBe(true)
+    expect(await requestMotion({ environment: b.environment })).toEqual({
+      granted: true,
     })
   })
 

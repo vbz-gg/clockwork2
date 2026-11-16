@@ -32,6 +32,7 @@ import {
   type MergeRule,
   quantiseAxis,
 } from "../index.js"
+import { noteReading } from "./motion.js"
 
 /** Fingers, pens and the mouse, each with a small slot number. */
 export const POINTER_SLOTS = 10
@@ -398,6 +399,8 @@ export class InputCapture {
   private readonly pressedBy = new Map<string, Set<string>>()
   /** pointerId to the slot it is down in. */
   private readonly slots = new Map<number, Held>()
+  /** A lock asked for and not yet granted or refused. */
+  private lockAsked = false
   /** The last value recorded per level name, so a repeat is not an input. */
   private readonly lastLevel = new Map<string, number>()
   /** Fractions of an amount not yet recorded. */
@@ -483,6 +486,9 @@ export class InputCapture {
     }
     if (this.options.tilt !== undefined) {
       this.listen(window, "deviceorientation", (event) => {
+        // So a later `requestMotion` knows the sensor works without waiting
+        // for a reading that changed.
+        noteReading(window, event)
         this.tilt(event as DeviceOrientationEvent, environment)
       })
     }
@@ -639,22 +645,35 @@ export class InputCapture {
     }
     if (this.options.mouseLock !== undefined) {
       this.listen(document, "pointerlockchange", () => {
-        if (!locked()) this.releaseAll()
+        if (locked()) this.lockAsked = false
+        else this.releaseAll()
+      })
+      // Firefox answers a request with nothing and refuses only here.
+      this.listen(document, "pointerlockerror", () => {
+        this.lockRefused("the browser refused to lock the mouse to the game")
       })
     }
   }
 
   private requestLock(element: HTMLElement): void {
-    const refused = (reason: unknown): void => {
-      this.notice(DEVICE_NOTICES.POINTER_LOCK_REFUSED, String(reason))
-    }
+    this.lockAsked = true
     try {
-      // Chromium answers with a promise; WebKit and Firefox with nothing.
+      // Chromium and WebKit answer with a promise, and WebKit also sends
+      // `pointerlockerror`; Firefox answers with nothing.
       const answer = element.requestPointerLock() as unknown
-      if (answer instanceof Promise) answer.catch(refused)
+      if (answer instanceof Promise) {
+        answer.catch((reason: unknown) => this.lockRefused(reason))
+      }
     } catch (reason) {
-      refused(reason)
+      this.lockRefused(reason)
     }
+  }
+
+  /** One notice per request, however many ways the browser says no. */
+  private lockRefused(reason: unknown): void {
+    if (!this.lockAsked) return
+    this.lockAsked = false
+    this.notice(DEVICE_NOTICES.POINTER_LOCK_REFUSED, String(reason))
   }
 
   /** The lowest free slot, taken only when a pointer goes down. */

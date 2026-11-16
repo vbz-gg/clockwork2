@@ -829,6 +829,50 @@ describe("the mouse locked to the game", () => {
     ])
   })
 
+  test("a refusal sent only as pointerlockerror, as Firefox sends it, is reported", () => {
+    const { element, notices, browser } = lock()
+    element.onLock(() => undefined)
+    element.target.send("pointerdown", {
+      pointerId: 1,
+      buttons: 1,
+      ...at(0.5, 0.5),
+    })
+    expect(notices).toEqual([])
+    browser.document.send("pointerlockerror")
+    expect(notices.map((n) => n.code)).toEqual([
+      DEVICE_NOTICES.POINTER_LOCK_REFUSED,
+    ])
+  })
+
+  test("a refusal sent both ways, as WebKit sends it, is reported once", async () => {
+    const { element, notices, browser } = lock()
+    element.onLock(() => Promise.reject(new Error("WrongDocumentError")))
+    element.target.send("pointerdown", {
+      pointerId: 1,
+      buttons: 1,
+      ...at(0.5, 0.5),
+    })
+    browser.document.send("pointerlockerror")
+    await Promise.resolve()
+    expect(notices.map((n) => n.code)).toEqual([
+      DEVICE_NOTICES.POINTER_LOCK_REFUSED,
+    ])
+  })
+
+  test("a pointerlockerror after the lock was granted is not a refusal", () => {
+    const { element, notices, browser } = lock()
+    element.onLock(() => undefined)
+    element.target.send("pointerdown", {
+      pointerId: 1,
+      buttons: 1,
+      ...at(0.5, 0.5),
+    })
+    browser.document.pointerLockElement = element.element
+    browser.document.send("pointerlockchange")
+    browser.document.send("pointerlockerror")
+    expect(notices).toEqual([])
+  })
+
   test("leaving the lock releases everything", () => {
     const { queue, element, browser } = lock()
     browser.document.pointerLockElement = element.element
