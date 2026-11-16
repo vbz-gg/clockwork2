@@ -19,7 +19,11 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { connectToParent } from "../../src/host/frame/index"
 import { GameHost, ManualScheduler } from "../../src/host/index"
 import { createGameFrame } from "../../src/host/parent/index"
-import type { GameToHost, HostToGame } from "../../src/host/protocol/index"
+import {
+  type GameToHost,
+  type HostToGame,
+  PROTOCOL_VERSION,
+} from "../../src/host/protocol/index"
 import {
   createReferenceGame,
   REFERENCE_CONFIG,
@@ -101,7 +105,7 @@ function frameWithSession() {
   const themed: string[] = []
   let host: GameHost<unknown, HTMLElement> | null = null
 
-  connectToParent<unknown>({
+  const bridge = connectToParent<unknown>({
     manifest: REFERENCE_MANIFEST,
     parentOrigin: PARENT,
     onResize: (w, h, dpr) => resized.push([w, h, dpr]),
@@ -121,13 +125,18 @@ function frameWithSession() {
     },
   })
 
+  const parent = (globalThis as unknown as { parent: unknown }).parent
   const send = (data: unknown): void => {
     for (const listener of [...listeners]) {
-      listener({ data, origin: PARENT } as unknown as MessageEvent)
+      listener({
+        data,
+        origin: PARENT,
+        source: parent,
+      } as unknown as MessageEvent)
     }
   }
 
-  send({ type: "hello", protocol: 1 })
+  send({ type: "hello", protocol: PROTOCOL_VERSION })
   send({
     type: "init",
     seed: "round-trip",
@@ -138,6 +147,7 @@ function frameWithSession() {
   send({ type: "start" })
 
   return {
+    bridge,
     send,
     out,
     resized,
@@ -193,15 +203,62 @@ describe("a command posted by the host reaches the frame", () => {
     expect(frame.themed).toEqual(["midnight"])
   })
 
-  test("virtualInput, which reaches the live queue and nowhere else", () => {
-    const message = posted((frame) => frame.virtualInput("thrust", 1))
+  test("a tilt reading, which reaches the frame's tilt listeners once the run plays", () => {
+    const iframe = {
+      setAttribute: () => undefined,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      remove: () => undefined,
+      style: {} as Record<string, string>,
+      src: "",
+      contentWindow: { postMessage: (message: unknown) => sent.push(message) },
+    }
+    const sent: unknown[] = []
+    const heardBy: Array<(event: unknown) => void> = []
+    const window = {
+      addEventListener: (_type: string, listener: unknown) => {
+        heardBy.push(listener as (event: unknown) => void)
+      },
+      removeEventListener: () => undefined,
+      dispatchEvent: () => true,
+    }
+    patch({
+      document: { createElement: () => iframe },
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    })
+    const page = createGameFrame({
+      container: { appendChild: () => undefined } as unknown as HTMLElement,
+      src: "https://games.example/g/snake/1.0.0/",
+      motionEnvironment: {
+        window,
+        isSecureContext: true,
+        orientation: {},
+        screenAngle: () => 0,
+        allowsFeature: () => undefined,
+        setTimeout: () => 0,
+        clearTimeout: () => undefined,
+      },
+    })
+    page.forwardMotion({ granted: true })
+    // A reading a page script made is skipped; the browser's is passed on.
+    for (const listener of heardBy) {
+      listener({ isTrusted: false, beta: 80, gamma: 80 })
+      listener({ isTrusted: true, beta: null, gamma: null })
+      listener({ isTrusted: true, beta: 12, gamma: -3 })
+    }
+    expect(
+      sent.filter((m) => (m as HostToGame).type === "motion"),
+    ).toHaveLength(1)
+    const message = sent.at(-1) as HostToGame
+    expect(message).toEqual({ type: "motion", beta: 12, gamma: -3, angle: 0 })
+
     while (restores.length > 0) restores.pop()?.()
     const frame = frameWithSession()
+    const heard: unknown[] = []
+    frame.bridge.onMotion((r) => heard.push(r))
     frame.send(message)
-    const taken = frame.hostOf()?.live?.take(20) ?? []
-    expect(taken.map((e) => [e.device, e.code, e.value])).toEqual([
-      ["virtual", "thrust", 1],
-    ])
+    expect(heard).toEqual([{ beta: 12, gamma: -3, angle: 0 }])
   })
 
   test("start, which the session answers once", () => {

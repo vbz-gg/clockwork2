@@ -10,8 +10,13 @@
  * An opaque origin also means the frame's `event.origin` is "null", so the
  * parent cannot check it. It checks `event.source` against the frame's own
  * window instead, which is the identity that actually matters here.
+ *
+ * The page also reads tilt and passes it in (`forwardMotion`), because a
+ * sensor's events never reach a cross-origin frame in Firefox, and iOS asks
+ * the player's permission only from a tap on the page itself.
  */
 
+import { fail } from "../../errors.js"
 import type { InputEvent } from "../../index.js"
 import {
   createDispatcher,
@@ -19,13 +24,27 @@ import {
   type HostToGame,
   PROTOCOL_VERSION,
 } from "../protocol/index.js"
+import {
+  isMotionAngle,
+  type MotionAccess,
+  type MotionEnvironment,
+  motionEnvironment,
+} from "./motion.js"
 
 export interface GameFrameOptions {
   readonly container: HTMLElement
   /** The game document, served from an origin of its own. */
   readonly src: string
   readonly title?: string
-  /** Features to grant. Pointer lock only when the manifest asks for it. */
+  /**
+   * The permissions policy delegated to the frame. Each feature needs `*`:
+   * a bare name means the frame's own origin, which for a sandboxed frame is
+   * a fresh opaque origin that matches nothing, so Firefox and Safari turn
+   * the feature off (measured for `fullscreen`). `gamepad *` repeats every
+   * browser's default and is written so nobody narrows it by accident.
+   * `autoplay` does something only in Chromium. No sensor is delegated:
+   * the page reads tilt itself.
+   */
   readonly allow?: string
   /**
    * Says hello once the frame document has loaded. On by default.
@@ -64,7 +83,16 @@ export interface GameFrameOptions {
   readonly onHeartbeat?: (
     message: Extract<GameToHost, { type: "heartbeat" }>,
   ) => void
+  /** A device problem the player should hear about. Never a reason to end the run. */
+  readonly onNotice?: (message: Extract<GameToHost, { type: "notice" }>) => void
+  /** For a test: where tilt is heard and the screen's angle read. */
+  readonly motionEnvironment?: MotionEnvironment
 }
+
+/** The frame's sandbox. Pointer lock is allowed so a game that binds mouse movement can lock. */
+export const FRAME_SANDBOX = "allow-scripts allow-pointer-lock"
+
+export const FRAME_ALLOW = "autoplay *; fullscreen *; gamepad *"
 
 export class GameFrame {
   private readonly iframe: HTMLIFrameElement
@@ -73,12 +101,13 @@ export class GameFrame {
     this.hello()
   }
   private destroyed = false
+  private stopMotion: (() => void) | null = null
 
   constructor(private readonly options: GameFrameOptions) {
     const iframe = document.createElement("iframe")
     // Deliberately not allow-same-origin. See the note above.
-    iframe.setAttribute("sandbox", "allow-scripts")
-    iframe.setAttribute("allow", options.allow ?? "autoplay; fullscreen")
+    iframe.setAttribute("sandbox", FRAME_SANDBOX)
+    iframe.setAttribute("allow", options.allow ?? FRAME_ALLOW)
     iframe.setAttribute("title", options.title ?? "Game")
     iframe.style.border = "0"
     iframe.style.width = "100%"
@@ -100,6 +129,7 @@ export class GameFrame {
       "recording-chunk": (message) => options.onRecordingChunk?.(message),
       error: (message) => options.onError?.(message),
       heartbeat: (message) => options.onHeartbeat?.(message),
+      notice: (message) => options.onNotice?.(message),
       // There is no navigate row, and there is not meant to be one.
     })
 
@@ -177,9 +207,36 @@ export class GameFrame {
     this.post({ type: "theme", theme })
   }
 
-  /** From a host-drawn on-screen control, and from nowhere else. */
-  virtualInput(action: string, value: number): void {
-    this.post({ type: "virtual-input", action, value })
+  /**
+   * Passes the page's tilt readings to the frame until `stop` or `destroy`.
+   *
+   * `access` is what `requestMotion` answered on the player's tap, and only
+   * a grant is accepted. A reading the browser did not make (`isTrusted`
+   * false) or one with no angles, which a device with no sensor sends, is
+   * skipped here; the frame checks every field again.
+   */
+  forwardMotion(access: MotionAccess): () => void {
+    if (!access.granted) {
+      fail("E_ARG_INVALID", {
+        detail: `tilt was not granted (${access.code}), so there is nothing to forward`,
+      })
+    }
+    this.stopMotion?.()
+    const environment = this.options.motionEnvironment ?? motionEnvironment()
+    const onOrientation = (event: Event): void => {
+      if (!event.isTrusted) return
+      const { beta, gamma } = event as DeviceOrientationEvent
+      const angle = environment.screenAngle()
+      if (beta === null || gamma === null || !isMotionAngle(angle)) return
+      this.post({ type: "motion", beta, gamma, angle })
+    }
+    environment.window.addEventListener("deviceorientation", onOrientation)
+    const stop = (): void => {
+      environment.window.removeEventListener("deviceorientation", onOrientation)
+      if (this.stopMotion === stop) this.stopMotion = null
+    }
+    this.stopMotion = stop
+    return stop
   }
 
   get element(): HTMLIFrameElement {
@@ -189,6 +246,7 @@ export class GameFrame {
   destroy(): void {
     if (this.destroyed) return
     this.destroyed = true
+    this.stopMotion?.()
     globalThis.removeEventListener("message", this.onMessage)
     this.iframe.removeEventListener("load", this.onLoad)
     this.iframe.remove()
@@ -199,3 +257,12 @@ export class GameFrame {
 export function createGameFrame(options: GameFrameOptions): GameFrame {
   return new GameFrame(options)
 }
+
+export {
+  isMotionAngle,
+  MOTION_REFUSALS,
+  type MotionAccess,
+  type MotionEnvironment,
+  type MotionRefusal,
+  requestMotion,
+} from "./motion.js"

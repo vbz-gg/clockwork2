@@ -16,6 +16,7 @@
  */
 
 import { fail } from "../errors.js"
+import { describeCode } from "../input-codes.js"
 import type {
   Manifest,
   ParamDefinition,
@@ -308,6 +309,126 @@ export function mergeParamDefaults(
 }
 
 /** Every problem with a manifest, in document order. */
+/** The fields `inputs` may carry. Anything else is refused by name. */
+const INPUT_FIELDS = new Set(["map", "viewport"])
+
+/**
+ * The input map. Every code must be one a device produces, so a binding that
+ * could never fire is refused here rather than found by a player, and each
+ * code drives one action, because the host records one action per event.
+ */
+function checkInputs(
+  inputs: unknown,
+  capabilities: unknown,
+  issues: Issue[],
+): void {
+  if (!isPlainObject(inputs) || !isPlainObject(inputs.map)) {
+    issues.push({
+      at: "inputs.map",
+      message: "must be an object of action to bindings",
+    })
+    return
+  }
+  for (const field of Object.keys(inputs)) {
+    if (INPUT_FIELDS.has(field)) continue
+    issues.push({
+      at: `inputs.${field}`,
+      message:
+        field === "controls"
+          ? "was removed in schema 2: a game draws its own controls and binds pointer codes"
+          : "is not a field of inputs",
+    })
+  }
+  const boundBy = new Map<string, string>()
+  let coordinates = false
+  let movement = false
+  for (const [action, bindings] of Object.entries(inputs.map)) {
+    if (!Array.isArray(bindings) || bindings.length === 0) {
+      issues.push({
+        at: `inputs.map.${action}`,
+        message: "must be a non-empty array of bindings",
+      })
+      continue
+    }
+    bindings.forEach((binding: unknown, index: number) => {
+      const at = `inputs.map.${action}[${index}]`
+      if (!isPlainObject(binding)) {
+        issues.push({ at, message: "must be an object" })
+        return
+      }
+      if (binding.device !== undefined) {
+        issues.push({
+          at: `${at}.device`,
+          message: "was removed in schema 2: the device is read from the code",
+        })
+      }
+      if (binding.label !== undefined && typeof binding.label !== "string") {
+        issues.push({ at: `${at}.label`, message: "must be a string" })
+      }
+      const code = binding.code
+      if (typeof code !== "string" || code.length === 0) {
+        issues.push({
+          at: `${at}.code`,
+          message: "must be a non-empty string",
+        })
+        return
+      }
+      const spec = describeCode(code)
+      if (spec === undefined) {
+        issues.push({
+          at: `${at}.code`,
+          message: `${JSON.stringify(code)} is not a code any device produces`,
+        })
+        return
+      }
+      const earlier = boundBy.get(code)
+      if (earlier !== undefined) {
+        issues.push({
+          at: `${at}.code`,
+          message: `${JSON.stringify(code)} is already bound to ${JSON.stringify(earlier)}; a code drives one action`,
+        })
+      } else {
+        boundBy.set(code, action)
+      }
+      if (typeof spec.max !== "number") coordinates = true
+      if (code === "mouse-dx" || code === "mouse-dy") movement = true
+    })
+  }
+
+  const viewport = inputs.viewport
+  if (viewport !== undefined) {
+    if (
+      !isPlainObject(viewport) ||
+      !isPositiveInteger(viewport.width) ||
+      !isPositiveInteger(viewport.height)
+    ) {
+      issues.push({
+        at: "inputs.viewport",
+        message: "must be { width, height } in positive whole units",
+      })
+    }
+  } else if (coordinates) {
+    issues.push({
+      at: "inputs.viewport",
+      message:
+        "is required when a pointer position is bound: it is the units the position is measured in",
+    })
+  }
+  if (
+    movement &&
+    !(isPlainObject(capabilities) && capabilities.pointerLock === true)
+  ) {
+    issues.push({
+      at: "capabilities.pointerLock",
+      message: "must be true to bind mouse-dx or mouse-dy",
+    })
+  }
+}
+
+function isPositiveInteger(value: unknown): boolean {
+  return typeof value === "number" && Number.isInteger(value) && value > 0
+}
+
 export function validateManifest(value: unknown): Issue[] {
   const issues: Issue[] = []
   if (!isPlainObject(value)) {
@@ -315,8 +436,14 @@ export function validateManifest(value: unknown): Issue[] {
   }
   const m = value as Record<string, unknown>
 
-  if (m.schemaVersion !== 1) {
-    issues.push({ at: "schemaVersion", message: "must be 1" })
+  if (m.schemaVersion !== 2) {
+    issues.push({
+      at: "schemaVersion",
+      message:
+        m.schemaVersion === 1
+          ? "must be 2: version 1 bound a device beside each code and declared inputs.controls, and both are gone"
+          : "must be 2",
+    })
   }
   if (typeof m.id !== "string" || !ID_PATTERN.test(m.id)) {
     issues.push({
@@ -422,95 +549,7 @@ export function validateManifest(value: unknown): Issue[] {
     })
   }
 
-  const inputs = m.inputs
-  if (!isPlainObject(inputs) || !isPlainObject(inputs.map)) {
-    issues.push({
-      at: "inputs.map",
-      message: "must be an object of action to bindings",
-    })
-  } else {
-    for (const [action, bindings] of Object.entries(inputs.map)) {
-      if (!Array.isArray(bindings) || bindings.length === 0) {
-        issues.push({
-          at: `inputs.map.${action}`,
-          message: "must be a non-empty array of bindings",
-        })
-        continue
-      }
-      bindings.forEach((binding: unknown, index: number) => {
-        const at = `inputs.map.${action}[${index}]`
-        if (!isPlainObject(binding)) {
-          issues.push({ at, message: "must be an object" })
-          return
-        }
-        if (typeof binding.code !== "string" || binding.code.length === 0) {
-          issues.push({
-            at: `${at}.code`,
-            message: "must be a non-empty string",
-          })
-        }
-        if (
-          !["key", "pointer", "touch", "gamepad", "virtual"].includes(
-            binding.device as string,
-          )
-        ) {
-          issues.push({ at: `${at}.device`, message: "is not a known device" })
-        }
-      })
-    }
-
-    // Which schemes exist is the host's table, not ours, so the name is only
-    // checked for being a name. What is checkable here is that the binding
-    // is coherent: a slot pointing at an action the game does not declare
-    // draws a control that sends nothing, and the player finds out by
-    // pressing it.
-    const controls = inputs.controls
-    if (controls !== undefined) {
-      if (!isPlainObject(controls)) {
-        issues.push({ at: "inputs.controls", message: "must be an object" })
-      } else if (controls.mode !== "scheme" && controls.mode !== "custom") {
-        issues.push({
-          at: "inputs.controls.mode",
-          message: 'must be "scheme" or "custom"',
-        })
-      } else if (controls.mode === "scheme") {
-        if (
-          typeof controls.scheme !== "string" ||
-          controls.scheme.length === 0
-        ) {
-          issues.push({
-            at: "inputs.controls.scheme",
-            message: "must be a non-empty string",
-          })
-        }
-        if (!isPlainObject(controls.bind)) {
-          issues.push({
-            at: "inputs.controls.bind",
-            message: "must be an object of slot to action",
-          })
-        } else {
-          const bound = Object.entries(controls.bind)
-          if (bound.length === 0) {
-            issues.push({
-              at: "inputs.controls.bind",
-              message: "must bind at least one slot",
-            })
-          }
-          for (const [slot, action] of bound) {
-            if (
-              typeof action !== "string" ||
-              !Object.hasOwn(inputs.map, action)
-            ) {
-              issues.push({
-                at: `inputs.controls.bind.${slot}`,
-                message: "must name an action declared in inputs.map",
-              })
-            }
-          }
-        }
-      }
-    }
-  }
+  checkInputs(m.inputs, m.capabilities, issues)
 
   const capabilities = m.capabilities
   if (!isPlainObject(capabilities)) {

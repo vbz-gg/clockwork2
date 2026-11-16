@@ -66,15 +66,41 @@ export {
   sha256Hex,
 } from "./hash/index.js"
 export {
+  AXIS_UNITS,
+  CODE_ROWS,
+  type CodeKind,
+  type CodeSpec,
+  describeCode,
+  devicesBound,
+  GAMEPAD_AXES,
+  GAMEPAD_BUTTONS,
+  GAMEPAD_SLOTS,
+  MAX_INPUTS_PER_TICK,
+  MAX_MOUSE_MOVEMENT,
+  MAX_WHEEL_NOTCHES,
+  maxOf,
+  POINTER_BUTTONS,
+  POINTER_SLOTS,
+  TILT_UNITS,
+  TRIGGER_UNITS,
+  type Viewport,
+  type ViewportAxis,
+  valueFits,
+} from "./input-codes.js"
+export {
   type AxisOptions,
+  checkInputs,
+  type InputSink,
   type InputSource,
   LiveInputQueue,
+  type MergeRule,
   type PendingInput,
   quantiseAxis,
   quantisePoint,
   RecordedInputSource,
   validateInputLog,
 } from "./inputs.js"
+export { KEY_CODES } from "./key-codes.js"
 export {
   Accumulator,
   type AccumulatorOptions,
@@ -88,6 +114,8 @@ export {
 } from "./loop.js"
 export type {
   AssetDeclaration,
+  InputBinding,
+  Inputs,
   Manifest,
   ParamSchema,
   ParamValues,

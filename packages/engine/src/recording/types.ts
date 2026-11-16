@@ -29,7 +29,7 @@ export const RECORDING_FORMAT = "cw2-recording"
  * game-base's envelope did not: it wrote a version and read it nowhere, while
  * changing codec twice underneath.
  */
-export const RECORDING_VERSION = 2
+export const RECORDING_VERSION = 3
 
 /**
  * Every version this kernel can still read.
@@ -37,9 +37,14 @@ export const RECORDING_VERSION = 2
  * A recording is evidence about a run that already happened, so refusing to
  * read an older one throws away the evidence rather than protecting anything.
  * Version 2 added `hostStats`, which a version 1 recording simply does not
- * have; nothing else about how a replay proceeds changed.
+ * have; nothing else about how a replay proceeds changed. Version 3 changed
+ * the devices an input may come from: `gamepad`, `motion` and `wheel` joined
+ * `key` and `pointer`, and `touch` and `virtual` left. A version 1 or 2
+ * recording still reads when every input in it is from a device that
+ * remains, which a recording of keys and pointers is; one carrying a removed
+ * device is refused for it. None was ever stored outside a test.
  */
-export const READABLE_RECORDING_VERSIONS = [1, 2] as const
+export const READABLE_RECORDING_VERSIONS = [1, 2, 3] as const
 
 /**
  * What the host's own loop did while the run was happening.

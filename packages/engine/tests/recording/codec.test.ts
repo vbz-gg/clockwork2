@@ -436,7 +436,7 @@ describe("reading an older recording", () => {
       decodeRecording(JSON.stringify({ ...record(), version: 99 })),
     )
     expect(thrown.code).toBe("E_RECORDING_VERSION")
-    expect(thrown.detail).toContain("1 and 2")
+    expect(thrown.detail).toContain("1, 2, 3")
   })
 })
 

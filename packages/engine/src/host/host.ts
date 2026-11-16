@@ -348,6 +348,10 @@ export class GameHost<
     if (this.state !== "running") return
     const elapsed = (now - this.lastNow) * this.speed
     this.lastNow = now
+    // Polled devices are read before the ticks, so what a gamepad shows at
+    // the start of this frame lands on the first tick it runs, live and in
+    // the recording alike.
+    this.live?.poll()
 
     let ticksThisFrame = 0
     const waiting = this.session.packsMissing()

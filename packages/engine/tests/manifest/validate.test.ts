@@ -37,11 +37,18 @@ describe("manifest validation", () => {
   })
 
   test("identity and version", () => {
-    issueAt({ ...REFERENCE_MANIFEST, schemaVersion: 2 }, "schemaVersion")
+    issueAt({ ...REFERENCE_MANIFEST, schemaVersion: 3 }, "schemaVersion")
     issueAt({ ...REFERENCE_MANIFEST, id: "Has Capitals" }, "id")
     issueAt({ ...REFERENCE_MANIFEST, id: "x" }, "id")
     issueAt({ ...REFERENCE_MANIFEST, version: "1.0" }, "version")
     withoutIssues({ ...REFERENCE_MANIFEST, version: "2.10.3-beta.1" })
+  })
+
+  test("a version 1 manifest is told what changed", () => {
+    const issues = validateManifest({ ...REFERENCE_MANIFEST, schemaVersion: 1 })
+    const issue = issues.find((i) => i.at === "schemaVersion")
+    expect(issue?.message).toMatch(/inputs\.controls/)
+    expect(issue?.message).toMatch(/device/)
   })
 
   test("the session block", () => {
@@ -344,65 +351,70 @@ describe("one rule at a time", () => {
     ["inputs.map.push[0]", { ...M, inputs: { map: { push: ["Space"] } } }],
     [
       "inputs.map.push[0].code",
-      { ...M, inputs: { map: { push: [{ device: "key" }] } } },
+      { ...M, inputs: { map: { push: [{ label: "Push" }] } } },
     ],
     [
       "inputs.map.push[0].code",
-      { ...M, inputs: { map: { push: [{ code: "", device: "key" }] } } },
+      { ...M, inputs: { map: { push: [{ code: "" }] } } },
     ],
+    // A code no device sends never fires, so it is refused rather than kept.
+    ...[
+      "Arrowleft",
+      "Unidentified",
+      "pointer0-z",
+      "pointer10",
+      "gamepad4-button0",
+    ].map((code): [string, unknown] => [
+      "inputs.map.push[0].code",
+      { ...M, inputs: { map: { push: [{ code }] } } },
+    ]),
+    // Schema 1 declared a device beside each code; the code says it now.
     [
       "inputs.map.push[0].device",
-      { ...M, inputs: { map: { push: [{ code: "Space", device: "mind" }] } } },
-    ],
-
-    // On-screen controls. The scheme name is the host's to recognise, so
-    // what is checkable here is that the binding is coherent.
-    ["inputs.controls", { ...M, inputs: { ...M.inputs, controls: "dpad" } }],
-    [
-      "inputs.controls.mode",
-      { ...M, inputs: { ...M.inputs, controls: { mode: "painted" } } },
+      { ...M, inputs: { map: { push: [{ code: "Space", device: "key" }] } } },
     ],
     [
-      "inputs.controls.scheme",
+      "inputs.map.push[0].label",
+      { ...M, inputs: { map: { push: [{ code: "Space", label: 3 }] } } },
+    ],
+    // One code drives one action: the host records the action, not the code.
+    [
+      "inputs.map.pull[0].code",
       {
         ...M,
         inputs: {
-          ...M.inputs,
-          controls: { mode: "scheme", scheme: "", bind: { left: "left" } },
+          map: { push: [{ code: "Space" }], pull: [{ code: "Space" }] },
         },
       },
     ],
+    // The ready-made pads are gone, and a stale template says so loudly.
     [
-      "inputs.controls.bind",
-      {
-        ...M,
-        inputs: {
-          ...M.inputs,
-          controls: { mode: "scheme", scheme: "dpad", bind: ["left"] },
-        },
-      },
+      "inputs.controls",
+      { ...M, inputs: { ...M.inputs, controls: { mode: "custom" } } },
     ],
-    // A scheme binding nothing draws controls that send nothing.
+    ["inputs.extra", { ...M, inputs: { ...M.inputs, extra: true } }],
+    // A pointer position needs the units it is measured in.
     [
-      "inputs.controls.bind",
-      {
-        ...M,
-        inputs: {
-          ...M.inputs,
-          controls: { mode: "scheme", scheme: "dpad", bind: {} },
-        },
-      },
+      "inputs.viewport",
+      { ...M, inputs: { map: { aim: [{ code: "pointer0-x" }] } } },
     ],
-    // The one a game gets wrong by renaming an action and not its binding.
     [
-      "inputs.controls.bind.up",
-      {
-        ...M,
-        inputs: {
-          ...M.inputs,
-          controls: { mode: "scheme", scheme: "dpad", bind: { up: "jump" } },
-        },
-      },
+      "inputs.viewport",
+      { ...M, inputs: { map: { aim: [{ code: "hover-y" }] } } },
+    ],
+    [
+      "inputs.viewport",
+      { ...M, inputs: { ...M.inputs, viewport: { width: 0, height: 10 } } },
+    ],
+    [
+      "inputs.viewport",
+      { ...M, inputs: { ...M.inputs, viewport: { width: 1.5, height: 10 } } },
+    ],
+    ["inputs.viewport", { ...M, inputs: { ...M.inputs, viewport: [9, 16] } }],
+    // Mouse movement is only recorded while the mouse is locked to the game.
+    [
+      "capabilities.pointerLock",
+      { ...M, inputs: { map: { look: [{ code: "mouse-dx" }] } } },
     ],
 
     // Capabilities.
@@ -475,27 +487,32 @@ describe("one rule at a time", () => {
     })
   }
 
-  test("a scheme binding declared actions is accepted, and so is custom", () => {
-    // The negative rows above fire on any mistake, so both shapes need a
+  test("a binding of every kind of code is accepted", () => {
+    // The negative rows above fire on any mistake, so the codes need a
     // positive case or they would pass against a validator that refused
-    // every `controls` block it saw.
+    // every binding it saw.
     withoutIssues({
       ...M,
       inputs: {
-        ...M.inputs,
-        controls: {
-          mode: "scheme",
-          scheme: "dpad",
-          bind: { left: "left", right: "right" },
+        map: {
+          jump: [
+            { code: "Space", label: "Jump" },
+            { code: "gamepad0-button0" },
+          ],
+          tap: [{ code: "pointer0" }, { code: "pointer9-button2" }],
+          aimX: [{ code: "pointer0-x" }, { code: "hover-x" }],
+          aimY: [{ code: "pointer0-y" }, { code: "hover-y" }],
+          look: [{ code: "mouse-dx" }],
+          zoom: [{ code: "wheel-y" }],
+          brake: [{ code: "gamepad3-button31-value" }],
+          steer: [{ code: "gamepad0-axis15" }, { code: "tilt-x" }],
+          lean: [{ code: "tilt-z" }],
         },
+        viewport: { width: 320, height: 480 },
       },
+      capabilities: { ...M.capabilities, pointerLock: true },
     })
-    withoutIssues({
-      ...M,
-      inputs: { ...M.inputs, controls: { mode: "custom" } },
-    })
-    // And leaving it out says the game wants a keyboard, which is a third
-    // answer rather than a missing one.
+    // A keyboard game needs no viewport.
     withoutIssues(M)
   })
 

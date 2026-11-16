@@ -2,7 +2,7 @@ import type { Manifest } from "@clockwork2/engine"
 import { GAME_CONFIG, TICK_HZ } from "./constants"
 
 export const MANIFEST: Manifest = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: "clockwork2-snake",
   version: "1.0.0",
   name: "Snake",
@@ -18,20 +18,20 @@ export const MANIFEST: Manifest = {
   inputs: {
     map: {
       up: [
-        { code: "ArrowUp", device: "key", label: "Up" },
-        { code: "KeyW", device: "key", label: "Up" },
+        { code: "ArrowUp", label: "Up" },
+        { code: "KeyW", label: "Up" },
       ],
       down: [
-        { code: "ArrowDown", device: "key", label: "Down" },
-        { code: "KeyS", device: "key", label: "Down" },
+        { code: "ArrowDown", label: "Down" },
+        { code: "KeyS", label: "Down" },
       ],
       left: [
-        { code: "ArrowLeft", device: "key", label: "Left" },
-        { code: "KeyA", device: "key", label: "Left" },
+        { code: "ArrowLeft", label: "Left" },
+        { code: "KeyA", label: "Left" },
       ],
       right: [
-        { code: "ArrowRight", device: "key", label: "Right" },
-        { code: "KeyD", device: "key", label: "Right" },
+        { code: "ArrowRight", label: "Right" },
+        { code: "KeyD", label: "Right" },
       ],
     },
   },

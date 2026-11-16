@@ -17,6 +17,13 @@
 import type { InputDevice, InputEvent } from "./contract.js"
 import { INPUT_DEVICES } from "./contract.js"
 import { fail } from "./errors.js"
+import {
+  type CodeSpec,
+  describeCode,
+  MAX_INPUTS_PER_TICK,
+  valueFits,
+} from "./input-codes.js"
+import type { Inputs } from "./manifest/types.js"
 
 const DEVICES = new Set<string>(INPUT_DEVICES)
 
@@ -144,23 +151,51 @@ export class RecordedInputSource implements InputSource {
   }
 }
 
+/**
+ * How a pending input joins others of the same device and action before the
+ * tick it lands on. `"latest"` keeps only the last, for a reading that holds
+ * (a stick, tilt): what the tick needs is where it ended up. `"sum"` adds
+ * them, for an amount (wheel notches, mouse movement), and drops a sum of
+ * nothing. Left out, every input is kept in order, which a press and a
+ * pointer position need: a game hit-testing a touch reads the position
+ * before the press in the same tick.
+ */
+export type MergeRule = "latest" | "sum"
+
 /** A device event the host has seen but not yet stamped. */
 export interface PendingInput {
   readonly device: InputDevice
   readonly code: string
   readonly value: number
+  readonly merge?: MergeRule
+}
+
+/** Where the host's input capture puts what it sees: a live queue, or a worker's. */
+export interface InputSink {
+  push(input: PendingInput): void
+  /**
+   * Runs `poll` once per frame, before the frame's ticks, for a device the
+   * browser does not send events for: a gamepad is read, not heard. Returns
+   * a function that stops it.
+   */
+  addPoller(poll: () => void): () => void
 }
 
 /**
  * Collects device events between frames and stamps them at the moment the
  * simulation reaches a tick. The log it builds is the recording.
  */
-export class LiveInputQueue implements InputSource {
+export class LiveInputQueue implements InputSource, InputSink {
   private pending: PendingInput[] = []
   private readonly log: InputEvent[] = []
+  private readonly pollers = new Set<() => void>()
 
   /** Called by the host from a device event handler. */
-  push(input: PendingInput): void {
+  push(pushed: PendingInput): void {
+    // A recording is JSON, which writes -0 as 0, so a live -0 would replay as
+    // 0 and a game dividing by it would see -Infinity live and Infinity in
+    // the replay. Rounding a small negative reading makes -0 easily.
+    const input = Object.is(pushed.value, -0) ? { ...pushed, value: 0 } : pushed
     if (!DEVICES.has(input.device)) {
       fail("E_INPUT_RANGE", {
         detail: `unknown device ${JSON.stringify(input.device)}`,
@@ -171,7 +206,37 @@ export class LiveInputQueue implements InputSource {
         detail: `input value must be an integer, got ${String(input.value)}; quantise analog sources first`,
       })
     }
+    if (input.merge !== undefined) {
+      const at = this.pending.findIndex(
+        (other) =>
+          other.merge === input.merge &&
+          other.device === input.device &&
+          other.code === input.code,
+      )
+      if (at !== -1) {
+        const earlier = this.pending[at] as PendingInput
+        this.pending.splice(at, 1)
+        if (input.merge === "sum") {
+          const total = earlier.value + input.value
+          if (total !== 0) this.pending.push({ ...input, value: total })
+          return
+        }
+      }
+      if (input.merge === "sum" && input.value === 0) return
+    }
     this.pending.push(input)
+  }
+
+  addPoller(poll: () => void): () => void {
+    this.pollers.add(poll)
+    return () => {
+      this.pollers.delete(poll)
+    }
+  }
+
+  /** Reads every polled device. The host calls this before a frame's ticks. */
+  poll(): void {
+    for (const poll of this.pollers) poll()
   }
 
   take(tick: number): readonly InputEvent[] {
@@ -203,6 +268,72 @@ export class LiveInputQueue implements InputSource {
   reset(): void {
     this.pending.length = 0
     this.log.length = 0
+  }
+}
+
+/**
+ * Checks a log against the manifest it was played under: every input is one
+ * a binding produces, with a value that binding's code can carry, and no
+ * tick holds more than `MAX_INPUTS_PER_TICK`. Throws `E_INPUT_UNBOUND` at the
+ * first that is not.
+ *
+ * The browser's host only ever records what the manifest binds, but the
+ * code in a game's frame is the game's, and a log reaches a server from
+ * anywhere. This is what makes "each game decides what is recorded" hold for
+ * every log a server ranks, not only for the honest ones. A server runs it on
+ * what it receives, against the manifest it stored for the version, never
+ * against one the game's own code exports.
+ *
+ * It checks the log's shape first (`validateInputLog`), so a caller needs one
+ * call.
+ */
+export function checkInputs(
+  events: readonly InputEvent[],
+  inputs: Inputs,
+): void {
+  validateInputLog(events)
+  // What each action may receive, per device: the specs of every code bound
+  // to it. A recorded event carries the action, not the code, and one
+  // action can bind a press and a coordinate of the same device.
+  const allowed = new Map<string, CodeSpec[]>()
+  for (const [action, bindings] of Object.entries(inputs.map)) {
+    for (const binding of bindings) {
+      const spec = describeCode(binding.code)
+      if (spec === undefined) continue
+      const key = `${spec.device}\u0000${action}`
+      const specs = allowed.get(key)
+      if (specs === undefined) allowed.set(key, [spec])
+      else specs.push(spec)
+    }
+  }
+  let tick = -1
+  let inTick = 0
+  for (let i = 0; i < events.length; i++) {
+    const event = events[i] as InputEvent
+    if (event.tick !== tick) {
+      tick = event.tick
+      inTick = 0
+    }
+    inTick++
+    if (inTick > MAX_INPUTS_PER_TICK) {
+      fail("E_INPUT_UNBOUND", {
+        tick,
+        detail: `more than ${MAX_INPUTS_PER_TICK} inputs in one tick`,
+      })
+    }
+    const specs = allowed.get(`${event.device}\u0000${event.code}`)
+    if (specs === undefined) {
+      fail("E_INPUT_UNBOUND", {
+        tick,
+        detail: `input ${i}: no ${event.device} code is bound to ${JSON.stringify(event.code)}`,
+      })
+    }
+    if (!specs.some((spec) => valueFits(spec, event.value, inputs.viewport))) {
+      fail("E_INPUT_UNBOUND", {
+        tick,
+        detail: `input ${i}: ${String(event.value)} is not a value the ${event.device} codes bound to ${JSON.stringify(event.code)} carry`,
+      })
+    }
   }
 }
 

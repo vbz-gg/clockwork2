@@ -20,13 +20,13 @@ import {
 } from "@clockwork2/engine"
 
 export const MANIFEST: Manifest = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: "conforming-fixture",
   version: "1.0.0",
   name: "Conforming Fixture",
   kernel: { version: "0.1.0" },
   session: { tickHz: 60, maxTicks: 3600, maxWallSeconds: 120, hasEnding: true },
-  inputs: { map: { push: [{ code: "Space", device: "key", label: "Push" }] } },
+  inputs: { map: { push: [{ code: "Space", label: "Push" }] } },
   counters: [
     { name: "score", direction: "up", monotonic: true },
     { name: "ticksSurvived", direction: "up", monotonic: true },

@@ -33,6 +33,8 @@ export const ERROR_CODES = {
   E_INPUT_UNSORTED: "input log is not sorted by tick",
   /** An input carried a value outside the range the device vocabulary allows. */
   E_INPUT_RANGE: "input value is out of range",
+  /** A server's check of a log against the manifest's bindings (`checkInputs`). */
+  E_INPUT_UNBOUND: "an input is not one the manifest binds",
   /** The session passed the tick cap its manifest declares. */
   E_TICK_LIMIT: "session passed maxTicks without ending",
   /** A manifest failed validation. */

@@ -18,7 +18,7 @@ describe("the message table", () => {
       end: () => seen.push("end"),
       resize: () => seen.push("resize"),
       theme: () => seen.push("theme"),
-      "virtual-input": () => seen.push("virtual-input"),
+      motion: () => seen.push("motion"),
     })
     for (const type of [
       "hello",
@@ -29,7 +29,7 @@ describe("the message table", () => {
       "end",
       "resize",
       "theme",
-      "virtual-input",
+      "motion",
     ]) {
       expect(dispatch({ type })).toBe(true)
     }
@@ -49,6 +49,7 @@ describe("the message table", () => {
       "recording-chunk": () => undefined,
       error: () => undefined,
       heartbeat: () => undefined,
+      notice: () => undefined,
     })
     expect(dispatch({ type: "navigate", url: "https://example.invalid" })).toBe(
       false,
@@ -73,7 +74,7 @@ describe("the message table", () => {
       "end",
       "resize",
       "theme",
-      "virtual-input",
+      "motion",
     ]
     const gameToHost = [
       "ready",
@@ -85,6 +86,7 @@ describe("the message table", () => {
       "recording-chunk",
       "error",
       "heartbeat",
+      "notice",
     ]
     const source = Bun.file(
       new URL("../../src/host/protocol/index.ts", import.meta.url).pathname,
@@ -101,6 +103,7 @@ describe("the message table", () => {
   })
 
   test("the protocol version is stated in both directions", () => {
-    expect(PROTOCOL_VERSION).toBe(1)
+    // 2 since the host-drawn pad's `virtual-input` left and tilt arrived.
+    expect(PROTOCOL_VERSION).toBe(2)
   })
 })

@@ -127,15 +127,26 @@ describe("how the frame is embedded", () => {
     // opaque origin, and nothing inside the frame can tell.
     const h = harness()
     const sandbox = h.iframe.attributes.get("sandbox")
-    expect(sandbox).toBe("allow-scripts")
+    // Pointer lock is allowed so a game that binds mouse movement can lock;
+    // asking still takes a press in the game.
+    expect(sandbox).toBe("allow-scripts allow-pointer-lock")
     expect(sandbox).not.toContain("allow-same-origin")
     h.restore()
   })
 
-  test("grants no feature the game did not ask for", () => {
+  test("delegates each feature with a wildcard, and no sensor at all", () => {
+    // A bare name means the frame's own origin, which for a sandboxed frame
+    // is a fresh opaque origin matching nothing, so Firefox and Safari turn
+    // the feature off. Tilt is read by the page, so no sensor is delegated.
     const h = harness()
-    expect(h.iframe.attributes.get("allow")).toBe("autoplay; fullscreen")
-    expect(h.iframe.attributes.get("allow")).not.toContain("pointer-lock")
+    const allow = h.iframe.attributes.get("allow") ?? ""
+    expect(allow).toBe("autoplay *; fullscreen *; gamepad *")
+    for (const feature of allow.split(";")) {
+      expect(feature.trim().endsWith(" *")).toBe(true)
+    }
+    for (const sensor of ["accelerometer", "gyroscope", "magnetometer"]) {
+      expect(allow).not.toContain(sensor)
+    }
     h.restore()
   })
 })
@@ -152,7 +163,7 @@ describe("starting the conversation", () => {
     h.iframe.load()
     expect(h.iframe.received[0]?.message).toEqual({
       type: "hello",
-      protocol: 1,
+      protocol: 2,
     })
     h.restore()
   })

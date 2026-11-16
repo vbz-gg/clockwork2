@@ -116,6 +116,19 @@ An input value fell outside what the device vocabulary allows. Analog axes are
 quantised integers, not floats in [-1, 1]; use `quantiseAxis` rather than
 inventing a scale.
 
+### E_INPUT_UNBOUND
+
+A server checked a submitted log against the manifest it stored for the
+version (`checkInputs`), and an input is not one the manifest binds: an action
+nothing binds, a device the action is not bound to, a value outside what its
+code carries (a press that is not 0 or 1, a pointer past `inputs.viewport`, a
+stick past full deflection, a wheel input of nothing), or more inputs in one
+tick than `MAX_INPUTS_PER_TICK`.
+
+A browser running the engine's input capture never records any of these, so
+the usual cause is frame code that pushed into `host.live` itself. Draw the
+control, bind the device code that drives it, and let the capture record it.
+
 ### E_RECORDING_VERSION
 
 A recording's `format` or `version` is not one this kernel reads. It is

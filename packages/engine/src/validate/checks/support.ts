@@ -22,7 +22,7 @@ import {
   type SessionResult,
   withShims,
 } from "../../index.js"
-import { botLog, chaosLog, idleLog } from "../../testing/index.js"
+import { botInputs, chaosInputs, idleLog } from "../../testing/index.js"
 import type { Subject } from "../types.js"
 
 export const CHECKPOINT_EVERY = 60
@@ -31,7 +31,10 @@ export function countersOf(manifest: Manifest): readonly CounterDeclaration[] {
   return manifest.counters
 }
 
-/** The three logs every game is run against. */
+/**
+ * The three logs every game is run against, pressing what the game's own
+ * manifest binds.
+ */
 export function logsFor(
   manifest: Manifest,
   seed: string,
@@ -39,8 +42,8 @@ export function logsFor(
   const span = Math.min(manifest.session.maxTicks, 60 * 60 * 10)
   return new Map([
     ["idle", idleLog()],
-    ["chaos", chaosLog(seed, span)],
-    ["bot", botLog(seed, span)],
+    ["chaos", chaosInputs(manifest, seed, span)],
+    ["bot", botInputs(manifest, seed, span)],
   ])
 }
 

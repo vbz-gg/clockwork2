@@ -9,7 +9,7 @@
 import type { Manifest } from "@clockwork2/engine"
 
 export const MANIFEST: Manifest = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   /** Immutable across every version of this game. Change it and it is a
    * different game, with a different leaderboard. */
   id: "lane-runner",
@@ -25,22 +25,8 @@ export const MANIFEST: Manifest = {
   },
   inputs: {
     map: {
-      left: [
-        { code: "ArrowLeft", device: "key", label: "Left" },
-        { code: "KeyA", device: "key" },
-      ],
-      right: [
-        { code: "ArrowRight", device: "key", label: "Right" },
-        { code: "KeyD", device: "key" },
-      ],
-    },
-    // A layout the host draws, with this game's own actions in its slots.
-    // Only the slots named here are drawn, so a two-direction game gets two
-    // buttons in a d-pad's left and right positions.
-    controls: {
-      mode: "scheme",
-      scheme: "dpad",
-      bind: { left: "left", right: "right" },
+      left: [{ code: "ArrowLeft", label: "Left" }, { code: "KeyA" }],
+      right: [{ code: "ArrowRight", label: "Right" }, { code: "KeyD" }],
     },
   },
   counters: [

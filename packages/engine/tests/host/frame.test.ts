@@ -24,11 +24,13 @@ import {
   type FrameInit,
 } from "../../src/host/frame/index"
 import { GameHost, ManualScheduler } from "../../src/host/index"
+import type { MotionReading } from "../../src/host/input"
 import { memoryPackLoader, type PackLoader } from "../../src/host/packs"
 import {
   FRAME_ERRORS,
   type GameToHost,
   PROGRESS_INTERVAL_MS,
+  PROTOCOL_VERSION,
 } from "../../src/host/protocol/index"
 import {
   createReferenceGame,
@@ -60,10 +62,14 @@ class FakeFrameWindow {
     },
   }
 
-  /** Delivers a message as the parent would. */
-  send(data: unknown, origin = PARENT): void {
+  /** Delivers a message as the parent would, or from `source` when given. */
+  send(
+    data: unknown,
+    origin = PARENT,
+    source: unknown = this.globals.parent,
+  ): void {
     for (const listener of [...this.listeners]) {
-      listener({ data, origin } as MessageEvent)
+      listener({ data, origin, source } as unknown as MessageEvent)
     }
   }
 
@@ -145,10 +151,100 @@ afterEach(() => {
   while (restores.length > 0) restores.pop()?.()
 })
 
+describe("who the frame listens to", () => {
+  test("a message from any window but the parent is dropped", () => {
+    // The frame's own code, or another window of the parent's origin, can
+    // post at the frame; only the parent's window speaks for the page.
+    const { window } = install()
+    window.send({ type: "hello", protocol: PROTOCOL_VERSION }, PARENT, {})
+    expect(window.of("ready")).toHaveLength(0)
+    window.send(
+      { type: "hello", protocol: PROTOCOL_VERSION },
+      "https://other.example",
+    )
+    expect(window.of("ready")).toHaveLength(0)
+    window.send({ type: "hello", protocol: PROTOCOL_VERSION })
+    expect(window.of("ready")).toHaveLength(1)
+  })
+
+  test("a page on another protocol version is answered, and its init refused", () => {
+    // Answered, so the page reads this frame's version and refuses it by
+    // name; refused here too, so neither side starts a run the other cannot
+    // follow.
+    const { window, hostOf } = install()
+    window.send({ type: "hello", protocol: PROTOCOL_VERSION - 1 })
+    expect(window.of("ready")[0]?.protocol).toBe(PROTOCOL_VERSION)
+    window.send({
+      type: "init",
+      seed: "s",
+      config: REFERENCE_CONFIG,
+      tickHz: 60,
+      maxTicks: 600,
+    })
+    expect(hostOf()).toBeNull()
+    expect(window.of("error").map((e) => e.code)).toEqual([
+      FRAME_ERRORS.PROTOCOL_MISMATCH,
+    ])
+  })
+})
+
+describe("tilt from the page", () => {
+  function live() {
+    const installed = install()
+    const readings: MotionReading[] = []
+    installed.bridge.onMotion((reading) => readings.push(reading))
+    installed.window.send({ type: "hello", protocol: PROTOCOL_VERSION })
+    installed.window.send({
+      type: "init",
+      seed: "tilt",
+      config: REFERENCE_CONFIG,
+      tickHz: 60,
+      maxTicks: 6000,
+    })
+    return { ...installed, readings }
+  }
+
+  test("reaches the capture only while the run is playing", () => {
+    const { window, readings, hostOf, bridge } = live()
+    const motion = { type: "motion", beta: 10, gamma: -5, angle: 90, extra: 1 }
+    window.send(motion)
+    expect(readings).toEqual([])
+    window.send({ type: "start" })
+    window.send(motion)
+    // Only the three fields a reading has, whatever else came with it.
+    expect(readings).toEqual([{ beta: 10, gamma: -5, angle: 90 }])
+    const result = hostOf()?.result()
+    if (result !== undefined) bridge.ended(result, "{}")
+    window.send(motion)
+    expect(readings).toHaveLength(1)
+  })
+
+  test("a listener removed hears nothing more", () => {
+    const { window, bridge } = live()
+    const heard: MotionReading[] = []
+    const stop = bridge.onMotion((reading) => heard.push(reading))
+    window.send({ type: "start" })
+    stop()
+    window.send({ type: "motion", beta: 1, gamma: 1, angle: 0 })
+    expect(heard).toEqual([])
+  })
+})
+
+describe("a device notice", () => {
+  test("is posted to the page as a notice, never as an error", () => {
+    const { window, bridge } = install()
+    bridge.notice({ code: "E_GAMEPAD_BLOCKED", detail: "policy" })
+    expect(window.of("notice")).toEqual([
+      { type: "notice", code: "E_GAMEPAD_BLOCKED", detail: "policy" },
+    ])
+    expect(window.of("error")).toEqual([])
+  })
+})
+
 describe("the frame handshake", () => {
   test("answers hello with the manifest hash before any session exists", () => {
     const { window } = install()
-    window.send({ type: "hello", protocol: 1 })
+    window.send({ type: "hello", protocol: PROTOCOL_VERSION })
 
     const ready = window.of("ready")[0]
     expect(ready).toBeDefined()
@@ -160,7 +256,7 @@ describe("the frame handshake", () => {
     // The whole reason init defers host construction: a frame that had to be
     // constructed with its seed could only have got it from its own src.
     const { window, hostOf } = install()
-    window.send({ type: "hello", protocol: 1 })
+    window.send({ type: "hello", protocol: PROTOCOL_VERSION })
     expect(hostOf()).toBeNull()
 
     window.send({
@@ -246,7 +342,7 @@ describe("who the frame will listen to", () => {
     bridge.destroy()
     expect(window.listenerCount).toBe(0)
 
-    window.send({ type: "hello", protocol: 1 })
+    window.send({ type: "hello", protocol: PROTOCOL_VERSION })
     expect(window.posted).toHaveLength(0)
   })
 })
@@ -254,7 +350,7 @@ describe("who the frame will listen to", () => {
 describe("the input log reaches the parent before the run ends", () => {
   function play(): Installed {
     const installed = install()
-    installed.window.send({ type: "hello", protocol: 1 })
+    installed.window.send({ type: "hello", protocol: PROTOCOL_VERSION })
     installed.window.send({
       type: "init",
       seed: "log-chunks",
@@ -275,7 +371,7 @@ describe("the input log reaches the parent before the run ends", () => {
     // limit to open several times. 400 frames at 60 Hz is 6.7 seconds of
     // virtual clock against a 2 second interval.
     for (let frame = 0; frame < 400; frame++) {
-      window.send({ type: "virtual-input", action: "thrust", value: 1 })
+      host?.live?.push({ device: "key", code: "thrust", value: 1 })
       scheduler.advance(1000 / 60)
     }
 
@@ -302,7 +398,7 @@ describe("the input log reaches the parent before the run ends", () => {
     const host = hostOf()
 
     for (let frame = 0; frame < 20; frame++) {
-      window.send({ type: "virtual-input", action: "thrust", value: 1 })
+      host?.live?.push({ device: "key", code: "thrust", value: 1 })
       scheduler.advance(1000 / 60)
     }
     // Too few frames for the rate limit to have opened even once.
@@ -325,7 +421,7 @@ describe("the input log reaches the parent before the run ends", () => {
 describe("a session ends once, and destroy ends it", () => {
   function running() {
     const installed = install()
-    installed.window.send({ type: "hello", protocol: 1 })
+    installed.window.send({ type: "hello", protocol: PROTOCOL_VERSION })
     installed.window.send({
       type: "init",
       seed: "once",
@@ -400,7 +496,7 @@ describe("progress", () => {
    */
   test("is rate-limited, however often it is called", () => {
     const { window, bridge } = install()
-    window.send({ type: "hello", protocol: 1 })
+    window.send({ type: "hello", protocol: PROTOCOL_VERSION })
 
     for (let now = 0; now < 1000; now += 1000 / 60) {
       bridge.progress(Math.floor(now), { score: 1 }, now)
@@ -413,7 +509,7 @@ describe("progress", () => {
 
   test("carries the tick and counters it was given", () => {
     const { window, bridge } = install()
-    window.send({ type: "hello", protocol: 1 })
+    window.send({ type: "hello", protocol: PROTOCOL_VERSION })
     bridge.progress(600, { score: 42 }, PROGRESS_INTERVAL_MS * 10)
     const progress = window.of("progress")[0]
     expect(progress?.tick).toBe(600)
@@ -422,7 +518,7 @@ describe("progress", () => {
 
   test("lets a later call through once the interval has passed", () => {
     const { window, bridge } = install()
-    window.send({ type: "hello", protocol: 1 })
+    window.send({ type: "hello", protocol: PROTOCOL_VERSION })
     bridge.progress(60, { score: 1 }, PROGRESS_INTERVAL_MS)
     bridge.progress(120, { score: 2 }, PROGRESS_INTERVAL_MS + 1)
     bridge.progress(180, { score: 3 }, PROGRESS_INTERVAL_MS * 2 + 2)
@@ -443,7 +539,7 @@ describe("a replay in a frame", () => {
         seen = init
       },
     })
-    installed.window.send({ type: "hello", protocol: 1 })
+    installed.window.send({ type: "hello", protocol: PROTOCOL_VERSION })
     installed.window.send({
       type: "init",
       seed: "watch-this",
@@ -472,8 +568,9 @@ describe("a replay in a frame", () => {
     expect(hostOf()?.live).toBeNull()
   })
 
-  test("and a virtual input sent at one is dropped rather than replayed", () => {
-    // The parent can still draw a control. It must not change a recorded run.
+  test("and a message the protocol dropped is ignored rather than obeyed", () => {
+    // Version 1's host-drawn pad pressed through `virtual-input`. Version 2
+    // has no such row, so a page still sending one changes nothing.
     const { window, hostOf, scheduler } = replay()
     window.send({ type: "start" })
     window.send({ type: "virtual-input", action: "jump", value: 1 })
@@ -496,7 +593,7 @@ describe("a replay in a frame", () => {
   test("and a live session still gets its queue", () => {
     // The guard above must not have turned every session into a replay.
     const { window, hostOf } = install()
-    window.send({ type: "hello", protocol: 1 })
+    window.send({ type: "hello", protocol: PROTOCOL_VERSION })
     window.send({
       type: "init",
       seed: "a-live-one",
@@ -516,7 +613,7 @@ describe("speed", () => {
         seen = init
       },
     })
-    window.send({ type: "hello", protocol: 1 })
+    window.send({ type: "hello", protocol: PROTOCOL_VERSION })
     window.send({
       type: "init",
       seed: "watch-this",
@@ -534,7 +631,7 @@ describe("speed", () => {
     // which is the reason a frame exposes no `setSpeed` at all. Accepting it
     // here would put that back by another route.
     const { window, hostOf } = install()
-    window.send({ type: "hello", protocol: 1 })
+    window.send({ type: "hello", protocol: PROTOCOL_VERSION })
     window.send({
       type: "init",
       seed: "a-live-one",
@@ -614,7 +711,7 @@ describe("a frame whose game has data packs", () => {
       return memoryPackLoader(bytes)(path)
     })
     // The parent says hello once, on load, which can be before the packs are.
-    frame.window.send({ type: "hello", protocol: 1 })
+    frame.window.send({ type: "hello", protocol: PROTOCOL_VERSION })
     await settle()
     expect(frame.window.of("ready")).toEqual([])
     release()
@@ -647,7 +744,7 @@ describe("a frame whose game has data packs", () => {
     const frame = packsFrame(async () => {
       throw new TypeError("Failed to fetch")
     })
-    frame.window.send({ type: "hello", protocol: 1 })
+    frame.window.send({ type: "hello", protocol: PROTOCOL_VERSION })
     await settle()
     expect(frame.window.of("ready")).toEqual([])
     const [error] = frame.window.of("error")

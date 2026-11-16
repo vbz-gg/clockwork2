@@ -21,8 +21,15 @@ import type {
   TerminalReason,
   TickRate,
 } from "../../index.js"
+import type { DeviceNoticeCode, MotionReading } from "../input.js"
 
-export const PROTOCOL_VERSION = 1
+/**
+ * Version 2 removed `virtual-input`, the presses a host-drawn pad sent, and
+ * added `motion` and `notice`. A frame and a page on different versions
+ * refuse each other: the page reads `ready.protocol`, and the frame refuses
+ * `init` after a `hello` that names another version.
+ */
+export const PROTOCOL_VERSION = 2
 
 /**
  * What the frame reports when the conversation itself goes wrong.
@@ -41,6 +48,8 @@ export const FRAME_ERRORS = {
   INIT_FAILED: "E_FRAME_INIT_FAILED",
   /** A second `start` arrived. One session is started once. */
   ALREADY_STARTED: "E_FRAME_ALREADY_STARTED",
+  /** The page said hello in another protocol version, so `init` is refused. */
+  PROTOCOL_MISMATCH: "E_FRAME_PROTOCOL_MISMATCH",
   /** The loop threw while running the player's own inputs. */
   THREW: "E_FRAME_THREW",
 } as const
@@ -87,12 +96,15 @@ export type HostToGame =
       readonly devicePixelRatio: number
     }
   | { readonly type: "theme"; readonly theme: string }
-  | {
-      /** A host-drawn on-screen control. The only source of virtual inputs. */
-      readonly type: "virtual-input"
-      readonly action: string
-      readonly value: number
-    }
+  | ({
+      /**
+       * A tilt reading, read by the page because a sensor's events never
+       * reach a cross-origin frame in Firefox. The frame's input capture
+       * turns it into `tilt-x`, `tilt-y` and `tilt-z`, and only between
+       * `start` and the end of the run.
+       */
+      readonly type: "motion"
+    } & MotionReading)
 
 export type GameToHost =
   | {
@@ -141,6 +153,16 @@ export type GameToHost =
       readonly data: string
     }
   | { readonly type: "error"; readonly code: string; readonly detail: string }
+  | {
+      /**
+       * Something about a device the player should hear about, which does
+       * not stop the run: the page forbids gamepads, a controller has no
+       * standard layout. A page never ends a run for one.
+       */
+      readonly type: "notice"
+      readonly code: DeviceNoticeCode
+      readonly detail: string
+    }
   | { readonly type: "heartbeat"; readonly tick: number }
 
 export type MessageType<T extends { readonly type: string }> = T["type"]

@@ -35,7 +35,7 @@ import type { CheckOutcome, Subject } from "../../src/validate/types"
 
 function manifest(over: Partial<Manifest> = {}): Manifest {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: "stub",
     version: "1.0.0",
     name: "Stub",
@@ -46,7 +46,7 @@ function manifest(over: Partial<Manifest> = {}): Manifest {
       maxWallSeconds: 120,
       hasEnding: true,
     },
-    inputs: { map: { push: [{ code: "Space", device: "key" }] } },
+    inputs: { map: { push: [{ code: "Space" }] } },
     counters: [
       { name: "score", direction: "up", monotonic: true },
       { name: "ticksSurvived", direction: "up", monotonic: true },

@@ -19,8 +19,15 @@ export {
 export {
   type ActionBinding,
   bindingsFrom,
+  type CaptureDocument,
+  type CaptureEnvironment,
+  DEVICE_NOTICES,
+  type DeviceNotice,
+  type DeviceNoticeCode,
   InputCapture,
   type InputCaptureOptions,
+  type MotionReading,
+  type MotionSource,
 } from "./input.js"
 export {
   type FetchPackLoaderOptions,

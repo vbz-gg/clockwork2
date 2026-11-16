@@ -21,8 +21,10 @@ import type {
   Counters,
   GameModule,
   InputEvent,
+  InputSink,
   Manifest,
   PackBytes,
+  PendingInput,
   PlainValue,
   SessionResult,
   Snapshot,
@@ -57,7 +59,7 @@ export type ToWorker =
   | { readonly type: "packs"; readonly packs: readonly PackTransfer[] }
   | {
       readonly type: "input"
-      readonly inputs: readonly Omit<InputEvent, "tick">[]
+      readonly inputs: readonly PendingInput[]
     }
   | {
       readonly type: "frame"
@@ -399,7 +401,24 @@ export class WorkerSimulation {
     )
   }
 
-  send(inputs: readonly Omit<InputEvent, "tick">[]): void {
+  /**
+   * Where an `InputCapture` on the page records, for a simulation in a
+   * worker: each input goes to the worker's queue, which stamps it, and a
+   * polled device is read at the start of every frame the page offers.
+   */
+  readonly inputs: InputSink = {
+    push: (input) => this.send([input]),
+    addPoller: (poll) => {
+      this.pollers.add(poll)
+      return () => {
+        this.pollers.delete(poll)
+      }
+    },
+  }
+
+  private readonly pollers = new Set<() => void>()
+
+  send(inputs: readonly PendingInput[]): void {
     if (inputs.length === 0) return
     this.options.worker.postMessage({
       type: "input",
@@ -414,6 +433,7 @@ export class WorkerSimulation {
    * no simulation time is lost and no stale frame is ever sent.
    */
   frame(elapsedMs: number): void {
+    for (const poll of this.pollers) poll()
     if (!this.ready) {
       this.carried += elapsedMs
       return

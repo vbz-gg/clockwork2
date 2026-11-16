@@ -1,10 +1,13 @@
 /**
  * The game's half, running inside the sandboxed frame.
  *
- * It checks `event.origin` against the platform's origin on every inbound
- * message. The parent cannot do the same in reverse, because the frame is in
- * an opaque origin and reports "null"; it checks the window identity instead.
- * Between them the two halves know who they are talking to.
+ * It checks `event.origin` against the platform's origin, and `event.source`
+ * against its own parent window, on every inbound message. The parent cannot
+ * check an origin in reverse, because the frame is in an opaque origin and
+ * reports "null"; it checks the window identity instead. Between them the
+ * two halves know who they are talking to. Neither check makes an input
+ * trustworthy: the code in this frame is the game's own, and what a server
+ * trusts is its replay.
  *
  * The frame document loads before the platform has decided anything about the
  * session, so the bridge starts with no host at all and builds one when `init`
@@ -22,6 +25,7 @@ import type {
 } from "../../index.js"
 import { encodeRecording, hashCanonical, KERNEL_VERSION } from "../../index.js"
 import type { GameHost } from "../host.js"
+import type { DeviceNotice, MotionReading, MotionSource } from "../input.js"
 import { loadPacks, type PackLoader, type PackSupply } from "../packs.js"
 import {
   createDispatcher,
@@ -106,10 +110,14 @@ export interface FrameBridgeOptions<TView> {
 
 const DEFAULT_CHUNK = 48 * 1024
 
-export class FrameBridge<TView> {
+export class FrameBridge<TView> implements MotionSource {
   private readonly onMessage: (event: MessageEvent) => void
   private host: GameHost<TView, HTMLElement> | null = null
   private started = false
+  private finished = false
+  /** False once a `hello` named another protocol version. */
+  private sameProtocol = true
+  private readonly motionListeners = new Set<(reading: MotionReading) => void>()
   private destroyed = false
   private lastProgressAt = 0
   private lastLogChunkAt = 0
@@ -138,7 +146,10 @@ export class FrameBridge<TView> {
       })
     }
     const dispatch = createDispatcher<HostToGame>({
-      hello: () => {
+      hello: (message) => {
+        // Answered all the same, with this frame's version, so the page can
+        // refuse it by name; the frame refuses `init` below.
+        this.sameProtocol = message.protocol === PROTOCOL_VERSION
         if (this.prepared === null) {
           ready()
           return
@@ -157,6 +168,13 @@ export class FrameBridge<TView> {
         )
       },
       init: (message) => {
+        if (!this.sameProtocol) {
+          this.error(
+            FRAME_ERRORS.PROTOCOL_MISMATCH,
+            `the page speaks another protocol version; this frame speaks ${PROTOCOL_VERSION}`,
+          )
+          return
+        }
         if (this.host !== null) {
           // A frame runs one session. A second init would either restart a run
           // in progress or quietly replace the seed under a finished one.
@@ -233,18 +251,22 @@ export class FrameBridge<TView> {
       theme: (message) => {
         options.onTheme?.(message.theme)
       },
-      "virtual-input": (message) => {
-        // The only place a virtual input may enter a session.
-        this.host?.live?.push({
-          device: "virtual",
-          code: message.action,
-          value: message.value,
-        })
+      motion: (message) => {
+        // Only while the run is playing: a reading before `start` or after
+        // the end would be an input outside the session.
+        if (!this.started || this.finished || this.destroyed) return
+        const reading: MotionReading = {
+          beta: message.beta,
+          gamma: message.gamma,
+          angle: message.angle,
+        }
+        for (const listener of this.motionListeners) listener(reading)
       },
     })
 
     this.onMessage = (event: MessageEvent): void => {
       if (event.origin !== options.parentOrigin) return
+      if (event.source !== globalThis.parent) return
       dispatch(event.data)
     }
     globalThis.addEventListener("message", this.onMessage)
@@ -292,6 +314,19 @@ export class FrameBridge<TView> {
     this.post({ type: "heartbeat", tick })
   }
 
+  /** Hands an `InputCapture` the page's tilt readings. */
+  onMotion(listener: (reading: MotionReading) => void): () => void {
+    this.motionListeners.add(listener)
+    return () => {
+      this.motionListeners.delete(listener)
+    }
+  }
+
+  /** Pass as an `InputCapture`'s `onNotice`. Tells the page; never ends the run. */
+  readonly notice = (notice: DeviceNotice): void => {
+    this.post({ type: "notice", code: notice.code, detail: notice.detail })
+  }
+
   /**
    * Call from the host's onEnded. Sends the result, the tail of the log, then
    * the recording.
@@ -301,6 +336,7 @@ export class FrameBridge<TView> {
    * that grew normally from one rewritten at the end.
    */
   ended(result: SessionResult, recording: string): void {
+    this.finished = true
     this.flushLog()
     this.post({
       type: "ended",

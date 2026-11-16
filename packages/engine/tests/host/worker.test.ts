@@ -185,6 +185,47 @@ describe("the worker protocol", () => {
     expect(pair.pending).toBe(0)
   })
 
+  test("an input capture on the page records into the worker, polled once a frame", () => {
+    // A game whose rules run in a worker gets the same devices and the same
+    // rules as one inline: the capture pushes to the worker's queue, which
+    // stamps and merges, and a polled device is read before each frame.
+    const pair = new FakeWorkerPair()
+    runSimulationWorker(createReferenceGame, REFERENCE_MANIFEST, pair.scope)
+    const toWorker: Array<{ type: string; inputs?: unknown }> = []
+    const post = pair.page.postMessage.bind(pair.page)
+    ;(
+      pair.page as unknown as { postMessage: (m: unknown) => void }
+    ).postMessage = (message) => {
+      toWorker.push(message as { type: string })
+      post(message)
+    }
+    const simulation = new WorkerSimulation({
+      worker: pair.page,
+      seed: "sink",
+      config: REFERENCE_CONFIG,
+    })
+    let polls = 0
+    const stop = simulation.inputs.addPoller(() => {
+      polls++
+      simulation.inputs.push({
+        device: "gamepad",
+        code: "thrust",
+        value: polls,
+        merge: "latest",
+      })
+    })
+    simulation.frame(1000 / 60)
+    stop()
+    simulation.frame(1000 / 60)
+    expect(polls).toBe(1)
+    const sent = toWorker.filter((m) => m.type !== "init").map((m) => m.type)
+    // The poll ran before the frame was offered, so its input goes first.
+    expect(sent.slice(0, 2)).toEqual(["input", "frame"])
+    expect(toWorker.find((m) => m.type === "input")?.inputs).toEqual([
+      { device: "gamepad", code: "thrust", value: 1, merge: "latest" },
+    ])
+  })
+
   test("an error in the worker is reported rather than swallowed", () => {
     const pair = new FakeWorkerPair()
     runSimulationWorker(
