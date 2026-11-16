@@ -35,7 +35,7 @@ import {
 } from "./check"
 
 /** Bumped when what the results carry changes. */
-const CHECK_VERSION = 2
+const CHECK_VERSION = 3
 /** How often the recorded tilt is looked at. */
 const SAMPLE_MS = 100
 
@@ -78,12 +78,17 @@ function screenAngle(): number | null {
   return currentScreenAngle() ?? null
 }
 
-/** What each of the browser's two sources says. */
-function reportedAngles(): { screen: number | null; window: number | null } {
+/** What each of the browser's three sources says. */
+function reportedAngles(): {
+  screen: number | null
+  window: number | null
+  type: string | null
+} {
   const legacy = (window as unknown as { orientation?: unknown }).orientation
   return {
     screen: screen.orientation?.angle ?? null,
     window: typeof legacy === "number" ? legacy : null,
+    type: screen.orientation?.type ?? null,
   }
 }
 

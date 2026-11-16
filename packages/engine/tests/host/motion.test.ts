@@ -191,19 +191,77 @@ describe("asking for tilt", () => {
 })
 
 describe("the screen's angle", () => {
-  test("is window.orientation where the browser has it, as an iPad needs", () => {
-    // An iPad Pro (2018) under iPadOS Safari 26.6, held in portrait.
-    expect(
-      screenAngleOf({ orientation: 0, screen: { orientation: { angle: 90 } } }),
-    ).toBe(0)
-    expect(screenAngleOf({ orientation: -90 })).toBe(-90)
+  // The four ways an iPad Pro (2018) under iPadOS Safari 26.6 was held, with
+  // what it reported and the angle its readings were measured against. The
+  // type was not recorded for the third; landscape-secondary is that
+  // position's name, the other landscape from the second.
+  const IPAD = [
+    { type: "portrait-primary", screen: 90, window: 0, right: 0 },
+    { type: "landscape-primary", screen: 0, window: 90, right: 90 },
+    { type: "landscape-secondary", screen: 180, window: -90, right: 270 },
+    { type: "portrait-secondary", screen: 270, window: 0, right: 180 },
+  ]
+
+  test("on an iPad, comes from the orientation's name, whatever its two angles say", () => {
+    for (const held of IPAD) {
+      const angle = screenAngleOf({
+        orientation: held.window,
+        screen: { orientation: { angle: held.screen, type: held.type } },
+      })
+      expect(angle, held.type).toBe(held.right)
+    }
   })
 
-  test("is the screen's own angle where there is no window.orientation, as on a desktop", () => {
-    expect(screenAngleOf({ screen: { orientation: { angle: 90 } } })).toBe(90)
+  test("on a phone whose values agree, comes out the same", () => {
+    // A Galaxy S24+ under Chrome 157, upright and on its side.
     expect(
-      screenAngleOf({ orientation: undefined, screen: { orientation: {} } }),
-    ).toBeUndefined()
+      screenAngleOf({
+        orientation: 0,
+        screen: { orientation: { angle: 0, type: "portrait-primary" } },
+      }),
+    ).toBe(0)
+    expect(
+      screenAngleOf({
+        orientation: 90,
+        screen: { orientation: { angle: 90, type: "landscape-primary" } },
+      }),
+    ).toBe(90)
+  })
+
+  test("on a landscape-natural tablet, is the screen's own angle", () => {
+    // Held in its natural landscape, window.orientation says upright while
+    // the type says landscape: the device's natural frame is landscape.
+    expect(
+      screenAngleOf({
+        orientation: 0,
+        screen: { orientation: { angle: 0, type: "landscape-primary" } },
+      }),
+    ).toBe(0)
+    expect(
+      screenAngleOf({
+        orientation: 90,
+        screen: { orientation: { angle: 90, type: "portrait-primary" } },
+      }),
+    ).toBe(90)
+  })
+
+  test("with no window.orientation, as on a desktop, is the screen's own angle", () => {
+    expect(
+      screenAngleOf({
+        screen: { orientation: { angle: 90, type: "landscape-primary" } },
+      }),
+    ).toBe(90)
+    expect(screenAngleOf({ screen: { orientation: {} } })).toBeUndefined()
     expect(screenAngleOf({})).toBeUndefined()
+  })
+
+  test("with window.orientation and no type it can read, is window.orientation", () => {
+    expect(screenAngleOf({ orientation: -90 })).toBe(-90)
+    expect(
+      screenAngleOf({
+        orientation: 180,
+        screen: { orientation: { angle: 0, type: "natural" } },
+      }),
+    ).toBe(180)
   })
 })

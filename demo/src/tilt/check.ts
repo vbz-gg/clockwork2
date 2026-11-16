@@ -28,12 +28,13 @@ export interface Sample {
   /** The screen's angle as the device helpers read it, if known. */
   readonly angle: number | null
   /**
-   * What each of the browser's two sources said, so a reader can see which
-   * one the angle came from and whether they disagreed.
+   * What each of the browser's sources said, so a reader can see where the
+   * angle came from and whether they disagreed.
    */
   readonly reported?: {
     readonly screen: number | null
     readonly window: number | null
+    readonly type: string | null
   }
 }
 

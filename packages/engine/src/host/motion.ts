@@ -64,27 +64,61 @@ type PolicyLike = { allowsFeature?: (feature: string) => boolean }
 export interface ScreenAngleSource {
   /** `window.orientation`, which iOS and Android browsers still have. */
   readonly orientation?: unknown
-  readonly screen?: { readonly orientation?: { readonly angle?: number } }
+  readonly screen?: {
+    readonly orientation?: { readonly angle?: number; readonly type?: string }
+  }
+}
+
+/**
+ * How far a screen whose natural orientation is portrait is turned, by the
+ * name of its orientation. `landscape-primary` is the one turned 90 on every
+ * device measured: a Galaxy S24+ said 90 there and an iPad's
+ * `window.orientation` said 90.
+ */
+const PORTRAIT_NATURAL: Readonly<Record<string, number>> = {
+  "portrait-primary": 0,
+  "landscape-primary": 90,
+  "portrait-secondary": 180,
+  "landscape-secondary": 270,
 }
 
 /**
  * How far the screen is turned, in the frame `deviceorientation` readings
- * are measured in: `window.orientation` where the browser has it, and
- * `screen.orientation.angle` only where it does not.
+ * are measured in, which is the device's natural orientation.
  *
- * The two disagree on an iPad. Measured on an iPad Pro (2018) under iPadOS
- * Safari 26.6: held in portrait, `screen.orientation.angle` was 90 with a
- * type of "portrait-primary" and `window.orientation` 0; on its side, 180
- * and -90; loaded sideways, 0 and 90. Its readings matched
- * `window.orientation` every time, so Safari there measures the screen's
- * angle from landscape and the readings from portrait, and the screen's
- * angle turned every tilt a quarter the wrong way. On a Galaxy S24+ under
- * Chrome 157 the two agreed. A desktop browser has no `window.orientation`,
- * and there the screen's own angle is the only one.
+ * No one value a browser offers is right everywhere. Measured on an iPad Pro
+ * (2018) under iPadOS Safari 26.6, which Safari treats as landscape-natural
+ * while its readings are portrait's:
+ *
+ * | held | type | `screen.orientation.angle` | `window.orientation` | right |
+ * |---|---|---|---|---|
+ * | upright | portrait-primary | 90 | 0 | 0 |
+ * | on its side, top to the left | landscape-primary | 0 | 90 | 90 |
+ * | on its side, top to the right | | 180 | -90 | 270 |
+ * | upside down | portrait-secondary | 270 | 0 | 180 |
+ *
+ * The screen's angle is mirrored there, and `window.orientation` is wrong
+ * upside down; the type was right every time. On a Galaxy S24+ under Chrome
+ * 157 all three agreed. So:
+ *
+ * - With no `window.orientation`, as on a desktop, the screen's own angle is
+ *   the only one there is.
+ * - Where `window.orientation` and the type agree that the screen is upright
+ *   or sideways, the device is portrait-natural, and the type gives the angle.
+ * - Where they disagree, the device is landscape-natural, as some Android
+ *   tablets are, and there the screen's own angle is measured against the
+ *   same frame as the readings.
  */
 export function screenAngleOf(scope: ScreenAngleSource): number | undefined {
-  if (typeof scope.orientation === "number") return scope.orientation
-  return scope.screen?.orientation?.angle
+  const screenAngle = scope.screen?.orientation?.angle
+  const legacy = scope.orientation
+  if (typeof legacy !== "number") return screenAngle
+  const type = scope.screen?.orientation?.type
+  const byType = type === undefined ? undefined : PORTRAIT_NATURAL[type]
+  if (type === undefined || byType === undefined) return legacy
+  const legacyUpright = ((legacy % 180) + 180) % 180 === 0
+  const typeUpright = type.startsWith("portrait")
+  return legacyUpright === typeUpright ? byType : screenAngle
 }
 
 /** `screenAngleOf` for this page. */

@@ -2176,7 +2176,7 @@ export declare function requestMotion(options?: {
 
 ### screenAngleOf
 
-How far the screen is turned, in the frame `deviceorientation` readings are measured in: `window.orientation` where the browser has it, and `screen.orientation.angle` only where it does not.
+How far the screen is turned, in the frame `deviceorientation` readings are measured in, which is the device's natural orientation.
 
 ```ts
 export declare function screenAngleOf(scope: ScreenAngleSource): number | undefined;
@@ -2585,6 +2585,7 @@ export interface ScreenAngleSource {
     readonly screen?: {
         readonly orientation?: {
             readonly angle?: number;
+            readonly type?: string;
         };
     };
 }

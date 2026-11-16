@@ -103,6 +103,14 @@ also release: on pointer up or cancel, when the browser takes a finger away
 for a scroll, on window blur, on a hidden tab, on a pause, and when a
 controller is unplugged.
 
+Do not let the page scroll during a run of a game that reads tilt. Measured on
+an iPad Pro (2018) under iPadOS Safari 26.6, orientation readings fell from 59
+a second to between 1 and 5 while the page scrolled, so the game would steer
+by a reading a second old. When it hears pointers, `InputCapture` sets
+`touch-action: none` on its element, which keeps a drag there from scrolling;
+a game that reads only tilt sets it itself. Keep the game's element filling
+the view, and nothing else on the page scrollable, while a run plays.
+
 Tilt needs the player's permission on iOS, and the request has to come from a
 tap. Call `requestMotion()` as the first thing the Play button's click does,
 before anything is awaited, and start the run after it answers. It resolves

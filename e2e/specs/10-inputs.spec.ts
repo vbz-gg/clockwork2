@@ -421,7 +421,7 @@ test.describe("the device helpers in a browser", () => {
     )
   })
 
-  test("tilt follows window.orientation where the screen's own angle disagrees, as an iPad's does", async ({
+  test("tilt follows the orientation's name where the screen's own angle disagrees, as an iPad's does", async ({
     page,
     context,
     browserName,
@@ -431,11 +431,14 @@ test.describe("the device helpers in a browser", () => {
       "Firefox and WebKit have no sensor override in Playwright",
     )
     // What an iPad Pro (2018) under iPadOS Safari 26.6 said held in
-    // portrait: the screen's angle 90, window.orientation 0, and readings
-    // measured against 0.
+    // portrait: the type portrait-primary, the screen's angle 90,
+    // window.orientation 0, and readings measured against 0.
     await page.addInitScript(() => {
       Object.defineProperty(ScreenOrientation.prototype, "angle", {
         get: () => 90,
+      })
+      Object.defineProperty(ScreenOrientation.prototype, "type", {
+        get: () => "portrait-primary",
       })
       Object.defineProperty(window, "orientation", { get: () => 0 })
     })

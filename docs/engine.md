@@ -1397,20 +1397,20 @@ resident memory for one run on JavaScriptCore under Bun. A V8 isolate, where a
 server replay may run, uses a different amount, and nothing here measures one
 yet, so a platform sizing replay workers should measure in its own.
 
-Tilt is checked on one phone and half-checked on one tablet, with
-`demo/tilt.html`, which walks a person through each pose and copies what it
-recorded. On a Galaxy S24+ under Chrome 157 every pose read as it should,
-upright and on its side, and readings kept arriving at about 59 a second while
-the page scrolled. An iPad Pro (2018) under iPadOS Safari 26.6 reported
-`screen.orientation.angle` 90 while held in portrait, with `window.orientation`
-0, and its readings were measured against 0, so every tilt came out a quarter
-turn wrong. Held on its side it reported 180 against a `window.orientation` of -90,
-and its readings matched -90; loaded while held sideways, its screen's angle
-was 0 and `window.orientation` 90. Safari on an iPad measures the screen's
-angle from landscape and its readings from portrait. The helpers now read
-`window.orientation` where a browser has it, and a second run passed every
-pose. Whether WebKit keeps sending readings while a page scrolls is not yet
-measured, and no iPhone has been checked.
+Tilt is checked on one phone and one tablet, with `demo/tilt.html`, which
+walks a person through each pose and copies what it recorded. On a Galaxy
+S24+ under Chrome 157 every pose read as it should, upright and on its side,
+and readings kept arriving at about 59 a second while the page scrolled. An
+iPad Pro (2018) under iPadOS Safari 26.6 failed until the helpers stopped
+trusting its angles: Safari there mirrors `screen.orientation.angle` and
+measures it from landscape, and `window.orientation` read 0 with the iPad
+upside down. Only the orientation's name was right in all four positions, so
+`screenAngleOf` works the angle out from it on a portrait-natural device. The
+iPad then passed every pose upright and on its side; its upside-down run was
+measured before that fix and is not yet repeated. While its page scrolled,
+the iPad's readings fell from 59 a second to between 1 and 5, so a game that
+steers by tilt must not let its page scroll during a run. No iPhone has been
+checked.
 
 The input budget is a model's. `INPUT_BUDGET_PER_TICK` is 16, four times the
 busiest rate scripted runs of each helper produced, not a rate measured from
