@@ -569,6 +569,43 @@ test.describe("the device helpers in a browser", () => {
     })
   })
 
+  test("the tilt check's scroll step alone, from ?step=scroll, hears the page scrolling", async ({
+    page,
+    context,
+    browserName,
+  }) => {
+    test.skip(
+      browserName !== "chromium",
+      "Firefox and WebKit have no sensor override in Playwright",
+    )
+    await context.grantPermissions(["accelerometer", "gyroscope"])
+    const cdp = await context.newCDPSession(page)
+    await page.goto("/tilt.html?step=scroll")
+    const turn = (beta: number) =>
+      cdp.send("DeviceOrientation.setDeviceOrientationOverride", {
+        alpha: 0,
+        beta,
+        gamma: 0,
+      })
+    await turn(10)
+    await page.locator("#allow").click()
+    await expect(page.locator("#instruction")).toContainText("Scroll this page")
+    for (let i = 0; i < 40 && !(await page.locator("#copy").isVisible()); i++) {
+      await turn(10 + (i % 5))
+      await page.mouse.wheel(0, i % 2 === 0 ? 300 : -300)
+      await page.waitForTimeout(100)
+    }
+    const results = JSON.parse(
+      (await page.locator("#results").textContent()) ?? "{}",
+    ) as {
+      steps: unknown[]
+      scroll: { lowest: number; heard: { scroll: number } }
+    }
+    expect(results.steps).toEqual([])
+    expect(results.scroll.heard.scroll).toBeGreaterThan(0)
+    expect(results.scroll.lowest).toBeGreaterThan(0)
+  })
+
   test("where the screen cannot be locked, the tilt check asks for the device's own rotation lock", async ({
     page,
     context,

@@ -116,6 +116,15 @@ async function lockTo(type: string): Promise<string> {
  */
 function enterFullscreen(): Promise<string> {
   const root = document.documentElement
+  // Full screen is only for the lock. Safari on an iPad has full screen and
+  // no lock, and after entering and leaving it there the page's scrolling
+  // was never heard, so a browser without the lock is not asked at all.
+  const orientation = screen.orientation as
+    | (ScreenOrientation & Lockable)
+    | undefined
+  if (typeof orientation?.lock !== "function") {
+    return Promise.resolve("not asked: no orientation lock")
+  }
   if (typeof root.requestFullscreen !== "function") {
     return Promise.resolve("unsupported")
   }
@@ -206,7 +215,7 @@ function start(): void {
     device: device(),
     permission: [] as MotionAccess[],
     steps: [] as StepResult[],
-    scroll: null as null | "skipped" | Record<string, unknown>,
+    scroll: null as null | Record<string, unknown>,
     // How the screen was kept upright: by the page, or by the person's own
     // rotation lock when the page could not.
     orientation: {
@@ -226,6 +235,10 @@ function start(): void {
   let portraitAngle: number | null = screenAngle()
   let scrolledFrom: number | null = null
   let scrolledTo = 0
+  const heard = { scroll: 0, touchmove: 0 }
+  let fullscreenAtScroll = false
+  const onlyScroll =
+    new URL(location.href).searchParams.get("step") === "scroll"
 
   const showStep = (): void => {
     const step = STEPS[stepIndex]
@@ -282,6 +295,7 @@ function start(): void {
 
   const beginScroll = (): void => {
     phase = "scroll"
+    fullscreenAtScroll = document.fullscreenElement != null
     if (pageLocked) void lockTo("portrait-primary")
     say("progress", `Step ${STEPS.length + 1} of ${STEPS.length + 1}`)
     say(
@@ -319,7 +333,7 @@ function start(): void {
     const scroll = document.createElement("li")
     const rate = results.scroll
     scroll.textContent =
-      rate === null || rate === "skipped"
+      rate === null || rate.skipped === true
         ? "scroll: skipped"
         : `scroll: at least ${String(rate.lowest)} readings a second while scrolling`
     summary.append(scroll)
@@ -335,7 +349,9 @@ function start(): void {
     buttons.allow.hidden = true
     if (access.granted) {
       buttons.retry.hidden = true
-      if (pageLocked) beginSteps()
+      // `?step=scroll` goes straight to the scroll step, to repeat it alone.
+      if (onlyScroll) beginScroll()
+      else if (pageLocked) beginSteps()
       else askForRotationLock()
       return
     }
@@ -372,7 +388,11 @@ function start(): void {
   })
   buttons.skip.addEventListener("click", () => {
     if (phase === "scroll") {
-      results.scroll = "skipped"
+      results.scroll = {
+        skipped: true,
+        heard: { ...heard },
+        fullscreen: fullscreenAtScroll,
+      }
       finish()
       return
     }
@@ -396,27 +416,41 @@ function start(): void {
     )
   })
 
-  window.addEventListener(
-    "scroll",
-    () => {
-      if (phase !== "scroll") return
-      const now = performance.now()
-      if (scrolledFrom === null) scrolledFrom = now
-      scrolledTo = now
-      const left = Math.ceil((SCROLL_MS - (now - scrolledFrom)) / 1000)
-      say("status", left > 0 ? `Keep going: ${left} s` : "Got it.")
-      if (now - scrolledFrom >= SCROLL_MS) {
-        const from = scrolledFrom
-        results.scroll = {
-          seconds: Math.round((scrolledTo - from) / 100) / 10,
-          ...readingRate(readingTimes, from, scrolledTo),
-          before: readingRate(readingTimes, from - 3000, from),
-        }
-        finish()
+  // Heard on the document in the capture phase, so a scroll of any element,
+  // the page's own included, counts; a finger dragging counts too, because
+  // on a phone that is the scroll gesture whether or not a scroll event
+  // reaches the page.
+  const moved = (kind: keyof typeof heard): void => {
+    if (phase !== "scroll") return
+    heard[kind]++
+    const now = performance.now()
+    if (scrolledFrom === null) scrolledFrom = now
+    scrolledTo = now
+    const left = Math.ceil((SCROLL_MS - (now - scrolledFrom)) / 1000)
+    say(
+      "status",
+      `${left > 0 ? `Keep going: ${left} s.` : "Got it."} Heard ${heard.scroll} scrolls and ${heard.touchmove} finger moves.`,
+    )
+    if (now - scrolledFrom >= SCROLL_MS) {
+      const from = scrolledFrom
+      results.scroll = {
+        seconds: Math.round((scrolledTo - from) / 100) / 10,
+        ...readingRate(readingTimes, from, scrolledTo),
+        before: readingRate(readingTimes, from - 3000, from),
+        heard: { ...heard },
+        fullscreen: fullscreenAtScroll,
       }
-    },
-    { passive: true },
-  )
+      finish()
+    }
+  }
+  document.addEventListener("scroll", () => moved("scroll"), {
+    capture: true,
+    passive: true,
+  })
+  document.addEventListener("touchmove", () => moved("touchmove"), {
+    capture: true,
+    passive: true,
+  })
 
   setInterval(() => {
     const { x, y, z } = latest(host.live?.recorded() ?? [])

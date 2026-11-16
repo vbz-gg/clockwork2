@@ -73,11 +73,13 @@ export interface ScreenAngleSource {
  * `screen.orientation.angle` only where it does not.
  *
  * The two disagree on an iPad. Measured on an iPad Pro (2018) under iPadOS
- * Safari 26.6, held in portrait: `screen.orientation.angle` was 90 with a
- * type of "portrait-primary", `window.orientation` was 0, and the readings
- * were those of a device turned 0, so the angle turned every tilt a quarter
- * the wrong way. On a Galaxy S24+ under Chrome 157 the two agreed, at 0
- * upright and 90 on its side. A desktop browser has no `window.orientation`,
+ * Safari 26.6: held in portrait, `screen.orientation.angle` was 90 with a
+ * type of "portrait-primary" and `window.orientation` 0; on its side, 180
+ * and -90; loaded sideways, 0 and 90. Its readings matched
+ * `window.orientation` every time, so Safari there measures the screen's
+ * angle from landscape and the readings from portrait, and the screen's
+ * angle turned every tilt a quarter the wrong way. On a Galaxy S24+ under
+ * Chrome 157 the two agreed. A desktop browser has no `window.orientation`,
  * and there the screen's own angle is the only one.
  */
 export function screenAngleOf(scope: ScreenAngleSource): number | undefined {

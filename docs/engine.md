@@ -1404,10 +1404,13 @@ upright and on its side, and readings kept arriving at about 59 a second while
 the page scrolled. An iPad Pro (2018) under iPadOS Safari 26.6 reported
 `screen.orientation.angle` 90 while held in portrait, with `window.orientation`
 0, and its readings were measured against 0, so every tilt came out a quarter
-turn wrong. The helpers now read `window.orientation` where a browser has it.
-On its side the iPad reported 180, and the right answer there, 270, is
-inferred from its readings rather than measured; a second run on the iPad
-settles it. No iPhone has been checked.
+turn wrong. Held on its side it reported 180 against a `window.orientation` of -90,
+and its readings matched -90; loaded while held sideways, its screen's angle
+was 0 and `window.orientation` 90. Safari on an iPad measures the screen's
+angle from landscape and its readings from portrait. The helpers now read
+`window.orientation` where a browser has it, and a second run passed every
+pose. Whether WebKit keeps sending readings while a page scrolls is not yet
+measured, and no iPhone has been checked.
 
 The input budget is a model's. `INPUT_BUDGET_PER_TICK` is 16, four times the
 busiest rate scripted runs of each helper produced, not a rate measured from
