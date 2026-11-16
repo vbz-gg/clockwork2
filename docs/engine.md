@@ -1035,7 +1035,7 @@ not have to run it first.
 {
   schemaVersion: 2,
   id: "lane-runner",            // immutable across every version
-  version: "1.0.0",             // strictly increasing
+  version: "1.0.0",             // semantic; a patch keeps the rules
   name: "Lane Runner",
   kernel: { version: "0.1.0" },
 
@@ -1075,6 +1075,15 @@ A few fields decide more than they look like they do.
 
 `id` is immutable. Change it and it is a different game with a different
 leaderboard, which is why the skill's scaffold sets it once at creation.
+
+`version` is a semantic version, and its parts are a promise about the rules:
+a patch changes how the game looks or fixes a bug and keeps what a score
+means, a minor changes the rules, and a major is a different game. A platform
+may treat every patch of one `MAJOR.MINOR` as the same game, ranking them on
+one board, so a patch should keep the fields that decide how a run is played
+and ranked (`session`, `inputs`, `counters`, `rankBy`, `tiePolicy`, `params`,
+`capabilities`) as the line's first release declared them. A recording names
+its exact version and replays against that version only.
 
 `counters` and `rankBy` replace an objective system. An objective is
 `counters[name] >= threshold`, computed by the platform, so a new kind of

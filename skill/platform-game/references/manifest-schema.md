@@ -16,7 +16,7 @@ in `kernel-api.md`, which is generated from the declarations.
 {
   schemaVersion: 2,
   id: "lane-runner",          // immutable across every version of this game
-  version: "1.0.0",           // strictly increasing
+  version: "1.0.0",           // semantic: a patch keeps the rules
   name: "Lane Runner",
   kernel: { version: "0.1.0" },
   genres: ["arcade"],         // optional
@@ -125,8 +125,26 @@ submission rather than at validation.
 
 ## Versioning
 
-`version` is strictly increasing, and a recording made against one version
-replays against that version. Changing simulation behaviour without bumping
-the version is the failure this rule exists to prevent: every score already
-recorded becomes unverifiable, silently, and nothing in the replay path can
-tell you it happened.
+`version` is a semantic version, `MAJOR.MINOR.PATCH`, and `assertManifest`
+refuses anything else. Use the parts for what they say about the rules:
+
+- **A patch** changes how the game looks, or fixes a bug, and keeps what a
+  score means. The same play scores the same.
+- **A minor** changes the rules: an input, a counter, how runs rank, how long
+  a run lasts, or anything that lets the same play score differently.
+- **A major** is a game players would call different.
+
+A platform may treat every patch of one `MAJOR.MINOR` as the same game, and
+vbz does: its day's ranked runs play the newest patch of one line, and the
+board mixes that line's patches. So a patch keeps the manifest fields that
+decide how a run is played and ranked exactly as the line's first release
+declared them - `id`, `session`, `inputs`, `counters`, `rankBy`, `tiePolicy`,
+`params` and `capabilities` - and vbz refuses one that does not. Whether a fix
+in the code changed what a score means is something no check can see, so
+decide it before choosing the number.
+
+A recording made against one version replays against that version, whatever
+was published after it. Changing simulation behaviour without a new version is
+the failure this rule exists to prevent: every score already recorded becomes
+unverifiable, silently, and nothing in the replay path can tell you it
+happened.

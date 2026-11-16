@@ -170,8 +170,11 @@ The three that account for most failures:
   first in ascending numeric order, whatever the insertion history.
 - DOM nodes, sockets, or anything else with an identity in simulation state.
 - A renderer that writes to the view, or to anything the simulation reads.
-- Changing simulation behaviour without bumping `version`. Every score already
+- Changing simulation behaviour without a new `version`. Every score already
   recorded becomes unverifiable, and nothing announces it.
+- Shipping a rules change as a patch. A patch promises the same play scores
+  the same; `references/manifest-schema.md` under "Versioning" says which
+  changes need a minor.
 - Deciding a hit in the page and recording the answer. Record where the
   finger was and hit-test in `tick()`: an answer worked out in the page
   replays perfectly while the result was decided where nothing checks it.
