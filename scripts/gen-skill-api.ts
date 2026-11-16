@@ -1,12 +1,16 @@
 #!/usr/bin/env bun
 /**
- * Generates the agent skill's API reference from the built type declarations.
+ * Generates the agent guide's API reference from the built type declarations.
  *
  * It is generated for one reason: a hand-written API reference is a second
  * source of truth, and the moment the two disagree the agent follows the one
  * that is wrong. Here the declarations are the source and this file is a
  * projection of them, so a renamed export changes the reference in the same
- * commit or `skill/tests/skill.test.ts` fails.
+ * commit or `packages/engine/skill/tests/skill.test.ts` fails.
+ *
+ * The reference ships inside the package, at
+ * `skill/clockwork2/references/kernel-api.md`, so the words it carries are
+ * read in a game's checkout, where none of this repository's scripts exist.
  *
  *   bun run scripts/gen-skill-api.ts          write the reference
  *   bun run scripts/gen-skill-api.ts --check  fail if it is out of date
@@ -20,7 +24,10 @@ import { join, relative } from "node:path"
 import ts from "typescript"
 
 const ROOT = new URL("..", import.meta.url).pathname
-const OUT = join(ROOT, "skill/platform-game/references/kernel-api.md")
+const OUT = join(
+  ROOT,
+  "packages/engine/skill/clockwork2/references/kernel-api.md",
+)
 
 /** Entry points, in the order an agent meets them. */
 const ENTRIES: ReadonlyArray<{
@@ -242,11 +249,12 @@ function generate(): string {
     "# Kernel API",
     "",
     "**Generated from the built type declarations. Do not edit.**",
-    "Regenerate with `bun run scripts/gen-skill-api.ts`; `skill/tests/skill.test.ts`",
-    "fails when this file and the declarations disagree.",
+    "The clockwork2 repository regenerates it with `bun run gen:skill-api`, and",
+    "the guide's own tests there fail when this file and the declarations",
+    "disagree.",
     "",
     "Anything not listed here is not part of the contract. Where this reference",
-    "and `@clockwork2/validate` disagree, the validator is right.",
+    "and `@clockwork2/engine/validate` disagree, the validator is right.",
     "",
     body.join("\n"),
   ].join("\n")

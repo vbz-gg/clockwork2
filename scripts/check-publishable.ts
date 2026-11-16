@@ -14,6 +14,11 @@
  * is what a release would really ship rather than what a different tool would
  * have shipped.
  *
+ * The package also carries the agent guide, at `skill/clockwork2/`, for a game
+ * author's tools to install out of node_modules. Its tests sit beside it and
+ * must not ship, and what ships has to be the guide git holds, so the
+ * tarball's copy is compared with the committed one file by file.
+ *
  *   bun run scripts/check-publishable.ts
  *
  * Exit codes: 0 passed, 1 a package would ship broken, 2 nothing to check.
@@ -24,6 +29,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   symlinkSync,
 } from "node:fs"
 import { tmpdir } from "node:os"
@@ -33,6 +39,12 @@ import { $ } from "bun"
 
 export const PUBLIC_PACKAGES = ["engine"] as const
 
+/**
+ * The agent guide, as a path inside the package. Everything the tarball holds
+ * under `skill/` has to be under this directory.
+ */
+export const GUIDE = "skill/clockwork2"
+
 export type Shipped = {
   readonly name: string
   readonly version: string
@@ -40,6 +52,113 @@ export type Shipped = {
   readonly files: readonly string[]
   /** What plain node made of every subpath the exports map names. */
   readonly imports: ImportReport
+  /** How the guide in the tarball differs from the committed one. */
+  readonly guide: readonly string[]
+}
+
+/** One file of the guide as git holds it. */
+export type CommittedFile = {
+  readonly bytes: Uint8Array
+  readonly executable: boolean
+}
+
+/** git's mode for an executable file; a plain one is 100644. */
+const GIT_EXECUTABLE = "100755"
+
+/** Whether any of the owner, group or other execute bits is set. */
+function executable(path: string): boolean {
+  return (statSync(path).mode & 0o111) !== 0
+}
+
+/**
+ * Compares the guide an unpacked tarball carries with the committed one, file
+ * for file and byte for byte.
+ *
+ * `committed` maps each file git holds under the guide, by its path inside the
+ * package such as `skill/clockwork2/SKILL.md`, to the bytes and mode git
+ * holds for it. npm packs whatever is on disk, so a file git does not track
+ * reaches the tarball, an edit nobody committed ships, and an ignore rule
+ * nobody reads drops a tracked file without a word. The execute bit is
+ * compared too, because the guide's commands run its scripts directly.
+ */
+export function guideDifferences(
+  unpacked: string,
+  shipped: readonly string[],
+  committed: ReadonlyMap<string, CommittedFile>,
+): string[] {
+  const problems: string[] = []
+  const inGuide = (path: string): boolean => path.startsWith(`${GUIDE}/`)
+  const yesOrNo = (flag: boolean): string => (flag ? "" : "not ")
+
+  for (const path of shipped) {
+    if (path.startsWith("skill/") && !inGuide(path)) {
+      problems.push(`${path} ships, and only ${GUIDE}/ belongs under skill/`)
+    }
+  }
+
+  const packed = new Set(shipped.filter(inGuide))
+  const tracked = [...committed.keys()].filter(inGuide).sort()
+  if (tracked.length === 0) {
+    problems.push(`no committed files under ${GUIDE}/ to compare with`)
+  }
+  for (const path of tracked) {
+    const file = committed.get(path) as CommittedFile
+    if (!packed.has(path)) {
+      problems.push(`${path} is committed and the tarball does not carry it`)
+      continue
+    }
+    const inTarball = join(unpacked, path)
+    if (!Buffer.from(file.bytes).equals(readFileSync(inTarball))) {
+      problems.push(`${path} in the tarball differs from the committed file`)
+    }
+    if (file.executable !== executable(inTarball)) {
+      problems.push(
+        `${path} is ${yesOrNo(file.executable)}executable when committed and ${yesOrNo(executable(inTarball))}in the tarball`,
+      )
+    }
+  }
+  for (const path of [...packed].sort()) {
+    if (!committed.has(path)) {
+      problems.push(`${path} is in the tarball and is not committed`)
+    }
+  }
+  return problems
+}
+
+/**
+ * The guide as git holds it, keyed by path inside the package.
+ *
+ * This reads git's index, which in CI is the commit being checked and on a
+ * laptop is what the next commit would hold, and the blob bytes themselves
+ * rather than the working tree, so a guide edited and never staged is not
+ * what this compares against.
+ */
+export async function committedGuide(
+  packageDir: string,
+): Promise<Map<string, CommittedFile>> {
+  const listed = await $`git ls-files -s -z -- ${GUIDE}`.cwd(packageDir).text()
+  const out = new Map<string, CommittedFile>()
+  for (const entry of listed.split("\0")) {
+    if (entry === "") continue
+    // <mode> <object> <stage>\t<path>, with the path relative to packageDir.
+    const match = /^(\d{6}) ([0-9a-f]+) \d\t(.+)$/.exec(entry)
+    if (match === null) {
+      throw new Error(
+        `git ls-files printed an entry this cannot read: ${entry}`,
+      )
+    }
+    const mode = match[1] as string
+    const object = match[2] as string
+    const path = match[3] as string
+    const blob = await $`git cat-file blob ${object}`
+      .cwd(packageDir)
+      .arrayBuffer()
+    out.set(path, {
+      bytes: new Uint8Array(blob),
+      executable: mode === GIT_EXECUTABLE,
+    })
+  }
+  return out
 }
 
 type ExportsMap = Record<string, { default?: string } | string>
@@ -157,13 +276,21 @@ export async function pack(pkg: string, into: string): Promise<Shipped> {
   const manifest = JSON.parse(
     readFileSync(join(out, "package", "package.json"), "utf8"),
   ) as { name: string; version: string; dependencies?: Record<string, string> }
-  const files = [...new Bun.Glob("**/*").scanSync(join(out, "package"))]
+  const unpacked = join(out, "package")
+  // Dot files too. npm drops a few by name, `.DS_Store` among them, and packs
+  // every other one it finds under a `files` entry.
+  const files = [...new Bun.Glob("**/*").scanSync({ cwd: unpacked, dot: true })]
   return {
     name: manifest.name,
     version: manifest.version,
     dependencies: manifest.dependencies ?? {},
     files,
-    imports: await unimportableSubpaths(join(out, "package")),
+    guide: guideDifferences(
+      unpacked,
+      files,
+      await committedGuide(`packages/${pkg}`),
+    ),
+    imports: await unimportableSubpaths(unpacked),
   }
 }
 
@@ -185,6 +312,7 @@ export function problemsWith(shipped: Shipped): string[] {
     problems.push(`${shipped.name} would ship no dist; run "bun run build"`)
   }
   problems.push(...shipped.imports.problems)
+  problems.push(...shipped.guide)
   return problems
 }
 
@@ -194,17 +322,25 @@ async function main(): Promise<number> {
     return 2
   }
   const found: string[] = []
+  let guideDiffers = false
   for (const pkg of PUBLIC_PACKAGES) {
     const into = mkdtempSync(join(tmpdir(), `cw2-pack-${pkg}-`))
     try {
       const shipped = await pack(pkg, into)
       const problems = problemsWith(shipped)
       found.push(...problems)
+      if (shipped.guide.length > 0) guideDiffers = true
       console.log(
         `${problems.length === 0 ? "ok  " : "BAD "} ${shipped.name}@${shipped.version}  ${shipped.files.length} files`,
       )
       for (const note of shipped.imports.skipped) {
         console.log(`     not imported: ${note}`)
+      }
+      if (shipped.guide.length === 0) {
+        const count = shipped.files.filter((file) =>
+          file.startsWith(`${GUIDE}/`),
+        ).length
+        console.log(`     ${GUIDE}/: ${count} files, as committed`)
       }
     } finally {
       rmSync(into, { recursive: true, force: true })
@@ -216,6 +352,11 @@ async function main(): Promise<number> {
     console.error(
       "\nthe manifest on disk is what ships; there is no rewrite step to blame",
     )
+    if (guideDiffers) {
+      console.error(
+        `npm packs ${GUIDE}/ as it is on disk: commit it as it should ship, or restore what git holds`,
+      )
+    }
     return 1
   }
   console.log("\nthe package would install cleanly")

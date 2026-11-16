@@ -13,7 +13,7 @@
  */
 
 import { describe, expect, test } from "bun:test"
-import { readFileSync } from "node:fs"
+import { existsSync, readFileSync, statSync } from "node:fs"
 import { join } from "node:path"
 
 const ROOT = join(import.meta.dir, "..")
@@ -37,17 +37,35 @@ const rootVersion = (
   }
 ).version
 
+/** The package a release publishes, and the directory its `files` are under. */
+const ENGINE = "packages/engine"
+
 /**
- * Where the literal may live: checked-in source and the skill's references.
- * `dist` is excluded because it is built from `src` and never committed.
+ * Where the literal may live: everything the engine package ships that is
+ * committed rather than built, which includes the agent guide at
+ * `skill/clockwork2`, and the guide's own tests beside it. A test below holds
+ * this list to the package's `files`, so a new entry there cannot ship
+ * unsearched.
  */
-const SEARCHED = ["packages/engine/src", "skill"]
+const SEARCHED = [`${ENGINE}/src`, `${ENGINE}/skill`, `${ENGINE}/README.md`]
+
+/**
+ * Entries in the package's `files` that are built rather than committed.
+ * `dist` is built from `src`, which is searched, and is never committed.
+ */
+const BUILT = new Set(["dist"])
+
+function filesUnder(path: string): string[] {
+  if (statSync(join(ROOT, path)).isFile()) return [path]
+  return [...new Bun.Glob("**/*").scanSync(join(ROOT, path))]
+    .filter((rel) => !rel.split(/[\\/]/).includes("node_modules"))
+    .map((rel) => join(path, rel))
+}
 
 function filesHoldingTheLiteral(): string[] {
   const found: string[] = []
-  for (const dir of SEARCHED) {
-    for (const rel of new Bun.Glob("**/*.{ts,md}").scanSync(join(ROOT, dir))) {
-      const path = join(dir, rel)
+  for (const searched of SEARCHED) {
+    for (const path of filesUnder(searched)) {
       if (PATTERN.test(readFileSync(join(ROOT, path), "utf8"))) {
         found.push(path)
       }
@@ -59,6 +77,34 @@ function filesHoldingTheLiteral(): string[] {
 describe("the kernel version literal", () => {
   test("is somewhere, so a broken search does not pass vacuously", () => {
     expect(filesHoldingTheLiteral().length).toBeGreaterThan(0)
+  })
+
+  /**
+   * The literal has reached a release through a file nobody searched, and the
+   * guide has since moved into the package so a game author's tools can
+   * install it from there. A search still pointed at where something used to
+   * be passes while a file that ships goes stale, so the search is held to
+   * the package's own list of what it ships.
+   */
+  test("the search covers everything the engine package ships", () => {
+    const { files } = JSON.parse(
+      readFileSync(join(ROOT, ENGINE, "package.json"), "utf8"),
+    ) as { files: readonly string[] }
+    expect(files).toContain("skill/clockwork2")
+    const uncovered = files
+      .filter((entry) => !BUILT.has(entry))
+      .map((entry) => `${ENGINE}/${entry}`)
+      .filter(
+        (shipped) =>
+          !SEARCHED.some(
+            (searched) =>
+              shipped === searched || shipped.startsWith(`${searched}/`),
+          ),
+      )
+    expect(uncovered).toEqual([])
+    for (const searched of SEARCHED) {
+      expect(existsSync(join(ROOT, searched)), searched).toBe(true)
+    }
   })
 
   test("every file holding it is a bumpFile", () => {
@@ -169,7 +215,7 @@ describe("the kernel version literal", () => {
     // caret admits only that minor, so a scaffolded game installed an engine
     // older than everything the template used.
     for (const template of ["canvas2d", "three"]) {
-      const filename = `skill/platform-game/assets/templates/${template}/package.json`
+      const filename = `${ENGINE}/skill/clockwork2/assets/templates/${template}/package.json`
       const range = (
         JSON.parse(readFileSync(join(ROOT, filename), "utf8")) as {
           dependencies: Record<string, string>

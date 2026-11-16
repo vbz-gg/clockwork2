@@ -680,7 +680,7 @@ function report(rows: readonly Row[], scenarios: readonly Scenario[]): string {
   return [
     "# Recording sizes from the device helpers",
     "",
-    `Produced by \`bun run scripts/measure-inputs.ts\`. Each row is one run of ${ticks} ticks (five minutes at ${TICK_HZ} Hz) in a real \`GameHost\` driven by a \`ManualScheduler\`, one animation frame of 1000/60 ms per tick (${frames} frames for the first row), under bun ${Bun.version}, importing the engine from \`packages/engine/src\`. The real \`InputCapture\` is attached to the host's live queue through a fake browser; before each frame the model player below sends the events a browser would deliver, then the frame runs and the queue stamps what is pending onto the frame's tick.`,
+    `Produced in the clockwork2 repository by \`bun run scripts/measure-inputs.ts\`. Each row is one run of ${ticks} ticks (five minutes at ${TICK_HZ} Hz) in a real \`GameHost\` driven by a \`ManualScheduler\`, one animation frame of 1000/60 ms per tick (${frames} frames for the first row), under bun ${Bun.version}, importing the engine from \`packages/engine/src\`. The real \`InputCapture\` is attached to the host's live queue through a fake browser; before each frame the model player below sends the events a browser would deliver, then the frame runs and the queue stamps what is pending onto the frame's tick.`,
     "",
     "- **Inputs** is the length of `recording.inputs` at the end.",
     "- **Per tick** is inputs over the run's end tick.",

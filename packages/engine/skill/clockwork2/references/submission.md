@@ -71,11 +71,16 @@ this is the check that catches it.
 
 ## Before submitting
 
+From the game's own root, with `<guide>` the directory `SKILL.md` is in and
+`./src` the directory holding the simulation's entry (`./src/sim` in a game
+built with the vbz kit):
+
 ```
-scripts/validate.sh ./src          # all twelve checks
-scripts/run-headless.ts ./src      # what a session actually looks like
-scripts/package.ts ./dist --manifest=./src/manifest.ts
+<guide>/scripts/validate.sh ./src          # the engine's twelve checks
+<guide>/scripts/run-headless.ts ./src      # what a session actually looks like
+<guide>/scripts/package.ts ./dist --manifest=./src/manifest.ts
 ```
 
-The suite is the same code the platform runs. A local pass is a convenience;
-the platform's own run inside its isolate is the run that decides.
+The twelve checks are the same code a platform built on this engine runs, and
+a platform may run more of its own. A local pass is a convenience; the
+platform's own run inside its isolate is the run that decides.

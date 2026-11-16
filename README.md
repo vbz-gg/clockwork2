@@ -85,18 +85,25 @@ interface GameModule<TView, TConfig> {
 }
 ```
 
-To start one:
+To start one from this repository:
 
 ```bash
-bun run skill/platform-game/scripts/new.ts ./my-game
+bun run packages/engine/skill/clockwork2/scripts/new.ts ./my-game
 cd ./my-game && bun install
 bun run validate      # the conformance suite; it passes before you change anything
 bun run dev
 ```
 
-The scaffold comes from `skill/platform-game/`, an Agent Skill that carries the
-rules a game has to follow, a section per error code, and two starter templates.
-Coding agents read it; so can you.
+The scaffold comes from the `clockwork2` guide, an Agent Skill that carries the
+rules a game has to follow, a section per error code, four scripts and two
+starter templates. Coding agents read it; so can you.
+
+The guide lives at `packages/engine/skill/clockwork2/` and ships inside the npm
+package, so a game that installs the engine has a copy at
+`node_modules/@clockwork2/engine/skill/clockwork2/` for an agent's tools to
+install. Its scripts run from the game's own root. The templates are for a game
+on the engine alone; a game built with the vbz kit starts from that kit's own
+scaffold and follows the guide for its simulation.
 
 ## One package, several entry points
 
@@ -119,7 +126,7 @@ import and drops the rest.
 ## What is verified, and how
 
 ```bash
-bun test              # unit tests, the demo's frozen recordings, and the skill
+bun test              # unit tests, the demo's frozen recordings, and the guide
 bun run test:coverage # the same tests, then the coverage floor
 bun run test:engines  # the same vectors under every installed JS engine
 bun run test:e2e      # Playwright: record, replay, frame rates, cross-runtime
@@ -154,10 +161,10 @@ lines of the message that names a value the hash refuses.
 - [docs/engine.md](docs/engine.md) explains the engine from first principles:
   the loop, the contract, determinism, rendering, recordings, the manifest, and
   why each choice was made.
-- [skill/platform-game/SKILL.md](skill/platform-game/SKILL.md) is the working
-  guide for writing a game, with the rules and their checks.
-- [failure-modes.md](skill/platform-game/references/failure-modes.md) has one
-  section per error code.
+- [packages/engine/skill/clockwork2/SKILL.md](packages/engine/skill/clockwork2/SKILL.md)
+  is the working guide for writing a game, with the rules and their checks.
+- [failure-modes.md](packages/engine/skill/clockwork2/references/failure-modes.md)
+  has one section per error code.
 
 ## Licence
 

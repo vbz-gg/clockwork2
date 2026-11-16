@@ -933,8 +933,8 @@ nothing in a shared `PackSet` is ever dropped.
 
 ### What can go wrong
 
-Five codes, each with a section in the skill's
-[failure-modes reference](../skill/platform-game/references/failure-modes.md):
+Five codes, each with a section in the guide's
+[failure-modes reference](../packages/engine/skill/clockwork2/references/failure-modes.md):
 `E_PACK_UNDECLARED` for a name the manifest does not declare as a pack,
 `E_PACK_NOT_REQUESTED` for a read the table above does not allow,
 `E_PACK_NOT_DELIVERED` for a pack a session needed and never got,
@@ -1080,7 +1080,7 @@ shape drift and the one that drifts is the one nobody runs.
 A few fields decide more than they look like they do.
 
 `id` is immutable. Change it and it is a different game with a different
-leaderboard, which is why the skill's scaffold sets it once at creation.
+leaderboard, which is why the guide's scaffold sets it once at creation.
 
 `version` is a semantic version, and its parts are a promise about the rules:
 a patch changes how the game looks or fixes a bug and keeps what a score
@@ -1149,7 +1149,7 @@ bunx clockwork2-validate run ./src --json
 Every failure carries a stable code, such as `E_RESTORE_MISMATCH@1380`. Catching
 code switches on the code, never on the message. The codes are listed with their
 causes and remedies in
-[the skill's failure-modes reference](../skill/platform-game/references/failure-modes.md),
+[the guide's failure-modes reference](../packages/engine/skill/clockwork2/references/failure-modes.md),
 and a test compares that list against the kernel's table in both directions, so
 a code cannot exist without an explanation.
 
@@ -1275,21 +1275,36 @@ another and the hold would never end. `demo/packs.html` and
 
 ## Writing a game with an agent
 
-`skill/platform-game/` is an Agent Skill for coding agents. It carries ten rules
+The `clockwork2` guide is an Agent Skill for coding agents. It carries ten rules
 that each name the check enforcing them, a section per error code, four scripts,
 and two starter templates that pass the whole conformance suite before anything
 is changed.
 
+It lives at `packages/engine/skill/clockwork2/` and ships inside the npm package
+at `skill/clockwork2/`, so a game that installs the engine already holds the
+guide written for that version of it, and an agent's tools can install it from
+`node_modules/@clockwork2/engine/skill/clockwork2/`. Its scripts run from the
+game's own root and load the engine out of the game's `node_modules`, so a game
+pinned to an older engine is checked against that one. From this repository:
+
 ```bash
-bun run skill/platform-game/scripts/new.ts ./my-game
+bun run packages/engine/skill/clockwork2/scripts/new.ts ./my-game
 cd ./my-game && bun install && bun run validate
 ```
 
+The scaffold and the templates are for a game on the engine alone. A game built
+with the vbz kit starts from that kit's own scaffold, and the guide covers its
+simulation with nothing copied in.
+
 Its first line says that where its prose and `scripts/validate.sh` disagree, the
-script is right. Everything in it that can be checked is checked by
-`bun test skill`: the API reference is generated from the type declarations, the
-error-code sections are compared with the kernel's table, and both templates are
-run through the suite.
+script is right. That script runs the engine's twelve checks; a platform may run
+more. Everything in the guide that can be checked is checked by its own tests in
+`packages/engine/skill/tests/`, which sit beside the guide so the package ships
+the guide without them: the API reference is generated from the type
+declarations, the error-code sections are compared with the kernel's table, and
+both templates are run through the suite. `bun run check:publishable` packs the
+package and compares the guide the tarball carries with the committed one, file
+for file and byte for byte.
 
 ## Decisions
 
@@ -1431,8 +1446,9 @@ plain enough to hash, and a snapshot complete enough to restore.
 ## Related documentation
 
 - [README](../README.md), for what the project is and how to run it
-- [The agent skill](../skill/platform-game/SKILL.md), for writing a game
-- [Failure modes](../skill/platform-game/references/failure-modes.md), one
-  section per error code
-- [The kernel API](../skill/platform-game/references/kernel-api.md), generated
-  from the type declarations
+- [The agent guide](../packages/engine/skill/clockwork2/SKILL.md), for writing
+  a game
+- [Failure modes](../packages/engine/skill/clockwork2/references/failure-modes.md),
+  one section per error code
+- [The kernel API](../packages/engine/skill/clockwork2/references/kernel-api.md),
+  generated from the type declarations
