@@ -48,7 +48,9 @@ If the game only needs to know which of eight lanes a finger is over, declare
 
 **Keep one value per tick.** The simulation reads inputs once a tick, so three
 stick readings between two ticks are one input: where the stick ended up. The
-queue merges a level to its last value in a tick and sums an amount, in place.
+queue merges a level to its last value in a tick and sums an amount, in place;
+a position that moves after a press in the same tick is kept after the press,
+so the press keeps where the finger went down.
 
 **Record a value sized for the game, not the raw reading.** A steer from -10
 to 10, worked out from the tilt in the page, records far less than three

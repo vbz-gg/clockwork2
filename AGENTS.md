@@ -362,8 +362,12 @@ any test going red first:
 - Every input goes through the live queue's per-input check, which
   `checkInputs` also calls. A second check written for one side drifts from the
   other, and the side that drifts is the one a server trusts.
-- A merge happens in place. Moving a merged level to the end puts a pointer's
-  position after its press, and a hit test in `tick` then reads the old one.
+- A merge happens in place, and never across a press. Moving a merged level
+  to the end puts a pointer's position after its press, and a hit test in
+  `tick` then reads the old one; merging a value from after a press into the
+  one before it moves the press to where the pointer ended.
+- While the queue is paused the helpers hear nothing. State a helper keeps for
+  an input the paused queue dropped no longer matches the log.
 - Every press a helper records it also releases. A new way for a press to end
   (a new event, a new device) needs its release in the same change, and a test
   that drives it.

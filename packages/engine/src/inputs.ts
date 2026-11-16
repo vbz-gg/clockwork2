@@ -219,6 +219,12 @@ export interface InputSink {
    * stops it.
    */
   onPause(release: () => void): () => void
+  /**
+   * Runs `listener` when the session resumes, so a capture that ignored the
+   * devices while paused starts hearing them again. Returns a function that
+   * stops it.
+   */
+  onResume(listener: () => void): () => void
 }
 
 /**
@@ -235,6 +241,7 @@ export class LiveInputQueue implements InputSource, InputSink {
   private readonly log: InputEvent[] = []
   private readonly pollers = new Set<() => void>()
   private readonly pauseListeners = new Set<() => void>()
+  private readonly resumeListeners = new Set<() => void>()
   /** What a summed amount owed past its range, carried into later ticks. */
   private readonly carried = new Map<string, number>()
   private paused = false
@@ -256,7 +263,13 @@ export class LiveInputQueue implements InputSource, InputSink {
         detail: `input value must be a whole number, got ${String(input.value)}`,
       })
     }
-    // A sum may pass its range on the way; it is clamped when it is stamped.
+    // A sum may pass its range on the way; it is clamped when it is stamped,
+    // and what the clamp leaves over is carried, which ends only at 0.
+    if (input.merge === "sum" && (declaration.min > 0 || declaration.max < 0)) {
+      fail("E_INPUT_UNDECLARED", {
+        detail: `${input.code} is summed, so its range must hold 0, and it is ${declaration.min} to ${declaration.max}`,
+      })
+    }
     const outside =
       input.merge === "sum"
         ? null
@@ -267,10 +280,23 @@ export class LiveInputQueue implements InputSource, InputSink {
       })
     }
     if (input.merge !== undefined) {
-      const at = this.pending.findIndex(
-        (other) => other.merge === input.merge && other.code === input.code,
-      )
-      if (at !== -1) {
+      let at = -1
+      for (let i = this.pending.length - 1; i >= 0; i--) {
+        const other = this.pending[i] as PendingInput
+        if (other.merge === input.merge && other.code === input.code) {
+          at = i
+          break
+        }
+      }
+      // A level merges where it stands, so a position stays before the press
+      // it belongs to. One that moved after a press in the same tick is a new
+      // entry after it: merged into the earlier one, the press would read
+      // where the pointer ended rather than where it went down.
+      const pressedSince =
+        input.merge === "latest" &&
+        at !== -1 &&
+        this.pending.slice(at + 1).some((other) => other.merge === undefined)
+      if (at !== -1 && !pressedSince) {
         if (input.merge === "latest") {
           this.pending[at] = input
         } else {
@@ -315,8 +341,17 @@ export class LiveInputQueue implements InputSource, InputSink {
     this.paused = true
   }
 
+  onResume(listener: () => void): () => void {
+    this.resumeListeners.add(listener)
+    return () => {
+      this.resumeListeners.delete(listener)
+    }
+  }
+
   resume(): void {
+    if (!this.paused) return
     this.paused = false
+    for (const listener of this.resumeListeners) listener()
   }
 
   take(tick: number): readonly InputEvent[] {
@@ -400,6 +435,7 @@ export function checkInputs(
   inputs: Inputs,
   options: { readonly endTick: number },
 ): void {
+  argumentTick("endTick", options.endTick, 0)
   validateInputLog(events, { endTick: options.endTick })
   checkDeclared(events, inputs)
   checkBudget(events.length, options.endTick + 1)
@@ -416,6 +452,8 @@ export function checkInputSpan(
   inputs: Inputs,
   span: { readonly afterTick: number; readonly throughTick: number },
 ): void {
+  argumentTick("afterTick", span.afterTick, -1)
+  argumentTick("throughTick", span.throughTick, span.afterTick + 1)
   validateInputLog(events, { endTick: span.throughTick })
   for (const event of events) {
     if (event.tick <= span.afterTick) {
@@ -462,8 +500,20 @@ function checkDeclared(events: readonly InputEvent[], inputs: Inputs): void {
   }
 }
 
+/**
+ * A tick the caller passes in, which a wrong one would turn into a quietly
+ * wrong budget rather than a refusal: a whole number no lower than `least`.
+ */
+function argumentTick(name: string, value: number, least: number): void {
+  if (!Number.isInteger(value) || value < least) {
+    fail("E_ARG_INVALID", {
+      detail: `${name} must be a whole number of at least ${least}, got ${String(value)}`,
+    })
+  }
+}
+
 function checkBudget(count: number, ticks: number): void {
-  const budget = INPUT_BUDGET_PER_TICK * Math.max(ticks, 1)
+  const budget = INPUT_BUDGET_PER_TICK * ticks
   if (count > budget) {
     fail("E_INPUT_BUDGET", {
       detail: `${count} inputs over ${ticks} ticks, past the budget of ${budget}`,

@@ -66,6 +66,8 @@ export type ToWorker =
       readonly elapsedMs: number
       readonly frameId: number
     }
+  | { readonly type: "pause" }
+  | { readonly type: "resume" }
   | { readonly type: "stop" }
 
 export type FromWorker =
@@ -190,6 +192,16 @@ export function runSimulationWorker(
         }
         case "input": {
           for (const input of message.inputs) queue.push(input)
+          return
+        }
+        // The page released what was held and sent it before this, so the
+        // worker's queue only stops taking, as a page host's does.
+        case "pause": {
+          queue.pause()
+          return
+        }
+        case "resume": {
+          queue.resume()
           return
         }
         case "packs": {
@@ -403,30 +415,70 @@ export class WorkerSimulation {
 
   /**
    * Where an `InputCapture` on the page records, for a simulation in a
-   * worker: each input goes to the worker's queue, which stamps it, and a
-   * polled device is read at the start of every frame the page offers.
+   * worker: inputs are collected and go to the worker's queue, which stamps
+   * them, in one message before each frame the page offers, and a polled
+   * device is read at the start of that frame.
    */
   readonly inputs: InputSink = {
-    push: (input) => this.send([input]),
+    push: (input) => {
+      if (!this.paused) this.batch.push(input)
+    },
     addPoller: (poll) => {
       this.pollers.add(poll)
       return () => {
         this.pollers.delete(poll)
       }
     },
-    // The worker host has no pause of its own; a page that stops offering
-    // frames stops the simulation, and `stop` ends it.
-    onPause: () => () => undefined,
+    onPause: (release) => {
+      this.pauseListeners.add(release)
+      return () => {
+        this.pauseListeners.delete(release)
+      }
+    },
+    onResume: (listener) => {
+      this.resumeListeners.add(listener)
+      return () => {
+        this.resumeListeners.delete(listener)
+      }
+    },
   }
 
   private readonly pollers = new Set<() => void>()
+  private readonly pauseListeners = new Set<() => void>()
+  private readonly resumeListeners = new Set<() => void>()
+  /** Inputs pushed since the last message to the worker. */
+  private readonly batch: PendingInput[] = []
+  private paused = false
 
+  /** Sends `inputs`, and everything collected before them, to the worker. */
   send(inputs: readonly PendingInput[]): void {
-    if (inputs.length === 0) return
+    this.batch.push(...inputs)
+    if (this.batch.length === 0) return
     this.options.worker.postMessage({
       type: "input",
-      inputs,
+      inputs: this.batch.splice(0),
     } satisfies ToWorker)
+  }
+
+  /**
+   * Pauses the run: whatever the page's capture holds is released and sent,
+   * then the worker's queue stops taking input and no frame is offered until
+   * `resume`. A press while paused would otherwise land on the tick the run
+   * resumes at, which is not when the player made it.
+   */
+  pause(): void {
+    if (this.paused) return
+    for (const release of this.pauseListeners) release()
+    this.send([])
+    this.paused = true
+    this.options.worker.postMessage({ type: "pause" } satisfies ToWorker)
+  }
+
+  resume(): void {
+    if (!this.paused) return
+    this.paused = false
+    this.options.worker.postMessage({ type: "resume" } satisfies ToWorker)
+    for (const listener of this.resumeListeners) listener()
   }
 
   /**
@@ -436,7 +488,9 @@ export class WorkerSimulation {
    * no simulation time is lost and no stale frame is ever sent.
    */
   frame(elapsedMs: number): void {
+    if (this.paused) return
     for (const poll of this.pollers) poll()
+    this.send([])
     if (!this.ready) {
       this.carried += elapsedMs
       return
@@ -455,6 +509,7 @@ export class WorkerSimulation {
 
   stop(): void {
     this.requests.close()
+    this.send([])
     this.options.worker.postMessage({ type: "stop" } satisfies ToWorker)
   }
 

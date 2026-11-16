@@ -307,7 +307,6 @@ export function mergeParamDefaults(
   return merged
 }
 
-/** Every problem with a manifest, in document order. */
 /** A declared input's name: what a recorded input carries as its `code`. */
 const INPUT_NAME = /^[a-z][a-zA-Z0-9]*$/
 /** Enough for any game; a manifest with more is declaring a stream, not inputs. */
@@ -394,6 +393,7 @@ function checkInputDeclarations(inputs: unknown, issues: Issue[]): void {
   }
 }
 
+/** Every problem with a manifest, in document order. */
 export function validateManifest(value: unknown): Issue[] {
   const issues: Issue[] = []
   if (!isPlainObject(value)) {

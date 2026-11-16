@@ -221,6 +221,58 @@ describe("the worker protocol", () => {
     ])
   })
 
+  test("inputs go to the worker in one message a frame, and a pause releases, sends and stops until resume", () => {
+    const pair = new FakeWorkerPair()
+    runSimulationWorker(createReferenceGame, REFERENCE_MANIFEST, pair.scope)
+    const toWorker: Array<{ type: string; inputs?: unknown }> = []
+    const post = pair.page.postMessage.bind(pair.page)
+    ;(
+      pair.page as unknown as { postMessage: (m: unknown) => void }
+    ).postMessage = (message) => {
+      toWorker.push(message as { type: string })
+      post(message)
+    }
+    const simulation = new WorkerSimulation({
+      worker: pair.page,
+      seed: "pause",
+      config: REFERENCE_CONFIG,
+    })
+    const resumed: string[] = []
+    // What a capture does when the run pauses: lets go of what it holds.
+    simulation.inputs.onPause(() =>
+      simulation.inputs.push({ code: "left", value: 0 }),
+    )
+    simulation.inputs.onResume(() => resumed.push("resumed"))
+    const sent = () =>
+      toWorker.filter((m) => m.type !== "init").map((m) => m.type)
+
+    simulation.inputs.push({ code: "left", value: 1 })
+    simulation.inputs.push({ code: "right", value: 1 })
+    expect(sent()).toEqual([])
+    simulation.frame(1000 / 60)
+    expect(sent()).toEqual(["input", "frame"])
+    expect(toWorker.find((m) => m.type === "input")?.inputs).toEqual([
+      { code: "left", value: 1 },
+      { code: "right", value: 1 },
+    ])
+
+    simulation.pause()
+    simulation.pause()
+    expect(sent()).toEqual(["input", "frame", "input", "pause"])
+    expect(toWorker.at(-2)?.inputs).toEqual([{ code: "left", value: 0 }])
+    // Paused: a press is dropped, and no frame is offered.
+    simulation.inputs.push({ code: "left", value: 1 })
+    simulation.frame(1000 / 60)
+    expect(sent()).toEqual(["input", "frame", "input", "pause"])
+
+    simulation.resume()
+    simulation.resume()
+    expect(sent().at(-1)).toBe("resume")
+    expect(resumed).toEqual(["resumed"])
+    simulation.frame(1000 / 60)
+    expect(sent().at(-1)).toBe("frame")
+  })
+
   test("an error in the worker is reported rather than swallowed", () => {
     const pair = new FakeWorkerPair()
     runSimulationWorker(

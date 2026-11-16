@@ -36,6 +36,8 @@ export declare class Accumulator {
 
 ### ClockworkError
 
+The one error type. Catching code switches on `code`, never on the message, and never on a substring of it, and recognises one with `isClockworkError`, never `instanceof`, because a page can hold two copies of the engine.
+
 ```ts
 export declare class ClockworkError extends Error {
     readonly code: ErrorCode;
@@ -98,6 +100,7 @@ export declare class LiveInputQueue implements InputSource, InputSink {
      * session resumes at, which is not when the player made it.
      */
     pause(): void;
+    onResume(listener: () => void): () => void;
     resume(): void;
     take(tick: number): readonly InputEvent[];
     /**
@@ -607,6 +610,8 @@ export declare function validateInputLog(events: readonly InputEvent[], options?
 
 ### validateManifest
 
+Every problem with a manifest, in document order.
+
 ```ts
 export declare function validateManifest(value: unknown): Issue[];
 ```
@@ -905,6 +910,12 @@ export interface InputSink {
      * stops it.
      */
     onPause(release: () => void): () => void;
+    /**
+     * Runs `listener` when the session resumes, so a capture that ignored the
+     * devices while paused starts hearing them again. Returns a function that
+     * stops it.
+     */
+    onResume(listener: () => void): () => void;
 }
 ```
 
@@ -2067,6 +2078,8 @@ Listens for device events and records them as the game's inputs.
 export declare class InputCapture {
     /** Which sources hold each press name down. */
     /** pointerId to the slot it is down in. */
+    /** Between the queue's pause and its resume, when nothing is heard. */
+    /** With `gamepads.any`, the controller that plays. */
     /** A lock asked for and not yet granted or refused. */
     /** The last value recorded per level name, so a repeat is not an input. */
     /** Fractions of an amount not yet recorded. */
@@ -2649,11 +2662,22 @@ export declare class WorkerSimulation {
     constructor(options: WorkerSimulationOptions);
     /**
      * Where an `InputCapture` on the page records, for a simulation in a
-     * worker: each input goes to the worker's queue, which stamps it, and a
-     * polled device is read at the start of every frame the page offers.
+     * worker: inputs are collected and go to the worker's queue, which stamps
+     * them, in one message before each frame the page offers, and a polled
+     * device is read at the start of that frame.
      */
     readonly inputs: InputSink;
+    /** Inputs pushed since the last message to the worker. */
+    /** Sends `inputs`, and everything collected before them, to the worker. */
     send(inputs: readonly PendingInput[]): void;
+    /**
+     * Pauses the run: whatever the page's capture holds is released and sent,
+     * then the worker's queue stops taking input and no frame is offered until
+     * `resume`. A press while paused would otherwise land on the tick the run
+     * resumes at, which is not when the player made it.
+     */
+    pause(): void;
+    resume(): void;
     /**
      * Offers a frame's elapsed time.
      *
@@ -2792,6 +2816,10 @@ export type ToWorker = {
     readonly type: "frame";
     readonly elapsedMs: number;
     readonly frameId: number;
+} | {
+    readonly type: "pause";
+} | {
+    readonly type: "resume";
 } | {
     readonly type: "stop";
 };

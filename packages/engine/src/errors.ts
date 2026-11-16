@@ -109,10 +109,6 @@ export interface ClockworkErrorOptions {
 }
 
 /**
- * The one error type. Catching code switches on `code`, never on the message,
- * and never on a substring of it.
- */
-/**
  * The mark every `ClockworkError` carries. `Symbol.for` returns one symbol
  * per name across every copy of the engine in a page or a process, so an
  * error thrown by one copy is recognised by another, where `instanceof` would
@@ -120,6 +116,11 @@ export interface ClockworkErrorOptions {
  */
 const CLOCKWORK_ERROR = Symbol.for("clockwork2.error")
 
+/**
+ * The one error type. Catching code switches on `code`, never on the message,
+ * and never on a substring of it, and recognises one with `isClockworkError`,
+ * never `instanceof`, because a page can hold two copies of the engine.
+ */
 export class ClockworkError extends Error {
   readonly code: ErrorCode
   readonly tick: number | undefined

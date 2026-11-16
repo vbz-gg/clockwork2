@@ -181,9 +181,9 @@ describe("LiveInputQueue", () => {
     const queue = new LiveInputQueue(INPUTS)
     queue.push({ code: "aimX", value: 10, merge: "latest" })
     queue.push({ code: "aimY", value: 15, merge: "latest" })
-    queue.push({ code: "tap", value: 1 })
     queue.push({ code: "aimX", value: 11, merge: "latest" })
     queue.push({ code: "aimY", value: 16, merge: "latest" })
+    queue.push({ code: "tap", value: 1 })
     expect(taken(queue)).toEqual([
       ["aimX", 11],
       ["aimY", 16],
@@ -192,6 +192,37 @@ describe("LiveInputQueue", () => {
     // And it never reaches across ticks.
     queue.push({ code: "aimX", value: 12, merge: "latest" })
     expect(taken(queue, 1)).toEqual([["aimX", 12]])
+  })
+
+  test("a level that moves after a press in the same tick is recorded after it, so the press keeps where it went down", () => {
+    // A tap that slides off a drawn control within one frame: merged into
+    // the position before the press, the press would read where the finger
+    // ended, and a hit test in tick would miss the control it landed on.
+    const queue = new LiveInputQueue(INPUTS)
+    queue.push({ code: "aimX", value: 10, merge: "latest" })
+    queue.push({ code: "aimY", value: 15, merge: "latest" })
+    queue.push({ code: "tap", value: 1 })
+    queue.push({ code: "aimX", value: 11, merge: "latest" })
+    queue.push({ code: "aimY", value: 16, merge: "latest" })
+    // Later moves in the tick merge into the entry after the press.
+    queue.push({ code: "aimX", value: 12, merge: "latest" })
+    expect(taken(queue)).toEqual([
+      ["aimX", 10],
+      ["aimY", 15],
+      ["tap", 1],
+      ["aimX", 12],
+      ["aimY", 16],
+    ])
+  })
+
+  test("an amount whose range does not hold 0 cannot be summed, because its carry would never end", () => {
+    const queue = new LiveInputQueue({ spin: { min: 1, max: 5 } })
+    expect(() => queue.push({ code: "spin", value: -3, merge: "sum" })).toThrow(
+      /E_INPUT_UNDECLARED/,
+    )
+    // The same input pushed as a level is held to its range as usual.
+    queue.push({ code: "spin", value: 3, merge: "latest" })
+    expect(taken(queue)).toEqual([["spin", 3]])
   })
 
   test("an amount merged as sum is added up, and a sum of nothing is dropped", () => {
@@ -406,5 +437,32 @@ describe("checking a log against the manifest", () => {
     expect(() => checkInputSpan([event(12, "fly", 1)], INPUTS, span)).toThrow(
       /E_INPUT_UNDECLARED/,
     )
+  })
+
+  test("a span or an end that is not a whole tick in order is the caller's mistake, refused as one", () => {
+    // Left alone, an empty or reversed span would quietly grant a budget of
+    // one tick, and a server's bad call would read as a player's bad log.
+    for (const span of [
+      { afterTick: 100, throughTick: 100 },
+      { afterTick: 100, throughTick: 50 },
+      { afterTick: -2, throughTick: 10 },
+      { afterTick: 0.5, throughTick: 10 },
+      { afterTick: 0, throughTick: Number.NaN },
+    ]) {
+      expect(
+        () => checkInputSpan([], INPUTS, span),
+        JSON.stringify(span),
+      ).toThrow(/E_ARG_INVALID/)
+    }
+    expect(() =>
+      checkInputSpan([], INPUTS, { afterTick: -1, throughTick: 0 }),
+    ).not.toThrow()
+    expect(() => checkInputs([], INPUTS, { endTick: -1 })).toThrow(
+      /E_ARG_INVALID/,
+    )
+    expect(() => checkInputs([], INPUTS, { endTick: 2.5 })).toThrow(
+      /E_ARG_INVALID/,
+    )
+    expect(() => checkInputs([], INPUTS, { endTick: 0 })).not.toThrow()
   })
 })

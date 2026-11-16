@@ -409,6 +409,22 @@ describe("keys", () => {
     expect(taken(queue, 1)).toEqual([["jump", 0]])
   })
 
+  test("a key held through a pause is not heard while paused, and its next repeat presses it again", () => {
+    // The pause released it in the log; a key still down when the run
+    // resumes is held, and the auto-repeat it sends is how the capture learns
+    // so, since no fresh keydown comes.
+    const { queue, browser } = keys()
+    queue.pause()
+    browser.window.send("keydown", { code: "ArrowLeft", repeat: false })
+    queue.resume()
+    expect(queue.take(0)).toEqual([])
+    browser.window.send("keydown", { code: "ArrowLeft", repeat: true })
+    expect(taken(queue, 1)).toEqual([["left", 1]])
+    // And a repeat of a key already held is still nothing.
+    browser.window.send("keydown", { code: "ArrowLeft", repeat: true })
+    expect(queue.take(2)).toEqual([])
+  })
+
   test("detach removes every listener, and attach works again", () => {
     const { queue, browser, helper } = keys()
     helper.attach()
@@ -1089,6 +1105,44 @@ describe("gamepads", () => {
     browser.setPads([null, pad(1, [[true, 1]], [])])
     queue.poll()
     expect(taken(queue)).toEqual([["jump", 1]])
+  })
+
+  test("with any, a spectator controller leaving touches nothing the playing one holds", () => {
+    const INPUTS_ANY: Inputs = { jump: PRESS, steer: { min: -10, max: 10 } }
+    const { queue, browser } = capture(
+      INPUTS_ANY,
+      { gamepads: { any: { buttons: { 0: "jump" }, axes: { 0: "steer" } } } },
+      { element: false },
+    )
+    const playing = pad(0, [[true, 1]], [1])
+    browser.setPads([playing, pad(1, [[false, 0]], [0])])
+    queue.poll()
+    expect(taken(queue)).toEqual([
+      ["jump", 1],
+      ["steer", 10],
+    ])
+    // Pad 1 is unplugged while pad 0 still holds and steers.
+    browser.setPads([playing, null])
+    queue.poll()
+    expect(queue.take(1)).toEqual([])
+    // Pad 0 leaving does release, and the next pad up plays from rest.
+    browser.setPads([null, pad(1, [[false, 0]], [0])])
+    queue.poll()
+    expect(taken(queue, 2)).toEqual([
+      ["jump", 0],
+      ["steer", 0],
+    ])
+  })
+
+  test("a paused run polls no controller, so nothing is read until it resumes", () => {
+    const { queue, browser } = pads()
+    queue.pause()
+    browser.setPads([pad(0, [[true, 1]], [])])
+    queue.poll()
+    queue.resume()
+    expect(queue.take(0)).toEqual([])
+    queue.poll()
+    expect(taken(queue, 1)).toEqual([["jump", 1]])
   })
 
   test("a page that forbids gamepads is reported once, and nothing is read after", () => {

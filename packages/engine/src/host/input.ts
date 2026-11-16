@@ -399,6 +399,10 @@ export class InputCapture {
   private readonly pressedBy = new Map<string, Set<string>>()
   /** pointerId to the slot it is down in. */
   private readonly slots = new Map<number, Held>()
+  /** Between the queue's pause and its resume, when nothing is heard. */
+  private paused = false
+  /** With `gamepads.any`, the controller that plays. */
+  private anyPlaying: number | undefined
   /** A lock asked for and not yet granted or refused. */
   private lockAsked = false
   /** The last value recorded per level name, so a repeat is not an input. */
@@ -467,7 +471,18 @@ export class InputCapture {
     this.listen(document, "visibilitychange", () => {
       if (document.visibilityState === "hidden") this.releaseAll()
     })
-    this.listeners.push(this.options.queue.onPause(() => this.releaseAll()))
+    // While paused the queue takes nothing, so the devices are not heard at
+    // all: a press or a reading kept here and dropped there would leave the
+    // capture believing in a state the log never recorded.
+    this.listeners.push(
+      this.options.queue.onPause(() => {
+        this.releaseAll()
+        this.paused = true
+      }),
+      this.options.queue.onResume(() => {
+        this.paused = false
+      }),
+    )
     const element = this.options.element
     if (element !== undefined) {
       if (
@@ -481,7 +496,9 @@ export class InputCapture {
     }
     if (this.options.gamepads !== undefined) {
       this.listeners.push(
-        this.options.queue.addPoller(() => this.readGamepads(environment)),
+        this.options.queue.addPoller(() => {
+          if (!this.paused) this.readGamepads(environment)
+        }),
       )
     }
     if (this.options.tilt !== undefined) {
@@ -500,9 +517,12 @@ export class InputCapture {
     listener: (event: Event) => void,
     options?: AddEventListenerOptions,
   ): void {
-    target.addEventListener(name, listener, options)
+    const heard = (event: Event): void => {
+      if (!this.paused) listener(event)
+    }
+    target.addEventListener(name, heard, options)
     this.listeners.push(() => {
-      target.removeEventListener(name, listener, options)
+      target.removeEventListener(name, heard, options)
     })
   }
 
@@ -515,7 +535,9 @@ export class InputCapture {
       // A key typed into a form on the page is the form's, not the game's.
       if (editable(key.target)) return
       key.preventDefault()
-      if (key.repeat) return
+      // A repeat of a key already held is nothing. One the capture does not
+      // hold is a key kept down through a pause or a lost focus, which both
+      // released it, and it is pressed again here.
       this.press(name, `key ${key.code}`, true)
     })
     // Never filtered: a key released anywhere comes up, or it is held for
@@ -803,25 +825,39 @@ export class InputCapture {
     }
     const gamepads = this.options.gamepads ?? {}
     const any = gamepads.any
-    // With "any", the first connected pad plays; the others are spectators.
-    const playing =
-      any !== undefined
-        ? connected.slice(0, 1).map((pad) => [pad, any] as const)
-        : connected.flatMap((pad) => {
-            const mapping = gamepads[String(pad.index)]
-            return mapping === undefined ? [] : [[pad, mapping] as const]
-          })
-    for (const [pad, mapping] of playing) this.readPad(pad, mapping)
+    // A controller that went away rests before anything is read, so a
+    // reading taken in the same poll is the one that stands.
     for (const index of [...this.pads.keys()]) {
       if (connected.some((pad) => pad.index === index)) continue
       this.pads.delete(index)
-      const mapping = any ?? gamepads[String(index)]
-      if (mapping !== undefined) this.restPad(mapping, index)
+      if (any === undefined) {
+        const mapping = gamepads[String(index)]
+        if (mapping !== undefined) this.restPad(mapping, index)
+      } else if (index === this.anyPlaying) {
+        this.restPad(any, index)
+        this.anyPlaying = undefined
+      }
     }
+    if (any === undefined) {
+      for (const pad of connected) {
+        const mapping = gamepads[String(pad.index)]
+        if (mapping !== undefined) this.readPad(pad, mapping)
+      }
+      return
+    }
+    // With "any", the first connected pad plays; the others are spectators,
+    // and one leaving touches nothing the playing pad holds.
+    const first = connected[0]
+    if (first === undefined) return
+    if (this.anyPlaying !== undefined && this.anyPlaying !== first.index) {
+      this.restPad(any, this.anyPlaying)
+    }
+    this.anyPlaying = first.index
+    this.readPad(first, any)
   }
 
   private readPad(pad: Gamepad, mapping: GamepadMapping): void {
-    const source = `gamepad ${mapping === this.options.gamepads?.any ? "any" : pad.index}`
+    const source = `gamepad ${pad.index}`
     for (const [b, name] of Object.entries(mapping.buttons ?? {})) {
       this.press(
         name,
@@ -851,7 +887,7 @@ export class InputCapture {
 
   /** A controller went away: its buttons come up and its sticks centre. */
   private restPad(mapping: GamepadMapping, index: number): void {
-    const source = `gamepad ${mapping === this.options.gamepads?.any ? "any" : index}`
+    const source = `gamepad ${index}`
     for (const [b, name] of Object.entries(mapping.buttons ?? {})) {
       this.press(name, `${source} button ${b}`, false)
     }

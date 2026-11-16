@@ -698,10 +698,13 @@ What each kind of input records:
 
 - **A press** (a key, a pointer going down, a mouse or gamepad button) is 1
   while held and 0 when released. A name pressed from several places is down
-  while any of them is. An auto-repeat is not an input.
+  while any of them is. An auto-repeat of a key already held is not an input;
+  one of a key the helpers do not hold, as after a pause or a lost focus,
+  presses it again.
 - **A position or a reading** (a pointer's x or y across the element, a stick
   axis, a trigger, tilt) is recorded in its name's range when it changes, and
-  merged to the last value of each tick. A stick rests at the middle of its
+  merged to the last value of each tick, except that a value after a press in
+  the same tick is kept after it, so the press keeps where it went down. A stick rests at the middle of its
   range and a trigger at its minimum, and reading them there is not an input.
   Sticks and tilt have a deadband.
 - **An amount** (wheel notches, mouse movement while the mouse is locked to the
@@ -1318,11 +1321,13 @@ its page. The engine keeps optional helpers for the common devices and a check
 of a log against the declared inputs, and nothing about a device reaches a
 recording.
 
-**A merged input stays where the first one stood.** A level merged to the last
-value of a tick overwrites the earlier entry in place rather than moving to the
-end, so a pointer's position recorded before its press stays before it. The
-cost is that a press is hit-tested at its pointer's last position in that tick,
-at most one tick of finger travel.
+**A merged input stays where the first one stood, and never crosses a
+press.** A level merged to the last value of a tick overwrites the earlier
+entry in place rather than moving to the end, so a pointer's position recorded
+before its press stays before it. A value that arrives after a press in the
+same tick is a new entry after the press instead, so the press is hit-tested
+where it went down and the drag that followed is still recorded; it costs one
+input more in the tick a finger lands and moves.
 
 **Games run in their own page.** The sandboxed-frame bridge, its message
 protocol and the page-to-frame tilt forwarding are gone. A game runs on its
