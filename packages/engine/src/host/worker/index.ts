@@ -141,7 +141,7 @@ export function runSimulationWorker(
   let failed = false
   /** The missing set last asked for, so a held loop asks once, not per frame. */
   let asked = ""
-  const queue = new LiveInputQueue()
+  const queue = new LiveInputQueue(manifest.inputs)
   const accumulator = new Accumulator({ tickHz: manifest.session.tickHz })
 
   const askFor = (missing: readonly string[]): void => {
@@ -414,6 +414,9 @@ export class WorkerSimulation {
         this.pollers.delete(poll)
       }
     },
+    // The worker host has no pause of its own; a page that stops offering
+    // frames stops the simulation, and `stop` ends it.
+    onPause: () => () => undefined,
   }
 
   private readonly pollers = new Set<() => void>()

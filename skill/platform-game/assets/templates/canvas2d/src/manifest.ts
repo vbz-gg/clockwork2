@@ -24,10 +24,10 @@ export const MANIFEST: Manifest = {
     hasEnding: true,
   },
   inputs: {
-    map: {
-      left: [{ code: "ArrowLeft", label: "Left" }, { code: "KeyA" }],
-      right: [{ code: "ArrowRight", label: "Right" }, { code: "KeyD" }],
-    },
+    // What the game records: a press left and a press right. Which keys
+    // press them is the page's choice, in src/main.ts.
+    left: { min: 0, max: 1, label: "Left" },
+    right: { min: 0, max: 1, label: "Right" },
   },
   counters: [
     { name: "motes", direction: "up", monotonic: true },

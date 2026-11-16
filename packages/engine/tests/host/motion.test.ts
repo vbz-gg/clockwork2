@@ -3,7 +3,7 @@ import {
   MOTION_REFUSALS,
   type MotionEnvironment,
   requestMotion,
-} from "../../src/host/parent/index"
+} from "../../src/host/motion"
 
 /** A browser to ask, every part of it a fake. */
 function browser(overrides: Partial<MotionEnvironment> = {}) {

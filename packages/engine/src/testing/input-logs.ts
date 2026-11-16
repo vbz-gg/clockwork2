@@ -9,18 +9,16 @@
  * They are generated rather than committed, from a seed, so a log is
  * reproducible from two numbers instead of a file.
  *
- * `chaosInputs` and `botInputs` press what the game's own manifest binds,
- * with values across each code's range, edges included: a pointer at the
- * viewport's edge, a stick at full deflection, a burst of wheel notches. A
- * game draws its own controls and hit-tests them in `tick`, so a log that
- * pressed fixed key names would never reach the code that reads them.
- * `chaosLog` and `botLog` are the original fixed-name logs, kept because the
- * probe's golden vectors are pinned to them.
+ * `chaosInputs` and `botInputs` feed the game's own declared inputs, with
+ * values across each input's range, edges included. A game declares its own
+ * inputs and decides in `tick` what they mean, so a log that pressed fixed
+ * names would never reach the code that reads them. `chaosLog` and `botLog`
+ * are the original fixed-name logs, kept only for the probe, whose golden
+ * vectors are pinned to them.
  */
 
 import type { InputEvent } from "../contract.js"
-import { type CodeSpec, describeCode, maxOf } from "../input-codes.js"
-import type { Manifest } from "../manifest/types.js"
+import type { InputDeclaration, Manifest } from "../manifest/types.js"
 import { Prng } from "../prng/index.js"
 
 export const ACTIONS = ["left", "right", "thrust"] as const
@@ -42,7 +40,6 @@ export function chaosLog(seed: string, endTick: number): readonly InputEvent[] {
     if (tick >= endTick) break
     events.push({
       tick,
-      device: "key",
       code: rng.randomChoice(ACTIONS),
       value: rng.randomBoolean() ? 1 : 0,
     })
@@ -69,18 +66,17 @@ export function botLog(seed: string, endTick: number): readonly InputEvent[] {
     if (tick >= endTick) break
 
     if (steering !== null) {
-      events.push({ tick, device: "key", code: steering, value: 0 })
+      events.push({ tick, code: steering, value: 0 })
       steering = null
     } else {
       steering = rng.randomBoolean() ? "left" : "right"
-      events.push({ tick, device: "key", code: steering, value: 1 })
+      events.push({ tick, code: steering, value: 1 })
     }
 
     if (rng.randomBoolean(0.4)) {
       thrusting = !thrusting
       events.push({
         tick,
-        device: "key",
         code: "thrust",
         value: thrusting ? 1 : 0,
       })
@@ -89,124 +85,93 @@ export function botLog(seed: string, endTick: number): readonly InputEvent[] {
   return events
 }
 
-/** One bound code, as a log generator sees it. */
-type Bound = {
-  readonly action: string
-  readonly code: string
-  readonly spec: CodeSpec
+/** One declared input, as a log generator sees it. */
+type Declared = {
+  readonly name: string
+  readonly declaration: InputDeclaration
 }
 
-function boundOf(manifest: Manifest): readonly Bound[] {
-  const bound: Bound[] = []
-  for (const [action, bindings] of Object.entries(manifest.inputs.map)) {
-    for (const binding of bindings) {
-      const spec = describeCode(binding.code)
-      if (spec !== undefined) bound.push({ action, code: binding.code, spec })
-    }
-  }
-  return bound
+function declaredOf(manifest: Manifest): readonly Declared[] {
+  return Object.entries(manifest.inputs).map(([name, declaration]) => ({
+    name,
+    declaration,
+  }))
 }
 
-/** A value `bound` can carry: an edge when `edge`, anything in range otherwise. */
-function valueFor(
-  rng: Prng,
-  bound: Bound,
-  manifest: Manifest,
-  edge: boolean,
-): number {
-  const { spec } = bound
-  if (spec.kind === "press") return rng.randomBoolean() ? 1 : 0
-  const max = maxOf(spec, manifest.inputs.viewport)
-  if (spec.kind === "level") {
-    return edge
-      ? rng.randomChoice([spec.min, max])
-      : rng.randomInt(spec.min, max)
-  }
-  // An impulse is never zero.
-  const size = edge ? max : rng.randomInt(1, Math.min(5, max))
-  return rng.randomBoolean() ? size : -size
+/** A 0-to-1 input reads as a press: held for a while, then let go. */
+function isPress({ declaration }: Declared): boolean {
+  return declaration.min === 0 && declaration.max === 1
 }
 
-function event(tick: number, bound: Bound, value: number): InputEvent {
-  return { tick, device: bound.spec.device, code: bound.action, value }
+/** A value `input` can carry: an edge when `edge`, anywhere in range otherwise. */
+function valueFor(rng: Prng, input: Declared, edge: boolean): number {
+  const { min, max } = input.declaration
+  return edge ? rng.randomChoice([min, max]) : rng.randomInt(min, max)
 }
 
 /**
- * Random inputs from the game's own bindings at random ticks, a quarter of
- * them at the edge of their range. Not a player; a fuzzer.
+ * Random values of the game's own inputs at random ticks, a quarter of them
+ * at the edge of their range. Not a player; a fuzzer.
  */
 export function chaosInputs(
   manifest: Manifest,
   seed: string,
   endTick: number,
 ): readonly InputEvent[] {
-  const bound = boundOf(manifest)
-  if (bound.length === 0) return []
+  const inputs = declaredOf(manifest)
+  if (inputs.length === 0) return []
   const rng = new Prng(`chaos-inputs:${seed}`)
   const events: InputEvent[] = []
   let tick = 0
   while (tick < endTick) {
     tick += rng.randomInt(1, 20)
     if (tick >= endTick) break
-    const pick = rng.randomChoice(bound)
-    events.push(
-      event(tick, pick, valueFor(rng, pick, manifest, rng.randomBoolean(0.25))),
-    )
+    const input = rng.randomChoice(inputs)
+    events.push({
+      tick,
+      code: input.name,
+      value: valueFor(rng, input, rng.randomBoolean(0.25)),
+    })
   }
   return events
 }
 
 /**
- * A plausible player of the game's own controls: holds one press for a
- * while and lets go, puts a pointer where it presses before it presses, and
- * moves sticks, tilt and the wheel now and then.
+ * Someone working the game's own inputs: a press held for a while and let
+ * go, and every other input moved across its range now and then, edges
+ * included. Representative rather than good, so "the run ends inside
+ * maxTicks" is tested against something that keeps playing.
  */
 export function botInputs(
   manifest: Manifest,
   seed: string,
   endTick: number,
 ): readonly InputEvent[] {
-  const bound = boundOf(manifest)
-  const presses = bound.filter((b) => b.spec.kind === "press")
-  const positions = bound.filter(
-    (b) => b.spec.kind === "level" && typeof b.spec.max !== "number",
-  )
-  const levels = bound.filter(
-    (b) => b.spec.kind === "level" && typeof b.spec.max === "number",
-  )
-  const impulses = bound.filter((b) => b.spec.kind === "impulse")
+  const inputs = declaredOf(manifest)
+  const presses = inputs.filter(isPress)
+  const others = inputs.filter((input) => !isPress(input))
   const rng = new Prng(`bot-inputs:${seed}`)
   const events: InputEvent[] = []
-  let holding: Bound | null = null
+  let holding: Declared | null = null
   let tick = 0
   while (tick < endTick) {
     tick += rng.randomInt(6, 40)
     if (tick >= endTick) break
+    // Other inputs first, so a position lands before the press it goes with.
+    if (others.length > 0 && rng.randomBoolean(0.6)) {
+      const input = rng.randomChoice(others)
+      events.push({
+        tick,
+        code: input.name,
+        value: valueFor(rng, input, rng.randomBoolean(0.2)),
+      })
+    }
     if (holding !== null) {
-      events.push(event(tick, holding, 0))
+      events.push({ tick, code: holding.name, value: 0 })
       holding = null
     } else if (presses.length > 0) {
-      const press = rng.randomChoice(presses)
-      // A pointer's own position goes in before its press, as the host
-      // records it, so a hit test in `tick` has somewhere to look.
-      const pointer = press.code.match(/^pointer(\d)/)
-      if (pointer !== null) {
-        for (const at of positions) {
-          if (at.code.startsWith(`pointer${pointer[1]}-`)) {
-            events.push(event(tick, at, valueFor(rng, at, manifest, false)))
-          }
-        }
-      }
-      events.push(event(tick, press, 1))
-      holding = press
-    }
-    if (levels.length > 0 && rng.randomBoolean(0.4)) {
-      const level = rng.randomChoice(levels)
-      events.push(event(tick, level, valueFor(rng, level, manifest, false)))
-    }
-    if (impulses.length > 0 && rng.randomBoolean(0.2)) {
-      const impulse = rng.randomChoice(impulses)
-      events.push(event(tick, impulse, valueFor(rng, impulse, manifest, false)))
+      holding = rng.randomChoice(presses)
+      events.push({ tick, code: holding.name, value: 1 })
     }
   }
   return events

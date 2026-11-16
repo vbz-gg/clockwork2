@@ -36,5 +36,11 @@ const host = new GameHost<View, HTMLElement, Config>({
   },
 })
 
-new InputCapture({ manifest: MANIFEST, queue: host.live as never }).attach()
+// Which keys press the game's inputs is this page's choice; the manifest
+// only says what is recorded.
+new InputCapture({
+  manifest: MANIFEST,
+  queue: host.live as never,
+  keys: { ArrowLeft: "left", KeyA: "left", ArrowRight: "right", KeyD: "right" },
+}).attach()
 host.start()

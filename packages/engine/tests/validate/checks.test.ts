@@ -46,7 +46,7 @@ function manifest(over: Partial<Manifest> = {}): Manifest {
       maxWallSeconds: 120,
       hasEnding: true,
     },
-    inputs: { map: { push: [{ code: "Space" }] } },
+    inputs: { push: { min: 0, max: 1 } },
     counters: [
       { name: "score", direction: "up", monotonic: true },
       { name: "ticksSurvived", direction: "up", monotonic: true },

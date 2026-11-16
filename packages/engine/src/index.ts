@@ -30,7 +30,6 @@ export type {
   Effect,
   GameModule,
   GameModuleSource,
-  InputDevice,
   InputEvent,
   PlainValue,
   Presentation,
@@ -38,7 +37,7 @@ export type {
   Snapshot,
   TerminalReason,
 } from "./contract.js"
-export { INPUT_DEVICES, instantiate, TERMINAL_REASONS } from "./contract.js"
+export { instantiate, TERMINAL_REASONS } from "./contract.js"
 export {
   type CounterDeclaration,
   type CounterDirection,
@@ -66,34 +65,16 @@ export {
   sha256Hex,
 } from "./hash/index.js"
 export {
-  AXIS_UNITS,
-  CODE_ROWS,
-  type CodeKind,
-  type CodeSpec,
-  describeCode,
-  devicesBound,
-  GAMEPAD_AXES,
-  GAMEPAD_BUTTONS,
-  GAMEPAD_SLOTS,
-  MAX_INPUTS_PER_TICK,
-  MAX_MOUSE_MOVEMENT,
-  MAX_WHEEL_NOTCHES,
-  maxOf,
-  POINTER_BUTTONS,
-  POINTER_SLOTS,
-  TILT_UNITS,
-  TRIGGER_UNITS,
-  type Viewport,
-  type ViewportAxis,
-  valueFits,
-} from "./input-codes.js"
-export {
   type AxisOptions,
+  checkInputSpan,
   checkInputs,
+  INPUT_BUDGET_PER_TICK,
   type InputSink,
   type InputSource,
   LiveInputQueue,
+  MAX_INPUTS_PER_TICK,
   type MergeRule,
+  outsideDeclaration,
   type PendingInput,
   quantiseAxis,
   quantisePoint,
@@ -114,7 +95,7 @@ export {
 } from "./loop.js"
 export type {
   AssetDeclaration,
-  InputBinding,
+  InputDeclaration,
   Inputs,
   Manifest,
   ParamSchema,

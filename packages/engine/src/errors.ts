@@ -33,8 +33,11 @@ export const ERROR_CODES = {
   E_INPUT_UNSORTED: "input log is not sorted by tick",
   /** An input carried a value outside the range the device vocabulary allows. */
   E_INPUT_RANGE: "input value is out of range",
-  /** A server's check of a log against the manifest's bindings (`checkInputs`). */
-  E_INPUT_UNBOUND: "an input is not one the manifest binds",
+  /** An input the manifest does not declare, or a value outside its declared range. */
+  E_INPUT_UNDECLARED:
+    "an input is not one the manifest declares, or is out of its range",
+  /** A log holding more inputs than the budget allows (`checkInputs`). */
+  E_INPUT_BUDGET: "a log holds more inputs than any player makes",
   /** The session passed the tick cap its manifest declares. */
   E_TICK_LIMIT: "session passed maxTicks without ending",
   /** A manifest failed validation. */

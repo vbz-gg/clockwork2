@@ -1,16 +1,14 @@
 /**
- * Asking for tilt, on the page that frames a game.
+ * Asking for tilt, on the page a game runs in.
  *
- * The page asks, not the game, for two reasons measured in the browsers'
- * source: a sensor's events never reach a cross-origin frame in Firefox, and
- * iOS shows its permission prompt only from a tap in the document that asks.
- * So a page calls `requestMotion` first thing in its Play button's click,
- * before it starts a run, and hands the answer to `GameFrame.forwardMotion`.
- *
- * Asked after a run has started, the tap is spent, iOS refuses, and a ranked
- * run is gone with the game unsteerable. And iOS remembers a refusal for the
- * page's site until the browser's website data is cleared, so a page cannot
- * ask again: it tells the player.
+ * iOS shows its permission prompt only from a tap, and refuses without
+ * asking once anything has been awaited in that tap's handler. So a page
+ * calls `requestMotion` first thing in its Play button's click, before it
+ * starts a run, and starts the run only after the answer. Asked after a run
+ * has started, the tap is spent, iOS refuses, and a ranked run is gone with
+ * the game unsteerable. iOS remembers a refusal for the site until the
+ * browser's website data is cleared, so a page cannot ask again: it tells the
+ * player.
  *
  * Nothing here touches the browser when the module loads, so a page may
  * import it while rendering on a server.

@@ -67,12 +67,11 @@ export const REFERENCE_MANIFEST: Manifest = {
     hasEnding: true,
   },
   inputs: {
-    map: {
-      left: [{ code: "ArrowLeft", label: "Turn left" }],
-      right: [{ code: "ArrowRight", label: "Turn right" }],
-      thrust: [{ code: "ArrowUp", label: "Thrust" }],
-    },
+    left: { min: 0, max: 1, label: "Turn left" },
+    right: { min: 0, max: 1, label: "Turn right" },
+    thrust: { min: 0, max: 1, label: "Thrust" },
   },
+
   counters: REFERENCE_COUNTERS,
   rankBy: ["score", "ticksSurvived"],
   tiePolicy: "shared",

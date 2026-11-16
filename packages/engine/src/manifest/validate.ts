@@ -16,7 +16,6 @@
  */
 
 import { fail } from "../errors.js"
-import { describeCode } from "../input-codes.js"
 import type {
   Manifest,
   ParamDefinition,
@@ -309,124 +308,90 @@ export function mergeParamDefaults(
 }
 
 /** Every problem with a manifest, in document order. */
-/** The fields `inputs` may carry. Anything else is refused by name. */
-const INPUT_FIELDS = new Set(["map", "viewport"])
+/** A declared input's name: what a recorded input carries as its `code`. */
+const INPUT_NAME = /^[a-z][a-zA-Z0-9]*$/
+/** Enough for any game; a manifest with more is declaring a stream, not inputs. */
+export const MAX_DECLARED_INPUTS = 64
+/** A declared bound fits a 32-bit integer, which every engine stores exactly. */
+const INPUT_BOUND = 2 ** 31 - 1
+const INPUT_FIELDS = new Set(["min", "max", "label"])
 
 /**
- * The input map. Every code must be one a device produces, so a binding that
- * could never fire is refused here rather than found by a player, and each
- * code drives one action, because the host records one action per event.
+ * The inputs a game records, by name and range. A schema 1 binding table is
+ * refused by name, so a manifest written for the old schema says what to
+ * change rather than failing on a field it never heard of.
  */
-function checkInputs(
-  inputs: unknown,
-  capabilities: unknown,
-  issues: Issue[],
-): void {
-  if (!isPlainObject(inputs) || !isPlainObject(inputs.map)) {
+function checkInputDeclarations(inputs: unknown, issues: Issue[]): void {
+  if (!isPlainObject(inputs)) {
     issues.push({
-      at: "inputs.map",
-      message: "must be an object of action to bindings",
+      at: "inputs",
+      message: "must be an object of input name to { min, max }",
     })
     return
   }
-  for (const field of Object.keys(inputs)) {
-    if (INPUT_FIELDS.has(field)) continue
+  const names = Object.keys(inputs)
+  if (names.length > MAX_DECLARED_INPUTS) {
     issues.push({
-      at: `inputs.${field}`,
-      message:
-        field === "controls"
-          ? "was removed in schema 2: a game draws its own controls and binds pointer codes"
-          : "is not a field of inputs",
+      at: "inputs",
+      message: `declares ${names.length} inputs; at most ${MAX_DECLARED_INPUTS}`,
     })
   }
-  const boundBy = new Map<string, string>()
-  let coordinates = false
-  let movement = false
-  for (const [action, bindings] of Object.entries(inputs.map)) {
-    if (!Array.isArray(bindings) || bindings.length === 0) {
+  for (const name of names) {
+    const at = `inputs.${name}`
+    const declaration = inputs[name]
+    if (
+      (name === "map" || name === "controls") &&
+      isPlainObject(declaration) &&
+      declaration.min === undefined
+    ) {
       issues.push({
-        at: `inputs.map.${action}`,
-        message: "must be a non-empty array of bindings",
+        at,
+        message:
+          "is schema 1's; in schema 2 a game declares each input as { min, max } and binds devices in its own code",
       })
       continue
     }
-    bindings.forEach((binding: unknown, index: number) => {
-      const at = `inputs.map.${action}[${index}]`
-      if (!isPlainObject(binding)) {
-        issues.push({ at, message: "must be an object" })
-        return
-      }
-      if (binding.device !== undefined) {
-        issues.push({
-          at: `${at}.device`,
-          message: "was removed in schema 2: the device is read from the code",
-        })
-      }
-      if (binding.label !== undefined && typeof binding.label !== "string") {
-        issues.push({ at: `${at}.label`, message: "must be a string" })
-      }
-      const code = binding.code
-      if (typeof code !== "string" || code.length === 0) {
-        issues.push({
-          at: `${at}.code`,
-          message: "must be a non-empty string",
-        })
-        return
-      }
-      const spec = describeCode(code)
-      if (spec === undefined) {
-        issues.push({
-          at: `${at}.code`,
-          message: `${JSON.stringify(code)} is not a code any device produces`,
-        })
-        return
-      }
-      const earlier = boundBy.get(code)
-      if (earlier !== undefined) {
-        issues.push({
-          at: `${at}.code`,
-          message: `${JSON.stringify(code)} is already bound to ${JSON.stringify(earlier)}; a code drives one action`,
-        })
-      } else {
-        boundBy.set(code, action)
-      }
-      if (typeof spec.max !== "number") coordinates = true
-      if (code === "mouse-dx" || code === "mouse-dy") movement = true
-    })
-  }
-
-  const viewport = inputs.viewport
-  if (viewport !== undefined) {
-    if (
-      !isPlainObject(viewport) ||
-      !isPositiveInteger(viewport.width) ||
-      !isPositiveInteger(viewport.height)
-    ) {
+    if (!INPUT_NAME.test(name)) {
       issues.push({
-        at: "inputs.viewport",
-        message: "must be { width, height } in positive whole units",
+        at,
+        message: "must be a name: a lower-case letter, then letters and digits",
       })
     }
-  } else if (coordinates) {
-    issues.push({
-      at: "inputs.viewport",
-      message:
-        "is required when a pointer position is bound: it is the units the position is measured in",
-    })
+    if (!isPlainObject(declaration)) {
+      issues.push({ at, message: "must be { min, max }" })
+      continue
+    }
+    for (const field of Object.keys(declaration)) {
+      if (!INPUT_FIELDS.has(field)) {
+        issues.push({
+          at: `${at}.${field}`,
+          message: "is not a field of an input",
+        })
+      }
+    }
+    const { min, max, label } = declaration
+    for (const [field, bound] of [
+      ["min", min],
+      ["max", max],
+    ] as const) {
+      if (
+        typeof bound !== "number" ||
+        !Number.isInteger(bound) ||
+        Math.abs(bound) > INPUT_BOUND
+      ) {
+        issues.push({
+          at: `${at}.${field}`,
+          message: `must be a whole number within ${INPUT_BOUND} either side of 0`,
+        })
+      }
+    }
+    if (typeof min === "number" && typeof max === "number" && min > max) {
+      issues.push({ at: `${at}.max`, message: "must not be below min" })
+    }
+    if (label !== undefined && typeof label !== "string") {
+      issues.push({ at: `${at}.label`, message: "must be a string" })
+    }
   }
-  if (
-    movement &&
-    !(isPlainObject(capabilities) && capabilities.pointerLock === true)
-  ) {
-    issues.push({
-      at: "capabilities.pointerLock",
-      message: "must be true to bind mouse-dx or mouse-dy",
-    })
-  }
-}
-
-function isPositiveInteger(value: unknown): boolean {
-  return typeof value === "number" && Number.isInteger(value) && value > 0
 }
 
 export function validateManifest(value: unknown): Issue[] {
@@ -441,7 +406,7 @@ export function validateManifest(value: unknown): Issue[] {
       at: "schemaVersion",
       message:
         m.schemaVersion === 1
-          ? "must be 2: version 1 bound a device beside each code and declared inputs.controls, and both are gone"
+          ? "must be 2: schema 1 bound device codes in inputs.map and declared inputs.controls; schema 2 declares each input by name and range"
           : "must be 2",
     })
   }
@@ -549,7 +514,7 @@ export function validateManifest(value: unknown): Issue[] {
     })
   }
 
-  checkInputs(m.inputs, m.capabilities, issues)
+  checkInputDeclarations(m.inputs, issues)
 
   const capabilities = m.capabilities
   if (!isPlainObject(capabilities)) {

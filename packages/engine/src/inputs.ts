@@ -9,23 +9,46 @@
  * simulation is *about to run*, which is what makes the tick the only timing
  * data a recording needs.
  *
- * Analog sources are quantised to integers before the simulation sees them. A
- * stick reading is a float from a device driver, and floats from a device are
- * not reproducible even on the same machine.
+ * An input is one the manifest declares, by name, carrying a whole number in
+ * its declared range. Each game decides what it records; this module holds
+ * the log to what the game declared.
  */
 
-import type { InputDevice, InputEvent } from "./contract.js"
-import { INPUT_DEVICES } from "./contract.js"
+import type { InputEvent } from "./contract.js"
 import { fail } from "./errors.js"
-import {
-  type CodeSpec,
-  describeCode,
-  MAX_INPUTS_PER_TICK,
-  valueFits,
-} from "./input-codes.js"
-import type { Inputs } from "./manifest/types.js"
+import type { InputDeclaration, Inputs } from "./manifest/types.js"
 
-const DEVICES = new Set<string>(INPUT_DEVICES)
+/**
+ * The most inputs any single tick may hold. A safety net under the budget
+ * below: an honest burst stays far under it.
+ */
+export const MAX_INPUTS_PER_TICK = 256
+
+/**
+ * How many inputs a log may hold per tick it covers, on average. A server
+ * holds a whole run to `INPUT_BUDGET_PER_TICK x (endTick + 1)` and each chunk
+ * to the same rate over the ticks it covers, so a recording cannot grow
+ * without bound however long the run. Measured: see the engine guide's table
+ * of recording sizes, which says how each number was produced. The budget is
+ * four times the busiest honest rate measured.
+ */
+export const INPUT_BUDGET_PER_TICK = 8
+
+/** Why `value` is not one `declaration` allows, or null when it is. */
+export function outsideDeclaration(
+  declaration: InputDeclaration,
+  value: number,
+): string | null {
+  if (!Number.isInteger(value)) return `${String(value)} is not a whole number`
+  if (value < declaration.min || value > declaration.max) {
+    return `${value} is outside ${declaration.min} to ${declaration.max}`
+  }
+  return null
+}
+
+function declared(inputs: Inputs, code: string): InputDeclaration | undefined {
+  return Object.hasOwn(inputs, code) ? inputs[code] : undefined
+}
 
 /** Where a running simulation gets its inputs, live or recorded. */
 export interface InputSource {
@@ -47,6 +70,12 @@ const EMPTY: readonly InputEvent[] = Object.freeze([])
  * zero, which let `NaN` and `Infinity` through; they then stalled the replay
  * forever, so every consumer needed a timeout. Nothing here can produce a
  * value that is not a finite integer.
+ *
+ * A log from before recording version 3 carries a `device` on each input,
+ * which is accepted and ignored. A value of `-0` is refused: a recording is
+ * JSON, and stored as JSON a `-0` comes back as `0`, so a run replayed from
+ * what was submitted and the same run rebuilt from stored chunks would read
+ * different values.
  */
 export function validateInputLog(
   events: readonly InputEvent[],
@@ -67,22 +96,16 @@ export function validateInputLog(
       })
     }
     previousTick = event.tick
-    if (!DEVICES.has(event.device)) {
-      fail("E_INPUT_RANGE", {
-        tick: event.tick,
-        detail: `unknown device ${JSON.stringify(event.device)}`,
-      })
-    }
     if (typeof event.code !== "string" || event.code.length === 0) {
       fail("E_INPUT_RANGE", {
         tick: event.tick,
         detail: `input ${i} has no code`,
       })
     }
-    if (!Number.isInteger(event.value)) {
+    if (!Number.isInteger(event.value) || Object.is(event.value, -0)) {
       fail("E_INPUT_RANGE", {
         tick: event.tick,
-        detail: `input ${i} has a non-integer value ${String(event.value)}`,
+        detail: `input ${i} has value ${Object.is(event.value, -0) ? "-0" : String(event.value)}, which is not a whole number a recording keeps`,
       })
     }
     if (options.endTick !== undefined && event.tick > options.endTick) {
@@ -101,11 +124,17 @@ export function validateInputLog(
 export class RecordedInputSource implements InputSource {
   private cursor = 0
 
+  private readonly events: readonly InputEvent[]
+
   constructor(
-    private readonly events: readonly InputEvent[],
+    events: readonly InputEvent[],
     options: { readonly endTick?: number } = {},
   ) {
     validateInputLog(events, options)
+    // Copies of the three fields a simulation reads, so an older
+    // recording's `device`, or anything else riding on an input, never
+    // reaches `tick`.
+    this.events = events.map(({ tick, code, value }) => ({ tick, code, value }))
   }
 
   /** Skips everything before `tick`, for a replay that starts part way in. */
@@ -152,25 +181,26 @@ export class RecordedInputSource implements InputSource {
 }
 
 /**
- * How a pending input joins others of the same device and action before the
- * tick it lands on. `"latest"` keeps only the last, for a reading that holds
- * (a stick, tilt): what the tick needs is where it ended up. `"sum"` adds
- * them, for an amount (wheel notches, mouse movement), and drops a sum of
- * nothing. Left out, every input is kept in order, which a press and a
- * pointer position need: a game hit-testing a touch reads the position
- * before the press in the same tick.
+ * How a pending input joins others of the same name before the tick it lands
+ * on. `"latest"` keeps only the last value, for a reading that holds (a
+ * stick, tilt, a pointer's position): what the tick needs is where it ended
+ * up. `"sum"` adds them up, for an amount (wheel notches, mouse movement),
+ * and drops a sum of nothing. Left out, every input is kept in order, which a
+ * press needs.
+ *
+ * A merge happens in place, where the first input of that name stands, so a
+ * pointer's position recorded before its press stays before it.
  */
 export type MergeRule = "latest" | "sum"
 
 /** A device event the host has seen but not yet stamped. */
 export interface PendingInput {
-  readonly device: InputDevice
   readonly code: string
   readonly value: number
   readonly merge?: MergeRule
 }
 
-/** Where the host's input capture puts what it sees: a live queue, or a worker's. */
+/** Where the device helpers put what they see: a live queue, or a worker's. */
 export interface InputSink {
   push(input: PendingInput): void
   /**
@@ -179,48 +209,72 @@ export interface InputSink {
    * a function that stops it.
    */
   addPoller(poll: () => void): () => void
+  /**
+   * Runs `release` when the session pauses, before the queue stops taking
+   * input, so whatever is held is let go in the log. Returns a function that
+   * stops it.
+   */
+  onPause(release: () => void): () => void
 }
 
 /**
- * Collects device events between frames and stamps them at the moment the
+ * Collects inputs between frames and stamps them at the moment the
  * simulation reaches a tick. The log it builds is the recording.
+ *
+ * It knows the manifest's inputs and refuses one the manifest does not
+ * declare, or a value outside its range, where it is pushed: a misspelt name
+ * in a game's page is found while the author plays, not when a server throws
+ * the run away.
  */
 export class LiveInputQueue implements InputSource, InputSink {
   private pending: PendingInput[] = []
   private readonly log: InputEvent[] = []
   private readonly pollers = new Set<() => void>()
+  private readonly pauseListeners = new Set<() => void>()
+  /** What a summed amount owed past its range, carried into later ticks. */
+  private readonly carried = new Map<string, number>()
+  private paused = false
 
-  /** Called by the host from a device event handler. */
+  constructor(private readonly inputs: Inputs) {}
+
   push(pushed: PendingInput): void {
-    // A recording is JSON, which writes -0 as 0, so a live -0 would replay as
-    // 0 and a game dividing by it would see -Infinity live and Infinity in
-    // the replay. Rounding a small negative reading makes -0 easily.
+    // -0 would be recorded as 0 by JSON and replayed differently.
     const input = Object.is(pushed.value, -0) ? { ...pushed, value: 0 } : pushed
-    if (!DEVICES.has(input.device)) {
-      fail("E_INPUT_RANGE", {
-        detail: `unknown device ${JSON.stringify(input.device)}`,
+    if (this.paused) return
+    const declaration = declared(this.inputs, input.code)
+    if (declaration === undefined) {
+      fail("E_INPUT_UNDECLARED", {
+        detail: `${JSON.stringify(input.code)} is not an input the manifest declares`,
       })
     }
     if (!Number.isInteger(input.value)) {
       fail("E_INPUT_RANGE", {
-        detail: `input value must be an integer, got ${String(input.value)}; quantise analog sources first`,
+        detail: `input value must be a whole number, got ${String(input.value)}`,
+      })
+    }
+    // A sum may pass its range on the way; it is clamped when it is stamped.
+    const outside =
+      input.merge === "sum"
+        ? null
+        : outsideDeclaration(declaration, input.value)
+    if (outside !== null) {
+      fail("E_INPUT_UNDECLARED", {
+        detail: `${input.code}: ${outside}`,
       })
     }
     if (input.merge !== undefined) {
       const at = this.pending.findIndex(
-        (other) =>
-          other.merge === input.merge &&
-          other.device === input.device &&
-          other.code === input.code,
+        (other) => other.merge === input.merge && other.code === input.code,
       )
       if (at !== -1) {
-        const earlier = this.pending[at] as PendingInput
-        this.pending.splice(at, 1)
-        if (input.merge === "sum") {
-          const total = earlier.value + input.value
-          if (total !== 0) this.pending.push({ ...input, value: total })
-          return
+        if (input.merge === "latest") {
+          this.pending[at] = input
+        } else {
+          const total = (this.pending[at] as PendingInput).value + input.value
+          if (total === 0) this.pending.splice(at, 1)
+          else this.pending[at] = { ...input, value: total }
         }
+        return
       }
       if (input.merge === "sum" && input.value === 0) return
     }
@@ -239,21 +293,74 @@ export class LiveInputQueue implements InputSource, InputSink {
     for (const poll of this.pollers) poll()
   }
 
+  onPause(release: () => void): () => void {
+    this.pauseListeners.add(release)
+    return () => {
+      this.pauseListeners.delete(release)
+    }
+  }
+
+  /**
+   * The session paused: whatever is held is released, and nothing more is
+   * taken until `resume`. A press while paused would land on the tick the
+   * session resumes at, which is not when the player made it.
+   */
+  pause(): void {
+    if (this.paused) return
+    for (const release of this.pauseListeners) release()
+    this.paused = true
+  }
+
+  resume(): void {
+    this.paused = false
+  }
+
   take(tick: number): readonly InputEvent[] {
+    this.settleSums()
     if (this.pending.length === 0) return EMPTY
     const stamped: InputEvent[] = []
     for (const input of this.pending) {
-      const event: InputEvent = {
-        tick,
-        device: input.device,
-        code: input.code,
-        value: input.value,
-      }
+      const event: InputEvent = { tick, code: input.code, value: input.value }
       stamped.push(event)
       this.log.push(event)
     }
     this.pending.length = 0
     return stamped
+  }
+
+  /**
+   * Holds each summed amount to its declared range. The excess is carried
+   * into later ticks, up to one range's width, and anything past that is
+   * dropped: a flick faster than the game declared it could record is
+   * recorded at the most it can carry, never refused.
+   */
+  private settleSums(): void {
+    for (const [code, owed] of this.carried) {
+      const at = this.pending.findIndex(
+        (other) => other.merge === "sum" && other.code === code,
+      )
+      if (at === -1) {
+        this.pending.unshift({ code, value: owed, merge: "sum" })
+      } else {
+        const earlier = this.pending[at] as PendingInput
+        this.pending[at] = { ...earlier, value: earlier.value + owed }
+      }
+    }
+    this.carried.clear()
+    for (let i = this.pending.length - 1; i >= 0; i--) {
+      const input = this.pending[i] as PendingInput
+      if (input.merge !== "sum") continue
+      const declaration = declared(this.inputs, input.code) as InputDeclaration
+      const clamped = Math.min(
+        declaration.max,
+        Math.max(declaration.min, input.value),
+      )
+      const width = declaration.max - declaration.min
+      const excess = Math.min(width, Math.max(-width, input.value - clamped))
+      if (excess !== 0) this.carried.set(input.code, excess)
+      if (clamped === 0) this.pending.splice(i, 1)
+      else this.pending[i] = { ...input, value: clamped }
+    }
   }
 
   /** The whole log so far, which is what a recording carries. */
@@ -268,44 +375,57 @@ export class LiveInputQueue implements InputSource, InputSink {
   reset(): void {
     this.pending.length = 0
     this.log.length = 0
+    this.carried.clear()
   }
 }
 
 /**
- * Checks a log against the manifest it was played under: every input is one
- * a binding produces, with a value that binding's code can carry, and no
- * tick holds more than `MAX_INPUTS_PER_TICK`. Throws `E_INPUT_UNBOUND` at the
- * first that is not.
+ * Checks a run's whole log against the manifest it was played under: every
+ * input is one the manifest declares, with a value in its range; no tick
+ * holds more than `MAX_INPUTS_PER_TICK`; and the run holds no more than
+ * `INPUT_BUDGET_PER_TICK x (endTick + 1)`.
  *
- * The browser's host only ever records what the manifest binds, but the
- * code in a game's frame is the game's, and a log reaches a server from
- * anywhere. This is what makes "each game decides what is recorded" hold for
- * every log a server ranks, not only for the honest ones. A server runs it on
- * what it receives, against the manifest it stored for the version, never
- * against one the game's own code exports.
- *
- * It checks the log's shape first (`validateInputLog`), so a caller needs one
- * call.
+ * A browser following the manifest records nothing else, but the code in a
+ * game's page is the game's, and a log reaches a server from anywhere. This
+ * makes "each game decides what is recorded" hold for every log a server
+ * ranks. A server runs it against the manifest it stored for the version,
+ * never one the game's own code exports. It checks the log's shape first.
  */
 export function checkInputs(
   events: readonly InputEvent[],
   inputs: Inputs,
+  options: { readonly endTick: number },
 ): void {
-  validateInputLog(events)
-  // What each action may receive, per device: the specs of every code bound
-  // to it. A recorded event carries the action, not the code, and one
-  // action can bind a press and a coordinate of the same device.
-  const allowed = new Map<string, CodeSpec[]>()
-  for (const [action, bindings] of Object.entries(inputs.map)) {
-    for (const binding of bindings) {
-      const spec = describeCode(binding.code)
-      if (spec === undefined) continue
-      const key = `${spec.device}\u0000${action}`
-      const specs = allowed.get(key)
-      if (specs === undefined) allowed.set(key, [spec])
-      else specs.push(spec)
+  validateInputLog(events, { endTick: options.endTick })
+  checkDeclared(events, inputs)
+  checkBudget(events.length, options.endTick + 1)
+}
+
+/**
+ * The same check for a slice of a log: the inputs after tick `afterTick`
+ * through `throughTick`, held to the budget for the ticks they cover. A
+ * server runs it on each chunk as it arrives, so a run cannot store more
+ * than its budget before it is submitted. `afterTick` is -1 for the first.
+ */
+export function checkInputSpan(
+  events: readonly InputEvent[],
+  inputs: Inputs,
+  span: { readonly afterTick: number; readonly throughTick: number },
+): void {
+  validateInputLog(events, { endTick: span.throughTick })
+  for (const event of events) {
+    if (event.tick <= span.afterTick) {
+      fail("E_INPUT_RANGE", {
+        tick: event.tick,
+        detail: `an input at tick ${event.tick} is not after tick ${span.afterTick}`,
+      })
     }
   }
+  checkDeclared(events, inputs)
+  checkBudget(events.length, span.throughTick - span.afterTick)
+}
+
+function checkDeclared(events: readonly InputEvent[], inputs: Inputs): void {
   let tick = -1
   let inTick = 0
   for (let i = 0; i < events.length; i++) {
@@ -316,24 +436,34 @@ export function checkInputs(
     }
     inTick++
     if (inTick > MAX_INPUTS_PER_TICK) {
-      fail("E_INPUT_UNBOUND", {
+      fail("E_INPUT_BUDGET", {
         tick,
         detail: `more than ${MAX_INPUTS_PER_TICK} inputs in one tick`,
       })
     }
-    const specs = allowed.get(`${event.device}\u0000${event.code}`)
-    if (specs === undefined) {
-      fail("E_INPUT_UNBOUND", {
+    const declaration = declared(inputs, event.code)
+    if (declaration === undefined) {
+      fail("E_INPUT_UNDECLARED", {
         tick,
-        detail: `input ${i}: no ${event.device} code is bound to ${JSON.stringify(event.code)}`,
+        detail: `input ${i}: ${JSON.stringify(event.code)} is not an input the manifest declares`,
       })
     }
-    if (!specs.some((spec) => valueFits(spec, event.value, inputs.viewport))) {
-      fail("E_INPUT_UNBOUND", {
+    const outside = outsideDeclaration(declaration, event.value)
+    if (outside !== null) {
+      fail("E_INPUT_UNDECLARED", {
         tick,
-        detail: `input ${i}: ${String(event.value)} is not a value the ${event.device} codes bound to ${JSON.stringify(event.code)} carry`,
+        detail: `input ${i}: ${event.code}: ${outside}`,
       })
     }
+  }
+}
+
+function checkBudget(count: number, ticks: number): void {
+  const budget = INPUT_BUDGET_PER_TICK * Math.max(ticks, 1)
+  if (count > budget) {
+    fail("E_INPUT_BUDGET", {
+      detail: `${count} inputs over ${ticks} ticks, past the budget of ${budget}`,
+    })
   }
 }
 

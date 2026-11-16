@@ -106,7 +106,6 @@ test.describe("fuzz", { tag: "@nightly" }, () => {
               tick += low + (next() % span)
               inputs.push({
                 tick,
-                device: "key",
                 code: CODES[next() % 4] as string,
                 value: 1,
               })

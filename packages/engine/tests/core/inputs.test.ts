@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test"
 import type { InputEvent } from "../../src/contract"
-import { MAX_INPUTS_PER_TICK } from "../../src/input-codes"
 import {
+  checkInputSpan,
   checkInputs,
+  INPUT_BUDGET_PER_TICK,
   LiveInputQueue,
+  MAX_INPUTS_PER_TICK,
   quantiseAxis,
   quantisePoint,
   RecordedInputSource,
@@ -13,10 +15,21 @@ import type { Inputs } from "../../src/manifest/types"
 
 const event = (tick: number, code = "left", value = 1): InputEvent => ({
   tick,
-  device: "key",
   code,
   value,
 })
+
+/** The inputs the queue tests declare. */
+const INPUTS: Inputs = {
+  left: { min: 0, max: 1 },
+  right: { min: 0, max: 1 },
+  thrust: { min: 0, max: 1 },
+  tap: { min: 0, max: 1 },
+  aimX: { min: 0, max: 32 },
+  aimY: { min: 0, max: 18 },
+  steer: { min: -10, max: 10 },
+  zoom: { min: -5, max: 5 },
+}
 
 describe("input log validation", () => {
   test("accepts a sorted log", () => {
@@ -41,22 +54,32 @@ describe("input log validation", () => {
     }
   })
 
-  test("refuses a non-integer value", () => {
-    expect(() => validateInputLog([{ ...event(0), value: 0.5 }])).toThrow(
-      /E_INPUT_RANGE/,
-    )
-    expect(() =>
-      validateInputLog([{ ...event(0), value: Number.NaN }]),
-    ).toThrow(/E_INPUT_RANGE/)
+  test("refuses a non-integer value, and -0", () => {
+    // Stored as JSON, -0 comes back as 0, so a run replayed from what was
+    // submitted and the same run rebuilt from stored chunks would differ.
+    for (const value of [0.5, Number.NaN, -0]) {
+      expect(
+        () => validateInputLog([{ ...event(0), value }]),
+        String(value),
+      ).toThrow(/E_INPUT_RANGE/)
+    }
   })
 
-  test("refuses an unknown device and an empty code", () => {
-    expect(() =>
-      validateInputLog([{ ...event(0), device: "telepathy" as never }]),
-    ).toThrow(/E_INPUT_RANGE/)
+  test("refuses an empty code", () => {
     expect(() => validateInputLog([{ ...event(0), code: "" }])).toThrow(
       /E_INPUT_RANGE/,
     )
+  })
+
+  test("accepts and ignores the device an older recording carries", () => {
+    // Recording versions 1 and 2 named a device on every input. A frozen
+    // recording must still replay, so the field is read past, not refused.
+    const older = [{ tick: 0, device: "key", code: "left", value: 1 }]
+    expect(() =>
+      validateInputLog(older as unknown as InputEvent[]),
+    ).not.toThrow()
+    const source = new RecordedInputSource(older as unknown as InputEvent[])
+    expect(source.take(0)).toEqual([{ tick: 0, code: "left", value: 1 }])
   })
 
   test("refuses an input past the end of the run", () => {
@@ -84,6 +107,14 @@ describe("RecordedInputSource", () => {
     expect(source.consumed).toBe(4)
   })
 
+  test("hands out copies, so nothing riding on an input reaches tick", () => {
+    const log = [{ ...event(0), extra: "x" }] as unknown as InputEvent[]
+    const source = new RecordedInputSource(log)
+    const [taken] = source.take(0)
+    expect(taken).toEqual({ tick: 0, code: "left", value: 1 })
+    expect(taken).not.toBe(log[0])
+  })
+
   test("refuses to skip a tick that had input waiting", () => {
     // Silently flushing a late input is how Clockwork 1's recorded source
     // papered over tick drift instead of failing loudly.
@@ -98,81 +129,113 @@ describe("RecordedInputSource", () => {
   })
 })
 
+const taken = (queue: LiveInputQueue, tick = 0) =>
+  queue.take(tick).map((e) => [e.code, e.value])
+
 describe("LiveInputQueue", () => {
   test("stamps an input with the tick that is about to run", () => {
     // This is the whole difference from Clockwork 1, which stamped at drain
     // time so the same keystroke landed on a different tick at a different
     // frame rate.
-    const queue = new LiveInputQueue()
-    queue.push({ device: "key", code: "left", value: 1 })
-    queue.push({ device: "key", code: "thrust", value: 1 })
-    const taken = queue.take(42)
-    expect(taken.map((e) => e.tick)).toEqual([42, 42])
+    const queue = new LiveInputQueue(INPUTS)
+    queue.push({ code: "left", value: 1 })
+    queue.push({ code: "thrust", value: 1 })
+    const stamped = queue.take(42)
+    expect(stamped.map((e) => e.tick)).toEqual([42, 42])
     expect(queue.pendingCount).toBe(0)
     expect(queue.take(43).length).toBe(0)
     expect(queue.recorded().length).toBe(2)
   })
 
-  test("refuses a non-integer value at the point of entry", () => {
-    const queue = new LiveInputQueue()
-    expect(() =>
-      queue.push({ device: "gamepad", code: "axis0", value: 0.7 }),
-    ).toThrow(/E_INPUT_RANGE/)
+  test("refuses an input the manifest does not declare, where it is pushed", () => {
+    // A misspelt name in a game's page is found while its author plays, not
+    // when a server throws the run away.
+    const queue = new LiveInputQueue(INPUTS)
+    expect(() => queue.push({ code: "jmup", value: 1 })).toThrow(
+      /E_INPUT_UNDECLARED/,
+    )
+    expect(() => queue.push({ code: "toString", value: 1 })).toThrow(
+      /E_INPUT_UNDECLARED/,
+    )
   })
 
-  test("a level marked latest keeps only the last value of a tick", () => {
-    // A stick polled three times before a tick runs needs one input, where
-    // it ended up, not three.
-    const queue = new LiveInputQueue()
-    queue.push({ device: "gamepad", code: "steer", value: 10, merge: "latest" })
-    queue.push({ device: "key", code: "jump", value: 1 })
-    queue.push({ device: "gamepad", code: "steer", value: 40, merge: "latest" })
-    queue.push({ device: "gamepad", code: "lean", value: 5, merge: "latest" })
-    const taken = queue.take(3)
-    expect(taken.map((e) => [e.code, e.value])).toEqual([
-      ["jump", 1],
-      ["steer", 40],
-      ["lean", 5],
-    ])
-    // The merge rule is the queue's business, not the log's.
-    expect(Object.keys(taken[1] ?? {}).sort()).toEqual([
-      "code",
-      "device",
-      "tick",
-      "value",
+  test("refuses a value outside its declared range, and a fraction", () => {
+    const queue = new LiveInputQueue(INPUTS)
+    expect(() => queue.push({ code: "steer", value: 11 })).toThrow(
+      /E_INPUT_UNDECLARED/,
+    )
+    expect(() => queue.push({ code: "steer", value: 0.7 })).toThrow(
+      /E_INPUT_RANGE/,
+    )
+  })
+
+  test("turns -0 into 0", () => {
+    const queue = new LiveInputQueue(INPUTS)
+    queue.push({ code: "steer", value: -0 })
+    expect(Object.is(queue.take(0)[0]?.value, 0)).toBe(true)
+  })
+
+  test("a level merged as latest keeps the last value, where the first stood", () => {
+    // In place, so a pointer's position recorded before its press stays
+    // before it, and the tick holds one value per level.
+    const queue = new LiveInputQueue(INPUTS)
+    queue.push({ code: "aimX", value: 10, merge: "latest" })
+    queue.push({ code: "aimY", value: 15, merge: "latest" })
+    queue.push({ code: "tap", value: 1 })
+    queue.push({ code: "aimX", value: 11, merge: "latest" })
+    queue.push({ code: "aimY", value: 16, merge: "latest" })
+    expect(taken(queue)).toEqual([
+      ["aimX", 11],
+      ["aimY", 16],
+      ["tap", 1],
     ])
     // And it never reaches across ticks.
-    queue.push({ device: "gamepad", code: "steer", value: 41, merge: "latest" })
-    expect(queue.take(4).map((e) => e.value)).toEqual([41])
+    queue.push({ code: "aimX", value: 12, merge: "latest" })
+    expect(taken(queue, 1)).toEqual([["aimX", 12]])
   })
 
-  test("an amount marked sum is added up, and a sum of nothing is dropped", () => {
-    const queue = new LiveInputQueue()
-    queue.push({ device: "wheel", code: "zoom", value: 2, merge: "sum" })
-    queue.push({ device: "wheel", code: "zoom", value: 3, merge: "sum" })
-    expect(queue.take(1).map((e) => e.value)).toEqual([5])
-    queue.push({ device: "wheel", code: "zoom", value: 2, merge: "sum" })
-    queue.push({ device: "wheel", code: "zoom", value: -2, merge: "sum" })
-    queue.push({ device: "wheel", code: "zoom", value: 0, merge: "sum" })
+  test("an amount merged as sum is added up, and a sum of nothing is dropped", () => {
+    const queue = new LiveInputQueue(INPUTS)
+    queue.push({ code: "zoom", value: 2, merge: "sum" })
+    queue.push({ code: "zoom", value: 3, merge: "sum" })
+    expect(taken(queue)).toEqual([["zoom", 5]])
+    queue.push({ code: "zoom", value: 2, merge: "sum" })
+    queue.push({ code: "zoom", value: -2, merge: "sum" })
+    queue.push({ code: "zoom", value: 0, merge: "sum" })
+    expect(queue.take(1)).toEqual([])
+  })
+
+  test("a sum past its range is clamped, and the excess carried, up to one range", () => {
+    // A flick faster than the game declared it could record is recorded at
+    // the most it can carry, never refused.
+    const queue = new LiveInputQueue(INPUTS)
+    queue.push({ code: "zoom", value: 4, merge: "sum" })
+    queue.push({ code: "zoom", value: 4, merge: "sum" })
+    expect(taken(queue)).toEqual([["zoom", 5]])
+    expect(taken(queue, 1)).toEqual([["zoom", 3]])
     expect(queue.take(2)).toEqual([])
+    // Past one range's width, the rest is dropped.
+    queue.push({ code: "zoom", value: 99, merge: "sum" })
+    expect(taken(queue, 3)).toEqual([["zoom", 5]])
+    expect(taken(queue, 4)).toEqual([["zoom", 5]])
+    expect(taken(queue, 5)).toEqual([["zoom", 5]])
+    expect(queue.take(6)).toEqual([])
   })
 
-  test("presses and pointer positions are never merged", () => {
-    // A game hit-testing a touch reads the position before the press in the
-    // same tick, so order and every value matter.
-    const queue = new LiveInputQueue()
-    queue.push({ device: "pointer", code: "aimX", value: 3 })
-    queue.push({ device: "pointer", code: "touch", value: 1 })
-    queue.push({ device: "pointer", code: "aimX", value: 4 })
-    expect(queue.take(0).map((e) => [e.code, e.value])).toEqual([
-      ["aimX", 3],
-      ["touch", 1],
-      ["aimX", 4],
+  test("presses are never merged", () => {
+    const queue = new LiveInputQueue(INPUTS)
+    queue.push({ code: "tap", value: 1 })
+    queue.push({ code: "tap", value: 0 })
+    queue.push({ code: "tap", value: 1 })
+    expect(taken(queue)).toEqual([
+      ["tap", 1],
+      ["tap", 0],
+      ["tap", 1],
     ])
   })
 
   test("a poller runs on each poll until it is removed", () => {
-    const queue = new LiveInputQueue()
+    const queue = new LiveInputQueue(INPUTS)
     let polled = 0
     const stop = queue.addPoller(() => {
       polled++
@@ -184,10 +247,36 @@ describe("LiveInputQueue", () => {
     expect(polled).toBe(2)
   })
 
+  test("a pause lets go of what is held, then takes nothing until resume", () => {
+    // A press while paused would land on the tick the run resumes at,
+    // which is not when the player made it.
+    const queue = new LiveInputQueue(INPUTS)
+    const stop = queue.onPause(() => queue.push({ code: "left", value: 0 }))
+    queue.pause()
+    queue.pause()
+    queue.push({ code: "right", value: 1 })
+    expect(taken(queue)).toEqual([["left", 0]])
+    queue.resume()
+    queue.push({ code: "right", value: 1 })
+    expect(taken(queue, 1)).toEqual([["right", 1]])
+    stop()
+    queue.pause()
+    expect(queue.take(2)).toEqual([])
+  })
+
+  test("reset empties what is pending, what was recorded, and what was carried", () => {
+    const queue = new LiveInputQueue(INPUTS)
+    queue.push({ code: "zoom", value: 9, merge: "sum" })
+    queue.take(0)
+    queue.reset()
+    expect(queue.recorded()).toEqual([])
+    expect(queue.take(1)).toEqual([])
+  })
+
   test("the log it builds validates", () => {
-    const queue = new LiveInputQueue()
+    const queue = new LiveInputQueue(INPUTS)
     for (let tick = 0; tick < 100; tick += 7) {
-      queue.push({ device: "key", code: "left", value: tick % 2 })
+      queue.push({ code: "left", value: tick % 2 })
       queue.take(tick)
     }
     expect(() => validateInputLog(queue.recorded())).not.toThrow()
@@ -235,70 +324,87 @@ describe("quantisation", () => {
 })
 
 describe("checking a log against the manifest", () => {
-  const INPUTS: Inputs = {
-    map: {
-      jump: [{ code: "Space" }, { code: "gamepad0-button0" }],
-      touch: [{ code: "pointer0" }],
-      aimX: [{ code: "pointer0-x" }],
-      steer: [{ code: "gamepad0-axis0" }],
-      zoom: [{ code: "wheel-y" }],
-      lean: [{ code: "tilt-x" }],
-    },
-    viewport: { width: 320, height: 480 },
-  }
-  const at = (
-    tick: number,
-    device: InputEvent["device"],
-    code: string,
-    value: number,
-  ): InputEvent => ({ tick, device, code, value })
-
-  test("a log of bound inputs within their ranges passes", () => {
+  test("a log of declared inputs within their ranges passes", () => {
     expect(() =>
       checkInputs(
         [
-          at(0, "key", "jump", 1),
-          at(0, "gamepad", "jump", 0),
-          at(1, "pointer", "aimX", 0),
-          at(1, "pointer", "aimX", 320),
-          at(1, "pointer", "touch", 1),
-          at(2, "gamepad", "steer", -100),
-          at(2, "wheel", "zoom", -3),
-          at(3, "motion", "lean", 100),
+          event(0, "tap", 1),
+          event(1, "aimX", 0),
+          event(1, "aimX", 32),
+          event(2, "steer", -10),
+          event(3, "zoom", 5),
         ],
         INPUTS,
+        { endTick: 3 },
       ),
     ).not.toThrow()
   })
 
-  // Each is a log a browser following the manifest could not have made.
+  // Each is a log a page following the manifest could not have made.
   const REFUSED: readonly [string, InputEvent][] = [
-    ["an action nothing binds", at(0, "key", "fly", 1)],
-    ["a device the action is not bound to", at(0, "wheel", "jump", 1)],
-    ["a press that is not 0 or 1", at(0, "key", "jump", 7)],
-    ["a position past the viewport", at(0, "pointer", "aimX", 321)],
-    ["a position below zero", at(0, "pointer", "aimX", -1)],
-    ["a stick past full deflection", at(0, "gamepad", "steer", 101)],
-    ["a wheel input of nothing", at(0, "wheel", "zoom", 0)],
-    ["tilt past full gravity", at(0, "motion", "lean", -101)],
+    ["a name the manifest does not declare", event(0, "fly", 1)],
+    ["a name inherited by every object", event(0, "constructor", 1)],
+    ["a value past the top of its range", event(0, "aimX", 33)],
+    ["a value below the bottom", event(0, "steer", -11)],
   ]
   for (const [name, input] of REFUSED) {
     test(`refuses ${name}`, () => {
-      expect(() => checkInputs([input], INPUTS)).toThrow(/E_INPUT_UNBOUND/)
+      expect(() => checkInputs([input], INPUTS, { endTick: 0 })).toThrow(
+        /E_INPUT_UNDECLARED/,
+      )
     })
   }
 
   test("refuses more inputs in one tick than a person could make", () => {
     const flood = Array.from({ length: MAX_INPUTS_PER_TICK + 1 }, () =>
-      at(5, "key", "jump", 1),
+      event(5, "tap", 1),
     )
-    expect(() => checkInputs(flood, INPUTS)).toThrow(/E_INPUT_UNBOUND@5/)
-    expect(() => checkInputs(flood.slice(1), INPUTS)).not.toThrow()
+    expect(() => checkInputs(flood, INPUTS, { endTick: 10_000 })).toThrow(
+      /E_INPUT_BUDGET@5/,
+    )
+    expect(() =>
+      checkInputs(flood.slice(1), INPUTS, { endTick: 10_000 }),
+    ).not.toThrow()
+  })
+
+  test("refuses a run holding more than its budget, however its ticks are spread", () => {
+    const ticks = 100
+    const budget = INPUT_BUDGET_PER_TICK * ticks
+    const log = Array.from({ length: budget + 1 }, (_, i) =>
+      event(i % ticks, "tap", 1),
+    ).sort((a, b) => a.tick - b.tick)
+    expect(() => checkInputs(log, INPUTS, { endTick: ticks - 1 })).toThrow(
+      /E_INPUT_BUDGET/,
+    )
+    expect(() =>
+      checkInputs(log.slice(1), INPUTS, { endTick: ticks - 1 }),
+    ).not.toThrow()
   })
 
   test("checks the log's shape first", () => {
     expect(() =>
-      checkInputs([at(5, "key", "jump", 1), at(4, "key", "jump", 0)], INPUTS),
+      checkInputs([event(5), event(4)], INPUTS, { endTick: 9 }),
     ).toThrow(/E_INPUT_UNSORTED/)
+  })
+
+  test("a chunk is held to the budget for the ticks it covers, and to its span", () => {
+    // Checked as each chunk arrives, so a run cannot store more than its
+    // budget before it is submitted.
+    const span = { afterTick: 9, throughTick: 19 }
+    const budget = INPUT_BUDGET_PER_TICK * 10
+    const fits = Array.from({ length: budget }, () => event(15, "tap", 1))
+    expect(() => checkInputSpan(fits, INPUTS, span)).not.toThrow()
+    expect(() =>
+      checkInputSpan([...fits, event(15, "tap", 1)], INPUTS, span),
+    ).toThrow(/E_INPUT_BUDGET/)
+    expect(() => checkInputSpan([event(9, "tap", 1)], INPUTS, span)).toThrow(
+      /E_INPUT_RANGE/,
+    )
+    expect(() => checkInputSpan([event(20, "tap", 1)], INPUTS, span)).toThrow(
+      /E_INPUT_RANGE/,
+    )
+    expect(() => checkInputSpan([event(12, "fly", 1)], INPUTS, span)).toThrow(
+      /E_INPUT_UNDECLARED/,
+    )
   })
 })

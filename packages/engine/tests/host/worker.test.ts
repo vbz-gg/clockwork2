@@ -119,12 +119,8 @@ describe("the worker protocol", () => {
         cursor < log.length &&
         (log[cursor] as { tick: number }).tick <= tick
       ) {
-        const input = log[cursor] as {
-          device: "key"
-          code: string
-          value: number
-        }
-        due.push({ device: input.device, code: input.code, value: input.value })
+        const input = log[cursor] as { code: string; value: number }
+        due.push({ code: input.code, value: input.value })
         cursor++
       }
       simulation.send(due)
@@ -208,7 +204,6 @@ describe("the worker protocol", () => {
     const stop = simulation.inputs.addPoller(() => {
       polls++
       simulation.inputs.push({
-        device: "gamepad",
         code: "thrust",
         value: polls,
         merge: "latest",
@@ -222,7 +217,7 @@ describe("the worker protocol", () => {
     // The poll ran before the frame was offered, so its input goes first.
     expect(sent.slice(0, 2)).toEqual(["input", "frame"])
     expect(toWorker.find((m) => m.type === "input")?.inputs).toEqual([
-      { device: "gamepad", code: "thrust", value: 1, merge: "latest" },
+      { code: "thrust", value: 1, merge: "latest" },
     ])
   })
 
@@ -249,7 +244,7 @@ describe("the worker protocol", () => {
   test("the message shapes are the ones the types declare", () => {
     const toWorker: ToWorker[] = [
       { type: "init", seed: "s", config: {} },
-      { type: "input", inputs: [{ device: "key", code: "left", value: 1 }] },
+      { type: "input", inputs: [{ code: "left", value: 1 }] },
       { type: "frame", elapsedMs: 16, frameId: 0 },
       { type: "stop" },
     ]
@@ -278,7 +273,6 @@ describe("worker and inline hosts", () => {
     for (let frame = 0; frame < 900 && inlineHost.status !== "ended"; frame++) {
       if (frame % 23 === 0) {
         inlineHost.live?.push({
-          device: "key",
           code: "thrust",
           value: frame % 46 === 0 ? 1 : 0,
         })
@@ -305,11 +299,10 @@ describe("worker and inline hosts", () => {
         (recording.inputs[cursor] as { tick: number }).tick <= tick
       ) {
         const input = recording.inputs[cursor] as {
-          device: "key"
           code: string
           value: number
         }
-        due.push({ device: input.device, code: input.code, value: input.value })
+        due.push({ code: input.code, value: input.value })
         cursor++
       }
       simulation.send(due)

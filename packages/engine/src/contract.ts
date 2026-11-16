@@ -8,17 +8,14 @@
  * independent of the player's frame rate, and the surest way to keep it that
  * way is to give the game nothing to integrate against.
  *
- * Input events are built by the host from device events, and the engine
- * gives a game no way to make one. A game that did its hit-testing in its
- * renderer and fed the answer to the simulation as a press would replay
- * perfectly and still decide the score on the client, which is the one
- * failure a conformance suite cannot see. So a game draws its own controls
- * and decides what a touch hit in `tick`, from the pointer's position.
- *
- * That is a contract, not a wall: the code that runs in a game's frame is the
- * game author's, and it could push anything. What a server can trust is the
- * replay, and `checkInputs`, which refuses every input the manifest does not
- * bind.
+ * Inputs are the game's own. A manifest declares each input by name and
+ * range, the game's page records what its player did as those inputs, and
+ * the simulation reads them in `tick`. What a server trusts is the replay of
+ * the recorded inputs, and `checkInputs`, which refuses any input the
+ * manifest does not declare. A game that decided in its drawing code that a
+ * tap hit a target, and recorded only the answer, would replay perfectly and
+ * still have decided the result where nothing checks it, so the guidance is
+ * to record the tap and decide in `tick`.
  */
 
 import type { PackReader } from "./packs.js"
@@ -39,25 +36,6 @@ export type Snapshot = { readonly [key: string]: PlainValue }
 export type Counters = Readonly<Record<string, number>>
 
 /**
- * The devices a host may build an input from. Which device an input came
- * from is read from its code (`input-codes.ts`), never declared beside it.
- *
- * `pointer` is a finger, a pen or the mouse, which the browser reports as one
- * kind of event. `motion` is tilt, which the page a game is framed on reads
- * and passes in, because a sensor's events never reach a cross-origin frame
- * in Firefox.
- */
-export const INPUT_DEVICES = [
-  "key",
-  "pointer",
-  "gamepad",
-  "motion",
-  "wheel",
-] as const
-
-export type InputDevice = (typeof INPUT_DEVICES)[number]
-
-/**
  * One input, stamped with the tick it applies to.
  *
  * The tick is the tick the simulation is *about to* run, not the tick of
@@ -65,12 +43,12 @@ export type InputDevice = (typeof INPUT_DEVICES)[number]
  * time, so the same keystroke landed on a different tick depending on the
  * frame rate.
  *
- * `value` is an integer. Analog sources are quantised by the host, with the
- * deadzones in `inputs.ts`, before the simulation ever sees them.
+ * There is no device: each game declares its own inputs, by name and range,
+ * and decides what to record. `value` is a whole number in that range.
  */
 export type InputEvent = {
   readonly tick: number
-  readonly device: InputDevice
+  /** The name of an input the manifest declares. */
   readonly code: string
   readonly value: number
 }

@@ -145,7 +145,7 @@ describe("a stalled tab", () => {
     host.live?.addPoller(() => {
       reads.push(host.tick)
       if (reads.length === 2) {
-        host.live?.push({ device: "key", code: "thrust", value: 1 })
+        host.live?.push({ code: "thrust", value: 1 })
       }
     })
     host.start()
@@ -171,7 +171,7 @@ describe("a stalled tab", () => {
     })
     host.start()
     for (let i = 0; i < 30; i++) scheduler.advance(1000 / 60)
-    host.live?.push({ device: "key", code: "thrust", value: 1 })
+    host.live?.push({ code: "thrust", value: 1 })
     scheduler.advance(300_000)
     for (let i = 0; i < 120; i++) scheduler.advance(1000 / 60)
     host.stop()
@@ -211,7 +211,6 @@ describe("recording a live session", () => {
     for (let frame = 0; frame < 1200 && host.status !== "ended"; frame++) {
       if (frame % 17 === 0) {
         host.live?.push({
-          device: "key",
           code: presses[frame % presses.length] as string,
           value: frame % 34 === 0 ? 1 : 0,
         })

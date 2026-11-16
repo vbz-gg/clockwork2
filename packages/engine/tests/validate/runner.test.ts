@@ -34,7 +34,7 @@ function exploding(error: unknown): Subject {
         maxWallSeconds: 120,
         hasEnding: true,
       },
-      inputs: { map: { push: [{ code: "Space" }] } },
+      inputs: { push: { min: 0, max: 1 } },
       counters: [{ name: "score", direction: "up", monotonic: true }],
       rankBy: ["score"],
       tiePolicy: "shared",

@@ -8,45 +8,27 @@ export default defineConfig({
   // rather than through an alias that bypasses it. Clockwork 1's demo aliased
   // straight at src, so it never exercised the published surface at all.
   resolve: { conditions: ["development"] },
-  /**
-   * A sandboxed frame has no `allow-same-origin`, so its origin is "null" and
-   * every script it loads - including its own, from the very host that served
-   * the document - is a cross-origin request. Vite answers with
-   * `Access-Control-Allow-Origin: <the dev server's origin>`, which "null"
-   * never matches, so the frame loads nothing and fails silently: no error in
-   * the parent, no ready message, a blank game.
-   *
-   * Any host serving game bundles to a sandboxed frame has to do this,
-   * production included.
-   */
   server: {
     port: 5173,
     strictPort: true,
-    headers: { "Access-Control-Allow-Origin": "*" },
   },
   preview: {
     port: 4173,
     strictPort: true,
-    headers: { "Access-Control-Allow-Origin": "*" },
   },
   worker: { format: "es" },
   build: {
     outDir: "dist",
     sourcemap: true,
     emptyOutDir: true,
-    // Three Snake pages. `index` plays Snake directly, the way a developer does
-    // while building it. `embed` and `frame` are the two halves of the way a
-    // platform runs someone else's game: a host page and a sandboxed document
-    // that talk over the bridge and share nothing else.
+    // `index` plays Snake directly in its page, the way a game runs on its
+    // own site. The other two are a game with data packs, played in a page
+    // and in a worker; the end-to-end suite plays both and replays them on a
+    // server.
     rollupOptions: {
       input: {
         index: resolve(import.meta.dirname, "index.html"),
-        embed: resolve(import.meta.dirname, "embed.html"),
-        frame: resolve(import.meta.dirname, "frame.html"),
-        // A game with data packs, framed and in a worker. The end-to-end
-        // suite plays both and replays them on a server.
-        "packs-embed": resolve(import.meta.dirname, "packs-embed.html"),
-        "packs-frame": resolve(import.meta.dirname, "packs-frame.html"),
+        packs: resolve(import.meta.dirname, "packs.html"),
         "packs-worker": resolve(import.meta.dirname, "packs-worker.html"),
       },
       // One chunk per entry keeps the check that a production build carries no

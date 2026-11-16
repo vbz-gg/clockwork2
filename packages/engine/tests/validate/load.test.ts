@@ -27,7 +27,7 @@ const MANIFEST_LITERAL = `{
   name: "Temp Bundle",
   kernel: { version: "0.1.0" },
   session: { tickHz: 60, maxTicks: 600, maxWallSeconds: 120, hasEnding: true },
-  inputs: { map: { push: [{ code: "Space" }] } },
+  inputs: { push: { min: 0, max: 1 } },
   counters: [
     { name: "score", direction: "up", monotonic: true },
     { name: "ticksSurvived", direction: "up", monotonic: true },
@@ -234,7 +234,7 @@ describe("which manifest is judged", () => {
           maxWallSeconds: 120,
           hasEnding: true,
         },
-        inputs: { map: { push: [{ code: "Space" }] } },
+        inputs: { push: { min: 0, max: 1 } },
         counters: [
           { name: "score", direction: "up", monotonic: true },
           { name: "ticksSurvived", direction: "up", monotonic: true },

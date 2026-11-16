@@ -17,35 +17,26 @@ export const TICK_RATES = [30, 60, 120] as const
 export type TickRate = (typeof TICK_RATES)[number]
 
 /**
- * One device code an action listens to. Which device that is, and what values
- * it carries, is read from the code (`input-codes.ts`), so a binding cannot
- * say one thing and do another.
+ * One input a game records: a name, and the whole numbers it can carry.
+ *
+ * A press is an input from 0 to 1. A position, a stick or a tilt is a range
+ * the game chooses, and the coarsest range the game needs is the one to
+ * declare, because every value a reading passes through is an input to
+ * record.
  */
-export type InputBinding = {
-  /** A device code: "ArrowUp", "pointer0", "gamepad0-axis1", "tilt-x". */
-  readonly code: string
+export type InputDeclaration = {
+  readonly min: number
+  readonly max: number
   /** Shown to the player on a controls card. */
   readonly label?: string
 }
 
 /**
- * What a game records: each action and the device codes that drive it.
- *
- * Only a bound code is recorded, so each game decides what its recording
- * holds, and a server refuses any input outside it. A game draws its own
- * on-screen controls and decides in `tick` what a pointer hit, from
- * positions measured in `viewport` units.
+ * Every input a game records, by name. Only these are recorded, and a server
+ * refuses a log holding anything else, so each game decides what its
+ * recording holds.
  */
-export type Inputs = {
-  readonly map: { readonly [action: string]: readonly InputBinding[] }
-  /**
-   * The units a pointer's position is measured in: 0 to `width` across the
-   * element the game is drawn on, 0 to `height` down it. Required when a
-   * pointer coordinate is bound, so the hit test in `tick`, the host that
-   * measures a touch, and a server checking the log all use one space.
-   */
-  readonly viewport?: { readonly width: number; readonly height: number }
-}
+export type Inputs = { readonly [name: string]: InputDeclaration }
 
 export type ParamBase = {
   readonly label: string
@@ -140,7 +131,6 @@ export type Capabilities = {
   /** Always false in the first release. */
   readonly multiplayer: false
   readonly webgpu?: boolean
-  /** Needed to bind `mouse-dx` or `mouse-dy`: the host locks the mouse to the game. */
   readonly pointerLock?: boolean
 }
 
@@ -154,7 +144,7 @@ export type Session = {
 }
 
 export type Manifest = {
-  /** 2 since bindings lost `device` and `inputs.controls` was removed. */
+  /** 2 since `inputs` declares the game's own inputs rather than binding devices. */
   readonly schemaVersion: 2
   /** Immutable across every version of the game. */
   readonly id: string

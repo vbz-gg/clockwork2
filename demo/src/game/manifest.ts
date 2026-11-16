@@ -16,24 +16,10 @@ export const MANIFEST: Manifest = {
     hasEnding: true,
   },
   inputs: {
-    map: {
-      up: [
-        { code: "ArrowUp", label: "Up" },
-        { code: "KeyW", label: "Up" },
-      ],
-      down: [
-        { code: "ArrowDown", label: "Down" },
-        { code: "KeyS", label: "Down" },
-      ],
-      left: [
-        { code: "ArrowLeft", label: "Left" },
-        { code: "KeyA", label: "Left" },
-      ],
-      right: [
-        { code: "ArrowRight", label: "Right" },
-        { code: "KeyD", label: "Right" },
-      ],
-    },
+    up: { min: 0, max: 1, label: "Up" },
+    down: { min: 0, max: 1, label: "Down" },
+    left: { min: 0, max: 1, label: "Left" },
+    right: { min: 0, max: 1, label: "Right" },
   },
   counters: [
     { name: "applesEaten", direction: "up", monotonic: true, label: "Apples" },

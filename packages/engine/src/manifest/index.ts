@@ -6,7 +6,7 @@ export type {
   ColorParam,
   Display,
   EnumParam,
-  InputBinding,
+  InputDeclaration,
   Inputs,
   IntParam,
   Manifest,

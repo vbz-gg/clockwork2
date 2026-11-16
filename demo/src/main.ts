@@ -29,6 +29,18 @@ import { type Phase, Ui, type UiAction } from "./ui"
 const container = document.querySelector("#app") as HTMLElement
 let host: GameHost<SnakeView, HTMLElement, SnakeConfig> | null = null
 let capture: InputCapture | null = null
+
+/** Which key steers which way: the game's own choice, not the manifest's. */
+const KEYS = {
+  ArrowUp: "up",
+  KeyW: "up",
+  ArrowDown: "down",
+  KeyS: "down",
+  ArrowLeft: "left",
+  KeyA: "left",
+  ArrowRight: "right",
+  KeyD: "right",
+} as const
 let mode: "playing" | "replaying" | "idle" = "idle"
 let lastRecording: Recording | null = null
 let recordedFinalHash: string | null = null
@@ -101,6 +113,7 @@ function newSession(
     capture = new InputCapture({
       manifest: MANIFEST,
       queue: host.live as never,
+      keys: KEYS,
     })
     capture.attach()
   } else {

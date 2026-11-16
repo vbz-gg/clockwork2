@@ -343,79 +343,42 @@ describe("one rule at a time", () => {
       { ...M, counters: [counter, counter], rankBy: ["score"] },
     ],
 
-    // Inputs.
-    ["inputs.map", { ...M, inputs: {} }],
-    ["inputs.map", { ...M, inputs: { map: "push" } }],
-    ["inputs.map.push", { ...M, inputs: { map: { push: [] } } }],
-    ["inputs.map.push", { ...M, inputs: { map: { push: "Space" } } }],
-    ["inputs.map.push[0]", { ...M, inputs: { map: { push: ["Space"] } } }],
+    // Inputs: each declared by name and range.
+    ["inputs", { ...M, inputs: [] }],
+    ["inputs", { ...M, inputs: "push" }],
     [
-      "inputs.map.push[0].code",
-      { ...M, inputs: { map: { push: [{ label: "Push" }] } } },
-    ],
-    [
-      "inputs.map.push[0].code",
-      { ...M, inputs: { map: { push: [{ code: "" }] } } },
-    ],
-    // A code no device sends never fires, so it is refused rather than kept.
-    ...[
-      "Arrowleft",
-      "Unidentified",
-      "pointer0-z",
-      "pointer10",
-      "gamepad4-button0",
-    ].map((code): [string, unknown] => [
-      "inputs.map.push[0].code",
-      { ...M, inputs: { map: { push: [{ code }] } } },
-    ]),
-    // Schema 1 declared a device beside each code; the code says it now.
-    [
-      "inputs.map.push[0].device",
-      { ...M, inputs: { map: { push: [{ code: "Space", device: "key" }] } } },
-    ],
-    [
-      "inputs.map.push[0].label",
-      { ...M, inputs: { map: { push: [{ code: "Space", label: 3 }] } } },
-    ],
-    // One code drives one action: the host records the action, not the code.
-    [
-      "inputs.map.pull[0].code",
+      "inputs",
       {
         ...M,
-        inputs: {
-          map: { push: [{ code: "Space" }], pull: [{ code: "Space" }] },
-        },
+        inputs: Object.fromEntries(
+          Array.from({ length: 65 }, (_, i) => [`i${i}`, { min: 0, max: 1 }]),
+        ),
       },
     ],
-    // The ready-made pads are gone, and a stale template says so loudly.
+    // A name is what a recorded input carries, so it is a plain identifier.
+    ...["Push", "push-up", "2push", "", "push up"].map(
+      (name): [string, unknown] => [
+        `inputs.${name}`,
+        { ...M, inputs: { [name]: { min: 0, max: 1 } } },
+      ],
+    ),
+    ["inputs.push", { ...M, inputs: { push: 1 } }],
+    ["inputs.push.min", { ...M, inputs: { push: { max: 1 } } }],
+    ["inputs.push.min", { ...M, inputs: { push: { min: 0.5, max: 1 } } }],
+    ["inputs.push.max", { ...M, inputs: { push: { min: 0, max: 2 ** 31 } } }],
+    ["inputs.push.max", { ...M, inputs: { push: { min: 5, max: 1 } } }],
     [
-      "inputs.controls",
-      { ...M, inputs: { ...M.inputs, controls: { mode: "custom" } } },
+      "inputs.push.label",
+      { ...M, inputs: { push: { min: 0, max: 1, label: 3 } } },
     ],
-    ["inputs.extra", { ...M, inputs: { ...M.inputs, extra: true } }],
-    // A pointer position needs the units it is measured in.
+    // A field an input does not have is a typo, and is said so.
     [
-      "inputs.viewport",
-      { ...M, inputs: { map: { aim: [{ code: "pointer0-x" }] } } },
+      "inputs.push.device",
+      { ...M, inputs: { push: { min: 0, max: 1, device: "key" } } },
     ],
-    [
-      "inputs.viewport",
-      { ...M, inputs: { map: { aim: [{ code: "hover-y" }] } } },
-    ],
-    [
-      "inputs.viewport",
-      { ...M, inputs: { ...M.inputs, viewport: { width: 0, height: 10 } } },
-    ],
-    [
-      "inputs.viewport",
-      { ...M, inputs: { ...M.inputs, viewport: { width: 1.5, height: 10 } } },
-    ],
-    ["inputs.viewport", { ...M, inputs: { ...M.inputs, viewport: [9, 16] } }],
-    // Mouse movement is only recorded while the mouse is locked to the game.
-    [
-      "capabilities.pointerLock",
-      { ...M, inputs: { map: { look: [{ code: "mouse-dx" }] } } },
-    ],
+    // Schema 1's binding table, kept by a stale template, says what changed.
+    ["inputs.map", { ...M, inputs: { map: { push: [{ code: "Space" }] } } }],
+    ["inputs.controls", { ...M, inputs: { controls: { mode: "custom" } } }],
 
     // Capabilities.
     ["capabilities", { ...M, capabilities: true }],
@@ -487,33 +450,32 @@ describe("one rule at a time", () => {
     })
   }
 
-  test("a binding of every kind of code is accepted", () => {
-    // The negative rows above fire on any mistake, so the codes need a
-    // positive case or they would pass against a validator that refused
-    // every binding it saw.
+  test("declared inputs of every shape are accepted", () => {
+    // The negative rows above fire on any mistake, so they need a positive
+    // case or they would pass against a validator that refused every input.
     withoutIssues({
       ...M,
       inputs: {
-        map: {
-          jump: [
-            { code: "Space", label: "Jump" },
-            { code: "gamepad0-button0" },
-          ],
-          tap: [{ code: "pointer0" }, { code: "pointer9-button2" }],
-          aimX: [{ code: "pointer0-x" }, { code: "hover-x" }],
-          aimY: [{ code: "pointer0-y" }, { code: "hover-y" }],
-          look: [{ code: "mouse-dx" }],
-          zoom: [{ code: "wheel-y" }],
-          brake: [{ code: "gamepad3-button31-value" }],
-          steer: [{ code: "gamepad0-axis15" }, { code: "tilt-x" }],
-          lean: [{ code: "tilt-z" }],
-        },
-        viewport: { width: 320, height: 480 },
+        jump: { min: 0, max: 1, label: "Jump" },
+        aimX: { min: 0, max: 31 },
+        steer: { min: -10, max: 10 },
+        fixed: { min: 3, max: 3 },
+        wide: { min: -(2 ** 31 - 1), max: 2 ** 31 - 1 },
       },
-      capabilities: { ...M.capabilities, pointerLock: true },
     })
-    // A keyboard game needs no viewport.
+    // A game with nothing to press, such as one that plays itself, is fine.
+    withoutIssues({ ...M, inputs: {} })
     withoutIssues(M)
+  })
+
+  test("a stale binding table is told what replaced it", () => {
+    const issues = validateManifest({
+      ...M,
+      inputs: { map: { push: [{ code: "Space" }] } },
+    })
+    expect(issues.find((i) => i.at === "inputs.map")?.message).toMatch(
+      /declares each input as \{ min, max \}/,
+    )
   })
 
   test("a manifest carrying valid assets and params is accepted", () => {
