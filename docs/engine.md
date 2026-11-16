@@ -664,7 +664,10 @@ The rules:
   axis or a second stick costs inputs whether or not `tick` looks at it.
 
 The device helpers below do the first four for every input they record. The
-guide's table of measured recording sizes says what each helper costs.
+guide's `references/inputs.md` has the measured size of a five-minute
+recording from each helper, at a coarse and a fine range, and says how each
+was produced: the busiest, two thumbs on a pointer declared 0 to 1000, records
+3.9 inputs a tick and 3.0 MB of JSON.
 
 ### The device helpers
 
@@ -1400,9 +1403,10 @@ but an iPad reports a screen angle of 90 in portrait, and whether that matches
 the frame its orientation events use, and the signs on each platform, wait on
 a check on real devices.
 
-The input budget is a model's. `INPUT_BUDGET_PER_TICK` is set from scripted
-runs of each helper, not from real players, and a recording of a real hand may
-need it revisited.
+The input budget is a model's. `INPUT_BUDGET_PER_TICK` is 16, four times the
+busiest rate scripted runs of each helper produced, not a rate measured from
+real players, and a recording of a real hand, or a game mapping several
+devices at once, may need it revisited.
 
 The demo is the only substantial game on the engine so far. Games are rewritten
 against this API rather than adapted onto it, so a larger one would answer two

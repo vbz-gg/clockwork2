@@ -28,11 +28,15 @@ export const MAX_INPUTS_PER_TICK = 256
  * How many inputs a log may hold per tick it covers, on average. A server
  * holds a whole run to `INPUT_BUDGET_PER_TICK x (endTick + 1)` and each chunk
  * to the same rate over the ticks it covers, so a recording cannot grow
- * without bound however long the run. Measured: see the engine guide's table
- * of recording sizes, which says how each number was produced. The budget is
- * four times the busiest honest rate measured.
+ * without bound however long the run.
+ *
+ * Four times the busiest honest rate measured, rounded up: two thumbs traced
+ * on a pointer declared 0 to 1000 peaked at 3.917 inputs a tick over any
+ * 120-tick window. `scripts/measure-inputs.ts` produces the measurement, and
+ * the engine guide's `references/inputs.md` has its table and says how each
+ * row was made.
  */
-export const INPUT_BUDGET_PER_TICK = 8
+export const INPUT_BUDGET_PER_TICK = 16
 
 /** Why `value` is not one `declaration` allows, or null when it is. */
 export function outsideDeclaration(

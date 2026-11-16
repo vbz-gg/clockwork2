@@ -729,10 +729,10 @@ ERROR_CODES: {
 
 ### INPUT_BUDGET_PER_TICK
 
-How many inputs a log may hold per tick it covers, on average. A server holds a whole run to `INPUT_BUDGET_PER_TICK x (endTick + 1)` and each chunk to the same rate over the ticks it covers, so a recording cannot grow without bound however long the run. Measured: see the engine guide's table of recording sizes, which says how each number was produced. The budget is four times the busiest honest rate measured.
+How many inputs a log may hold per tick it covers, on average. A server holds a whole run to `INPUT_BUDGET_PER_TICK x (endTick + 1)` and each chunk to the same rate over the ticks it covers, so a recording cannot grow without bound however long the run.
 
 ```ts
-INPUT_BUDGET_PER_TICK = 8
+INPUT_BUDGET_PER_TICK = 16
 ```
 
 ### KERNEL_VERSION
@@ -2069,11 +2069,13 @@ Listens for device events and records them as the game's inputs.
 export declare class InputCapture {
     /** Which sources hold each press name down. */
     /** pointerId to the slot it is down in. */
+    /** A lock asked for and not yet granted or refused. */
     /** The last value recorded per level name, so a repeat is not an input. */
     /** Fractions of an amount not yet recorded. */
     /** Gamepads by index, with the id last seen there. */
     constructor(options: InputCaptureOptions);
     attach(): void;
+    /** One notice per request, however many ways the browser says no. */
     /** The lowest free slot, taken only when a pointer goes down. */
     /** Presses and releases each mouse or pen button whose bit changed. */
     /** Where the pointer is across the element, in each name's own range. */

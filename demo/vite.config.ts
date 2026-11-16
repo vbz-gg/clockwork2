@@ -24,12 +24,15 @@ export default defineConfig({
     // `index` plays Snake directly in its page, the way a game runs on its
     // own site. The other two are a game with data packs, played in a page
     // and in a worker; the end-to-end suite plays both and replays them on a
-    // server.
+    // server. `inputs` maps every device helper onto a game's inputs, for
+    // the suite to drive with real keys, a mouse, the wheel, a stubbed
+    // controller and an overridden sensor.
     rollupOptions: {
       input: {
         index: resolve(import.meta.dirname, "index.html"),
         packs: resolve(import.meta.dirname, "packs.html"),
         "packs-worker": resolve(import.meta.dirname, "packs-worker.html"),
+        inputs: resolve(import.meta.dirname, "inputs.html"),
       },
       // One chunk per entry keeps the check that a production build carries no
       // test hooks simple: there is one place to look.

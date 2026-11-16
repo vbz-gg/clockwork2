@@ -111,3 +111,50 @@ granted once a first real reading arrives, or with a refusal saying why:
 `E_MOTION_DENIED` (the player said no), `E_MOTION_BLOCKED` (the page's
 permissions policy) or `E_MOTION_NO_SENSOR`. Show the player the reason and
 let them play with another control.
+
+## What recordings cost
+
+Measured rather than estimated, so the advice above has numbers behind it. The
+coarse range halves two thumbs and tilt and cuts trackpad flings by 82%; it
+saves 4% on a swept stick and nothing on a notched wheel, which records whole
+notches either way. Every input costs about 40 bytes of JSON, its name
+included, so a short name is a smaller recording too.
+
+Produced by `bun run scripts/measure-inputs.ts`. Each row is one run of 18000 ticks (five minutes at 60 Hz) in a real `GameHost` driven by a `ManualScheduler`, one animation frame of 1000/60 ms per tick (18001 frames for the first row), under bun 1.3.11, importing the engine from `packages/engine/src`. The real `InputCapture` is attached to the host's live queue through a fake browser; before each frame the model player below sends the events a browser would deliver, then the frame runs and the queue stamps what is pending onto the frame's tick.
+
+- **Inputs** is the length of `recording.inputs` at the end.
+- **Per tick** is inputs over the run's end tick.
+- **Peak per tick** is the most inputs in any 120 consecutive ticks, the window sliding one tick at a time, over 120.
+- **Recording bytes** is the UTF-8 length of `encodeRecording(host.recording())`: the inputs, a checkpoint every 60 ticks, the counters and the rest of the envelope. The baseline row is the same run with nothing pressed.
+- **Gzipped** is that text through node's `gzipSync` at its default level.
+- **Log bytes per input** is the UTF-8 length of `JSON.stringify(recording.inputs)` over its inputs. An input's name is in every one of them, so a shorter name is a smaller recording.
+- **Within budget** is whether `checkInputs` accepts the log against its manifest at the current `INPUT_BUDGET_PER_TICK` of 16.
+- Randomness (key timings, tilt noise) comes from a `Prng` seeded with the scenario's name, so a rerun gives the same table.
+
+| Scenario | Declared | Inputs | Per tick | Peak per tick (120-tick window) | Recording bytes | Gzipped | Log bytes per input | Within budget of 16 |
+|---|---|---:|---:|---:|---:|---:|---:|---|
+| Nothing pressed | one press declared | 0 | 0.000 | 0.000 | 12582 | 4172 | 0.0 | yes |
+| Two thumbs | x 0 to 63, y 0 to 29 (about 13 px a step) | 33601 | 1.867 | 1.908 | 1383870 | 126852 | 40.8 | yes |
+| Two thumbs | fine: x and y 0 to 1000 | 70378 | 3.910 | 3.917 | 2959835 | 307440 | 41.9 | yes |
+| Stick swept | each axis -100 to 100 | 32814 | 1.823 | 1.858 | 1383489 | 115286 | 41.8 | yes |
+| Stick swept | fine: each axis -1000 to 1000 | 34225 | 1.901 | 1.925 | 1475857 | 123075 | 42.8 | yes |
+| Mouse under lock | 4 px a unit, -32 to 32 a tick | 22870 | 1.271 | 1.292 | 917512 | 66834 | 39.6 | yes |
+| Mouse under lock | fine: 1 px a unit, -1000 to 1000 a tick | 33888 | 1.883 | 1.883 | 1355158 | 100312 | 39.6 | yes |
+| Wheel in bursts | 1 notch a unit, -10 to 10 a tick | 1201 | 0.067 | 0.100 | 59261 | 8666 | 38.9 | yes |
+| Wheel in bursts | fine: 1 px a unit, -1000 to 1000 a tick | 1201 | 0.067 | 0.100 | 61663 | 8679 | 40.9 | yes |
+| Trackpad flings | 1 notch (100 px) a unit, -10 to 10 a tick | 1101 | 0.061 | 0.100 | 55373 | 8357 | 38.9 | yes |
+| Trackpad flings | fine: 1 px a unit, -1000 to 1000 a tick | 5996 | 0.333 | 0.500 | 250247 | 28510 | 39.6 | yes |
+| Tilt in the hand | x and y -100 to 100, full at 45 degrees | 14809 | 0.823 | 1.117 | 618884 | 67287 | 40.9 | yes |
+| Tilt in the hand | fine: x and y -1000 to 1000, full at 45 degrees | 30530 | 1.696 | 1.958 | 1294231 | 143920 | 42.0 | yes |
+| Keys mashed | four presses, 0 to 1 (a press has no finer range) | 19207 | 1.067 | 1.167 | 754558 | 68919 | 38.6 | yes |
+
+### What each model player does
+
+- **Nothing pressed**, on a 1280 by 720 CSS px element: no events at all, so this is what a recording costs before inputs.
+- **Two thumbs**, on a 844 by 390 CSS px element: two fingers go down at once and never lift; each traces a circle of 80 px radius, one every 0.75 s (670 px/s) and one every 1 s (503 px/s), one pointermove per finger per frame.
+- **Stick swept**, on a 1280 by 720 CSS px element: the left stick's x follows sin(2 pi t / 1 s) at full deflection and its y 0.6 sin(2 pi t / 1.7 s), read once a frame.
+- **Mouse under lock**, on a 1280 by 720 CSS px element: one pointermove per frame, movementX cycling 2, 3, 4, 5, 6 px (240 px/s across) and movementY round(3 sin(2 pi t / 2 s)) px, sweeping up and down.
+- **Wheel in bursts**, on a 1280 by 720 CSS px element: every 3 s, 12 notches of 100 px one every 2 frames (30 notches/s), the direction alternating between bursts.
+- **Trackpad flings**, on a 1280 by 720 CSS px element: every 3 s, a one-second fling: one wheel event a frame whose deltaY falls from 40 px to 1 px, the direction alternating between flings.
+- **Tilt in the hand**, on a 844 by 390 CSS px element: 60 readings a second: beta 35 + 12 sin(2 pi t / 5 s) and gamma 15 sin(2 pi t / 3.7 s) degrees, each reading plus normal noise of 0.25 degrees standard deviation.
+- **Keys mashed**, on a 1280 by 720 CSS px element: four keys mashed at once, each held 3 to 5 frames and let go 2 to 5 frames, drawn at random: about 8 presses a second a key, 32 in all.
