@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Clockwork 2 - tilt check</title>
+    <style>
+      :root { color-scheme: dark; }
+      body { margin: 0; background: #0b0b14; color: #e8e9ee; font: 16px/1.4 ui-sans-serif, system-ui, sans-serif; }
+      main { padding: 16px; max-width: 560px; margin: 0 auto; }
+      h1 { font-size: 20px; margin: 0 0 8px; }
+      button { font: inherit; font-size: 18px; padding: 14px 20px; width: 100%; border-radius: 10px; border: 0; background: #4a6cf7; color: white; }
+      #field { position: relative; height: 240px; margin: 16px 0; border: 1px solid #3a3c4e; border-radius: 10px; background: #14151f; overflow: hidden; touch-action: pan-y; }
+      #dot { position: absolute; width: 36px; height: 36px; margin: -18px 0 0 -18px; border-radius: 50%; background: #f7c84a; left: 50%; top: 50%; }
+      dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0 0 16px; }
+      dt { color: #8b8fa3; }
+      dd { margin: 0; font-family: ui-monospace, monospace; word-break: break-all; }
+      ol { padding-left: 20px; }
+      li { margin-bottom: 6px; }
+      #scroll { height: 1600px; border-top: 1px dashed #3a3c4e; padding-top: 12px; color: #8b8fa3; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Tilt check</h1>
+      <button id="allow" type="button">Allow tilt</button>
+      <div id="field"><div id="dot"></div></div>
+      <dl>
+        <dt>answer</dt><dd id="answer">not asked</dd>
+        <dt>screen angle</dt><dd id="angle">-</dd>
+        <dt>beta, gamma</dt><dd id="raw">-</dd>
+        <dt>readings a second</dt><dd id="rate">0</dd>
+        <dt>recorded x, y, z</dt><dd id="recorded">-</dd>
+        <dt>inputs recorded</dt><dd id="count">0</dd>
+        <dt>notices</dt><dd id="notices">[]</dd>
+        <dt>error</dt><dd id="error"></dd>
+      </dl>
+      <ol>
+        <li>Tap Allow tilt. On an iPhone or iPad a prompt asks first.</li>
+        <li>Lay the phone flat, screen up: recorded z is near -100, x and y near 0.</li>
+        <li>Hold it upright, facing you: recorded y is near -100.</li>
+        <li>Lower its right edge: recorded x goes up towards 100.</li>
+        <li>Wherever you hold it, the yellow dot sits at the lowest point of the box. Turn the phone sideways and check again.</li>
+        <li>Scroll this page while tilting: watch whether readings a second drops to 0.</li>
+      </ol>
+      <div id="scroll">Scroll area. Keep tilting while you scroll, then scroll back up.</div>
+    </main>
+    <script type="module" src="/src/tilt/page.ts"></script>
+  </body>
+</html>

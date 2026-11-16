@@ -26,13 +26,15 @@ export default defineConfig({
     // and in a worker; the end-to-end suite plays both and replays them on a
     // server. `inputs` maps every device helper onto a game's inputs, for
     // the suite to drive with real keys, a mouse, the wheel, a stubbed
-    // controller and an overridden sensor.
+    // controller and an overridden sensor. `tilt` is the same game with only
+    // tilt mapped, laid out for a phone, for checking tilt by hand.
     rollupOptions: {
       input: {
         index: resolve(import.meta.dirname, "index.html"),
         packs: resolve(import.meta.dirname, "packs.html"),
         "packs-worker": resolve(import.meta.dirname, "packs-worker.html"),
         inputs: resolve(import.meta.dirname, "inputs.html"),
+        tilt: resolve(import.meta.dirname, "tilt.html"),
       },
       // One chunk per entry keeps the check that a production build carries no
       // test hooks simple: there is one place to look.

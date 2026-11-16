@@ -411,14 +411,53 @@ test.describe("the device helpers in a browser", () => {
       ["tiltZ", 0],
     ])
 
-    // Asking for tilt resolves once a reading arrives. Chromium sends one
-    // only when the reading changes, so the device moves while it waits:
-    // asked while the override held still, the answer was E_MOTION_NO_SENSOR.
+    // Asked while the device holds still. Chromium sends a reading only when
+    // it changes, so none arrives now; the reading the helper already heard
+    // is what says the sensor works. Before that counted, this answered
+    // E_MOTION_NO_SENSOR.
     await page.locator("#motion").click()
-    await turn(80, 0)
     await expect(page.locator("#motion-access")).toHaveText(
       JSON.stringify({ granted: true }),
     )
+  })
+
+  test("the phone tilt page records gravity across the screen and draws the dot where down is", async ({
+    page,
+    context,
+    browserName,
+  }) => {
+    test.skip(
+      browserName !== "chromium",
+      "Firefox and WebKit have no sensor override in Playwright",
+    )
+    await context.grantPermissions(["accelerometer", "gyroscope"])
+    const cdp = await context.newCDPSession(page)
+    await page.goto("/tilt.html")
+    const turn = (beta: number, gamma: number) =>
+      cdp.send("DeviceOrientation.setDeviceOrientationOverride", {
+        alpha: 0,
+        beta,
+        gamma,
+      })
+    // Held upright: gravity points down the screen, so the dot drops.
+    await turn(90, 0)
+    await expect(page.locator("#recorded")).toHaveText("0, -100, 0")
+    const top = await page
+      .locator("#dot")
+      .evaluate((node) => Number.parseFloat((node as HTMLElement).style.top))
+    expect(top).toBeGreaterThan(90)
+    // Right edge lowered 30 degrees with the phone flat: the dot rolls right.
+    await turn(0, 30)
+    await expect(page.locator("#recorded")).toHaveText("50, 0, -87")
+    const left = await page
+      .locator("#dot")
+      .evaluate((node) => Number.parseFloat((node as HTMLElement).style.left))
+    expect(left).toBeGreaterThan(70)
+    await page.locator("#allow").click()
+    await expect(page.locator("#answer")).toHaveText(
+      JSON.stringify({ granted: true }),
+    )
+    await expect(page.locator("#error")).toHaveText("")
   })
 
   // Measured headless on a desktop: Chromium and Firefox have the events and
