@@ -119,8 +119,11 @@ before anything is awaited, and start the run after it answers. It resolves
 granted once a first real reading arrives, or with a refusal saying why:
 `E_MOTION_INSECURE` (the page is not on https), `E_MOTION_UNSUPPORTED`,
 `E_MOTION_DENIED` (the player said no), `E_MOTION_BLOCKED` (the page's
-permissions policy) or `E_MOTION_NO_SENSOR`. Show the player the reason and
-let them play with another control.
+permissions policy) or `E_MOTION_NO_SENSOR`. Show the player the reason.
+iOS remembers a refusal for the site until its website data is cleared, so
+asking again on the next tap gets the same answer. A run started anyway
+records no tilt, so a game that reads tilt should start no run without it;
+a page built with the vbz kit starts none.
 
 ## What recordings cost
 
