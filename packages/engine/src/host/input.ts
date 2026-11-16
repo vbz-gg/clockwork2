@@ -32,7 +32,7 @@ import {
   type MergeRule,
   quantiseAxis,
 } from "../index.js"
-import { noteReading } from "./motion.js"
+import { currentScreenAngle, noteReading } from "./motion.js"
 
 /** Fingers, pens and the mouse, each with a small slot number. */
 export const POINTER_SLOTS = 10
@@ -985,11 +985,9 @@ export class InputCapture {
  * The screen's rotation from the device's natural orientation, in degrees,
  * as the tilt maths needs it, or undefined when the browser cannot say.
  *
- * One function, so a platform whose `screen.orientation.angle` is measured
- * against a different frame from its orientation events gets one rule here.
- * On an iPad, WebKit reports 90 in portrait; whether that matches the frame
- * its `deviceorientation` uses is not yet measured, so iPad tilt is
- * unverified and no correction is applied.
+ * The angle comes from `screenAngleOf`, which reads the one a browser's
+ * orientation events are measured against; this only puts it in the four
+ * values the tilt maths knows, so -90 is 270.
  */
 export function screenRotation(
   angle: number | undefined,
@@ -1005,12 +1003,11 @@ function browserEnvironment(): CaptureEnvironment {
   const scope = globalThis as unknown as {
     readonly document: CaptureDocument
     readonly navigator: { getGamepads(): readonly (Gamepad | null)[] }
-    readonly screen?: { readonly orientation?: { readonly angle?: number } }
   }
   return {
     window: globalThis,
     document: scope.document,
     gamepads: () => scope.navigator.getGamepads(),
-    screenAngle: () => scope.screen?.orientation?.angle,
+    screenAngle: currentScreenAngle,
   }
 }

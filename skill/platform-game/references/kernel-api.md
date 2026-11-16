@@ -2127,6 +2127,14 @@ Every problem with `mapping` against `manifest`, or an empty list. Pure, so a pa
 export declare function checkCapture(mapping: CaptureMapping, manifest: Manifest): string[];
 ```
 
+### currentScreenAngle
+
+`screenAngleOf` for this page.
+
+```ts
+export declare function currentScreenAngle(): number | undefined;
+```
+
 ### fetchPackLoader
 
 Fetches packs over HTTP.
@@ -2166,6 +2174,14 @@ export declare function requestMotion(options?: {
     readonly wait?: number;
     readonly environment?: MotionEnvironment;
 }): Promise<MotionAccess>;
+```
+
+### screenAngleOf
+
+How far the screen is turned, in the frame `deviceorientation` readings are measured in: `window.orientation` where the browser has it, and `screen.orientation.angle` only where it does not.
+
+```ts
+export declare function screenAngleOf(scope: ScreenAngleSource): number | undefined;
 ```
 
 ### screenRotation
@@ -2504,7 +2520,7 @@ export interface MotionEnvironment {
     readonly orientation: {
         readonly requestPermission?: () => Promise<string>;
     } | undefined;
-    /** `screen.orientation.angle`, or undefined where the browser has none. */
+    /** `screenAngleOf` the page, or undefined where the browser has neither. */
     screenAngle(): number | undefined;
     /** Whether the page's policy allows a sensor feature, where the browser can say. */
     allowsFeature(feature: string): boolean | undefined;
@@ -2557,6 +2573,22 @@ export interface Scheduler {
     now(): number;
     request(callback: (now: number) => void): number;
     cancel(handle: number): void;
+}
+```
+
+### ScreenAngleSource
+
+The two places a browser says how far its screen is turned.
+
+```ts
+export interface ScreenAngleSource {
+    /** `window.orientation`, which iOS and Android browsers still have. */
+    readonly orientation?: unknown;
+    readonly screen?: {
+        readonly orientation?: {
+            readonly angle?: number;
+        };
+    };
 }
 ```
 

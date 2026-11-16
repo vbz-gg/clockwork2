@@ -47,7 +47,7 @@ export interface MotionEnvironment {
   readonly orientation:
     | { readonly requestPermission?: () => Promise<string> }
     | undefined
-  /** `screen.orientation.angle`, or undefined where the browser has none. */
+  /** `screenAngleOf` the page, or undefined where the browser has neither. */
   screenAngle(): number | undefined
   /** Whether the page's policy allows a sensor feature, where the browser can say. */
   allowsFeature(feature: string): boolean | undefined
@@ -59,6 +59,36 @@ export interface MotionEnvironment {
 export const MOTION_WAIT_MS = 1000
 
 type PolicyLike = { allowsFeature?: (feature: string) => boolean }
+
+/** The two places a browser says how far its screen is turned. */
+export interface ScreenAngleSource {
+  /** `window.orientation`, which iOS and Android browsers still have. */
+  readonly orientation?: unknown
+  readonly screen?: { readonly orientation?: { readonly angle?: number } }
+}
+
+/**
+ * How far the screen is turned, in the frame `deviceorientation` readings
+ * are measured in: `window.orientation` where the browser has it, and
+ * `screen.orientation.angle` only where it does not.
+ *
+ * The two disagree on an iPad. Measured on an iPad Pro (2018) under iPadOS
+ * Safari 26.6, held in portrait: `screen.orientation.angle` was 90 with a
+ * type of "portrait-primary", `window.orientation` was 0, and the readings
+ * were those of a device turned 0, so the angle turned every tilt a quarter
+ * the wrong way. On a Galaxy S24+ under Chrome 157 the two agreed, at 0
+ * upright and 90 on its side. A desktop browser has no `window.orientation`,
+ * and there the screen's own angle is the only one.
+ */
+export function screenAngleOf(scope: ScreenAngleSource): number | undefined {
+  if (typeof scope.orientation === "number") return scope.orientation
+  return scope.screen?.orientation?.angle
+}
+
+/** `screenAngleOf` for this page. */
+export function currentScreenAngle(): number | undefined {
+  return screenAngleOf(globalThis as unknown as ScreenAngleSource)
+}
 
 export function motionEnvironment(): MotionEnvironment {
   const scope = globalThis as unknown as {
@@ -74,7 +104,7 @@ export function motionEnvironment(): MotionEnvironment {
     window: globalThis,
     isSecureContext: scope.isSecureContext === true,
     orientation: scope.DeviceOrientationEvent,
-    screenAngle: () => scope.screen?.orientation?.angle,
+    screenAngle: currentScreenAngle,
     allowsFeature: (feature) => {
       // Chromium alone can say; elsewhere a blocked sensor looks like no
       // sensor, which is what NO_SENSOR then reports.

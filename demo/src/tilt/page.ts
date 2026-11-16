@@ -15,6 +15,7 @@
 
 import { assertManifest, type InputEvent } from "@clockwork2/engine"
 import {
+  currentScreenAngle,
   type DeviceNotice,
   GameHost,
   InputCapture,
@@ -34,7 +35,7 @@ import {
 } from "./check"
 
 /** Bumped when what the results carry changes. */
-const CHECK_VERSION = 1
+const CHECK_VERSION = 2
 /** How often the recorded tilt is looked at. */
 const SAMPLE_MS = 100
 
@@ -72,8 +73,18 @@ function latest(log: readonly InputEvent[]): {
   return last
 }
 
+/** The angle the device helpers use, so the steps judge the same frame. */
 function screenAngle(): number | null {
-  return screen.orientation?.angle ?? null
+  return currentScreenAngle() ?? null
+}
+
+/** What each of the browser's two sources says. */
+function reportedAngles(): { screen: number | null; window: number | null } {
+  const legacy = (window as unknown as { orientation?: unknown }).orientation
+  return {
+    screen: screen.orientation?.angle ?? null,
+    window: typeof legacy === "number" ? legacy : null,
+  }
 }
 
 /** The screen's orientation lock, which only some browsers have. */
@@ -138,6 +149,7 @@ function device() {
     },
     orientationType: screen.orientation?.type ?? null,
     angleAtStart: screenAngle(),
+    anglesAtStart: reportedAngles(),
     windowOrientation: legacy ?? null,
     secureContext: isSecureContext,
     topLevel: window.top === window,
@@ -431,6 +443,7 @@ function start(): void {
       z,
       ...raw,
       angle: screenAngle(),
+      reported: reportedAngles(),
     })
     if (samples.length > 100) samples.splice(0, samples.length - 100)
     const pose = heldStill(samples)

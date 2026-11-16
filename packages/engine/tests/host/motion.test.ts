@@ -4,6 +4,7 @@ import {
   type MotionEnvironment,
   noteReading,
   requestMotion,
+  screenAngleOf,
 } from "../../src/host/motion"
 
 /** A browser to ask, every part of it a fake. */
@@ -186,5 +187,23 @@ describe("asking for tilt", () => {
       detail: "no tilt reading arrived in 50 ms",
     })
     expect(b.listeners.size).toBe(0)
+  })
+})
+
+describe("the screen's angle", () => {
+  test("is window.orientation where the browser has it, as an iPad needs", () => {
+    // An iPad Pro (2018) under iPadOS Safari 26.6, held in portrait.
+    expect(
+      screenAngleOf({ orientation: 0, screen: { orientation: { angle: 90 } } }),
+    ).toBe(0)
+    expect(screenAngleOf({ orientation: -90 })).toBe(-90)
+  })
+
+  test("is the screen's own angle where there is no window.orientation, as on a desktop", () => {
+    expect(screenAngleOf({ screen: { orientation: { angle: 90 } } })).toBe(90)
+    expect(
+      screenAngleOf({ orientation: undefined, screen: { orientation: {} } }),
+    ).toBeUndefined()
+    expect(screenAngleOf({})).toBeUndefined()
   })
 })

@@ -421,6 +421,42 @@ test.describe("the device helpers in a browser", () => {
     )
   })
 
+  test("tilt follows window.orientation where the screen's own angle disagrees, as an iPad's does", async ({
+    page,
+    context,
+    browserName,
+  }) => {
+    test.skip(
+      browserName !== "chromium",
+      "Firefox and WebKit have no sensor override in Playwright",
+    )
+    // What an iPad Pro (2018) under iPadOS Safari 26.6 said held in
+    // portrait: the screen's angle 90, window.orientation 0, and readings
+    // measured against 0.
+    await page.addInitScript(() => {
+      Object.defineProperty(ScreenOrientation.prototype, "angle", {
+        get: () => 90,
+      })
+      Object.defineProperty(window, "orientation", { get: () => 0 })
+    })
+    await context.grantPermissions(["accelerometer", "gyroscope"])
+    const cdp = await context.newCDPSession(page)
+    await open(page)
+    await cdp.send("DeviceOrientation.setDeviceOrientationOverride", {
+      alpha: 0,
+      beta: 90,
+      gamma: 0,
+    })
+    // Upright is gravity down the screen. Turned by the screen's own angle
+    // it would read as gravity across it, tiltX -100.
+    const upright = await until(page, "tiltY", -100)
+    expect(pairs(upright)).toEqual([
+      ["tiltX", 0],
+      ["tiltY", -100],
+      ["tiltZ", 0],
+    ])
+  })
+
   /**
    * Walks the tilt check from its first tap to its copied results, holding
    * each pose with Chromium's orientation override. `locks` says whether the

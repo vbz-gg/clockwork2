@@ -36,6 +36,7 @@ export {
   screenRotation,
 } from "./input.js"
 export {
+  currentScreenAngle,
   MOTION_REFUSALS,
   MOTION_WAIT_MS,
   type MotionAccess,
@@ -43,6 +44,8 @@ export {
   type MotionRefusal,
   motionEnvironment,
   requestMotion,
+  type ScreenAngleSource,
+  screenAngleOf,
 } from "./motion.js"
 export {
   type FetchPackLoaderOptions,

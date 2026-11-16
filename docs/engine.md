@@ -1397,11 +1397,17 @@ resident memory for one run on JavaScriptCore under Bun. A V8 isolate, where a
 server replay may run, uses a different amount, and nothing here measures one
 yet, so a platform sizing replay workers should measure in its own.
 
-Tilt is unverified on real phones. The gravity maths and the screen rotation
-are unit-tested and the helper is exercised under Chromium's sensor override,
-but an iPad reports a screen angle of 90 in portrait, and whether that matches
-the frame its orientation events use, and the signs on each platform, wait on
-a check on real devices.
+Tilt is checked on one phone and half-checked on one tablet, with
+`demo/tilt.html`, which walks a person through each pose and copies what it
+recorded. On a Galaxy S24+ under Chrome 157 every pose read as it should,
+upright and on its side, and readings kept arriving at about 59 a second while
+the page scrolled. An iPad Pro (2018) under iPadOS Safari 26.6 reported
+`screen.orientation.angle` 90 while held in portrait, with `window.orientation`
+0, and its readings were measured against 0, so every tilt came out a quarter
+turn wrong. The helpers now read `window.orientation` where a browser has it.
+On its side the iPad reported 180, and the right answer there, 270, is
+inferred from its readings rather than measured; a second run on the iPad
+settles it. No iPhone has been checked.
 
 The input budget is a model's. `INPUT_BUDGET_PER_TICK` is 16, four times the
 busiest rate scripted runs of each helper produced, not a rate measured from

@@ -25,8 +25,16 @@ export interface Sample {
   readonly beta: number | null
   readonly gamma: number | null
   readonly alpha: number | null
-  /** The screen's angle from the device's natural orientation, if known. */
+  /** The screen's angle as the device helpers read it, if known. */
   readonly angle: number | null
+  /**
+   * What each of the browser's two sources said, so a reader can see which
+   * one the angle came from and whether they disagreed.
+   */
+  readonly reported?: {
+    readonly screen: number | null
+    readonly window: number | null
+  }
 }
 
 /** How long a pose has to hold before a step takes it. */
