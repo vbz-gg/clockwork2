@@ -112,9 +112,11 @@ which is the order the host would have produced.
 
 ### E_INPUT_RANGE
 
-An input value fell outside what the device vocabulary allows. Analog axes are
-quantised integers, not floats in [-1, 1]; use `quantiseAxis` rather than
-inventing a scale.
+An entry in an input log is one no recording can hold: its tick or its value
+is not a whole number, its value is `-0`, it has no name, or its tick is past
+the run's end or before the span a chunk covers. Inputs are whole numbers, not
+floats in [-1, 1]: declare a range such as `{ min: -127, max: 127 }` and scale
+a reading into it, which is what the device helpers do for a stick.
 
 ### E_INPUT_UNDECLARED
 

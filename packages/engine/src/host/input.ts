@@ -770,10 +770,7 @@ export class InputCapture {
     }
     const connected = pads.filter(
       (pad): pad is Gamepad =>
-        pad !== null &&
-        pad.connected &&
-        pad.index >= 0 &&
-        pad.index < GAMEPAD_SLOTS,
+        pad?.connected === true && pad.index >= 0 && pad.index < GAMEPAD_SLOTS,
     )
     for (const pad of connected) {
       if (this.pads.get(pad.index) === pad.id) continue

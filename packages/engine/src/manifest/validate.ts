@@ -313,7 +313,7 @@ const INPUT_NAME = /^[a-z][a-zA-Z0-9]*$/
 /** Enough for any game; a manifest with more is declaring a stream, not inputs. */
 export const MAX_DECLARED_INPUTS = 64
 /** A declared bound fits a 32-bit integer, which every engine stores exactly. */
-const INPUT_BOUND = 2 ** 31 - 1
+const INPUT_BOUND = 0x7fffffff
 const INPUT_FIELDS = new Set(["min", "max", "label"])
 
 /**

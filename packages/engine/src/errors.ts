@@ -31,7 +31,10 @@ export const ERROR_CODES = {
   E_RECORDING_MALFORMED: "recording is malformed",
   /** An input log was not sorted by tick. */
   E_INPUT_UNSORTED: "input log is not sorted by tick",
-  /** An input carried a value outside the range the device vocabulary allows. */
+  /**
+   * An input log entry no recording can hold: a tick or a value that is not a
+   * whole number, a `-0`, no name, or a tick outside the run or the span.
+   */
   E_INPUT_RANGE: "input value is out of range",
   /** An input the manifest does not declare, or a value outside its declared range. */
   E_INPUT_UNDECLARED:

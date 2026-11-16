@@ -1,8 +1,8 @@
 # What the platform reads
 
 This describes the contract a game is judged against. The submission endpoint
-itself is part of the arcade platform and lives in another repository; nothing
-here calls it.
+itself is part of the platform and lives in another repository; nothing here
+calls it.
 
 ## A recording
 
@@ -11,15 +11,15 @@ What the browser sends and the server replays:
 ```jsonc
 {
   "format": "cw2-recording",
-  "version": 2,
-  "kernelVersion": "0.8.0",
+  "version": 3,
+  "kernelVersion": "0.9.0",
   "gameId": "lane-runner",
   "gameVersion": "1.0.0",
   "manifestHash": "e4d755ee070bbde2",
   "tickHz": 60,
   "seed": "...",
   "config": { "speed": 1 },
-  "inputs": [{ "tick": 12, "device": "key", "code": "left", "value": 1 }],
+  "inputs": [{ "tick": 12, "code": "left", "value": 1 }],
   "checkpoints": [{ "tick": 0, "hash": "..." }, { "tick": 60, "hash": "..." }],
   "endTick": 1650,
   "terminal": "completed",
@@ -53,7 +53,12 @@ on different ticks on different machines.
 
 ## What is verified
 
-The server replays the input log against a freshly evaluated module, with
+Before anything runs, the server holds the input log to the manifest it
+stored for the version with `checkInputs`: every input a declared name with a
+value in its range, and no more inputs than `INPUT_BUDGET_PER_TICK` per tick
+on average. A log that fails is refused without a replay.
+
+Then it replays the input log against a freshly evaluated module, with
 the packs of the version the session was issued for, and compares the state it
 reaches with the checkpoints the client recorded, then scores from *its own*
 counters. Nothing the client says about the score is

@@ -110,9 +110,11 @@ function newSession(
   if (replay === undefined) {
     mode = "playing"
     recordedFinalHash = null
+    const live = host.live
+    if (live === null) throw new Error("a live session has a live input queue")
     capture = new InputCapture({
       manifest: MANIFEST,
-      queue: host.live as never,
+      queue: live,
       keys: KEYS,
     })
     capture.attach()
