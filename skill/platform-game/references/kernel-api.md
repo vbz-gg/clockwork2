@@ -36,8 +36,6 @@ export declare class Accumulator {
 
 ### ClockworkError
 
-The one error type. Catching code switches on `code`, never on the message, and never on a substring of it.
-
 ```ts
 export declare class ClockworkError extends Error {
     readonly code: ErrorCode;

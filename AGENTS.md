@@ -243,6 +243,13 @@ optional peer is missing here is reported as unchecked rather than as a fault -
 `pixi.js` is not installed in this checkout, so `/adapter-pixi` cannot be
 imported on any machine that has not asked for pixi.
 
+**An engine error is recognised by its mark, never by `instanceof`.** A
+studio's page holds two copies of the engine, the page module's and the
+rules code's, and the conformance checker loads another inside the built
+rules code, so `isClockworkError` reads the `Symbol.for("clockwork2.error")`
+mark and a known code. Anything else that crosses between copies needs the
+same look.
+
 **The simulation must not reach a DOM type.** When this was six packages that
 fell out of the layout: the base `tsconfig` has no `DOM` lib and only the
 packages needing one added it. One package has one `lib` setting and the

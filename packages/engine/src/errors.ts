@@ -112,6 +112,14 @@ export interface ClockworkErrorOptions {
  * The one error type. Catching code switches on `code`, never on the message,
  * and never on a substring of it.
  */
+/**
+ * The mark every `ClockworkError` carries. `Symbol.for` returns one symbol
+ * per name across every copy of the engine in a page or a process, so an
+ * error thrown by one copy is recognised by another, where `instanceof` would
+ * compare two different classes and say no.
+ */
+const CLOCKWORK_ERROR = Symbol.for("clockwork2.error")
+
 export class ClockworkError extends Error {
   readonly code: ErrorCode
   readonly tick: number | undefined
@@ -127,6 +135,7 @@ export class ClockworkError extends Error {
     this.code = code
     this.tick = options.tick
     this.detail = options.detail
+    Object.defineProperty(this, CLOCKWORK_ERROR, { value: true })
   }
 
   /** The short form a log line or a CLI prints: `E_RESTORE_MISMATCH@1800`. */
@@ -140,5 +149,14 @@ export function fail(code: ErrorCode, options?: ClockworkErrorOptions): never {
 }
 
 export function isClockworkError(value: unknown): value is ClockworkError {
-  return value instanceof ClockworkError
+  if (typeof value !== "object" || value === null) return false
+  const marked = value as {
+    readonly [CLOCKWORK_ERROR]?: unknown
+    readonly code?: unknown
+  }
+  return (
+    marked[CLOCKWORK_ERROR] === true &&
+    typeof marked.code === "string" &&
+    Object.hasOwn(ERROR_CODES, marked.code)
+  )
 }
