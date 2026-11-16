@@ -75,7 +75,9 @@ jobs:
   engines:
     name: cross-engine determinism
     needs: check
-    runs-on: ubuntu-latest
+    # Playwright 1.56.1 installs no browsers on Ubuntu 26.04, which ubuntu-latest
+    # now is, so a job that drives a browser names the release it supports.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -110,7 +112,9 @@ jobs:
   e2e:
     name: replay e2e
     needs: check
-    runs-on: ubuntu-latest
+    # Playwright 1.56.1 installs no browsers on Ubuntu 26.04, which ubuntu-latest
+    # now is, so a job that drives a browser names the release it supports.
+    runs-on: ubuntu-24.04
     env:
       PW_REQUIRE_ALL: "1"
     steps:
