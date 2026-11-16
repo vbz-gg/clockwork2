@@ -19,7 +19,7 @@
  */
 
 import type { InputDeclaration } from "@clockwork2/engine"
-import { expect, type Page, test } from "@playwright/test"
+import { type BrowserContext, expect, type Page, test } from "@playwright/test"
 import { MANIFEST } from "../../demo/src/inputs/game"
 
 type Logged = { tick: number; code: string; value: number }
@@ -421,21 +421,34 @@ test.describe("the device helpers in a browser", () => {
     )
   })
 
-  test("the tilt check walks every pose, passes a correct phone, and copies what it found", async ({
-    page,
-    context,
-    browserName,
-  }) => {
-    test.skip(
-      browserName !== "chromium",
-      "Firefox and WebKit have no sensor override in Playwright",
-    )
+  /**
+   * Walks the tilt check from its first tap to its copied results, holding
+   * each pose with Chromium's orientation override. `locks` says whether the
+   * page may lock the screen's orientation: Chromium lets it, the way Android
+   * Chrome does, and the other walk takes the lock away, the way Safari has
+   * none, so the page asks for the device's own rotation lock instead.
+   */
+  async function walkTiltCheck(
+    page: Page,
+    context: BrowserContext,
+    locks: boolean,
+  ) {
     await context.grantPermissions([
       "accelerometer",
       "gyroscope",
       "clipboard-read",
       "clipboard-write",
     ])
+    if (!locks) {
+      await page.addInitScript(() => {
+        Object.defineProperty(ScreenOrientation.prototype, "lock", {
+          value: () =>
+            Promise.reject(
+              new DOMException("no lock here", "NotSupportedError"),
+            ),
+        })
+      })
+    }
     const cdp = await context.newCDPSession(page)
     await page.goto("/tilt.html")
     const turn = (beta: number, gamma: number) =>
@@ -445,20 +458,22 @@ test.describe("the device helpers in a browser", () => {
         gamma,
       })
     const instruction = page.locator("#instruction")
-    await turn(10, 0)
+    // Lying flat with its right edge a little low, which the flat step takes.
+    await turn(0, 5)
     await page.locator("#allow").click()
-    await expect(instruction).toContainText("flat")
-    // Each pose is held still, and the page moves on by itself.
-    await turn(0, 0)
+    if (!locks) {
+      await expect(instruction).toContainText("rotation lock")
+      await page.locator("#continue").click()
+    }
     await expect(instruction).toContainText("upright")
     await turn(90, 0)
     await expect(instruction).toContainText("steering wheel")
     // Upright with the right edge lowered 30 degrees: gravity is half to the
-    // right and cos 30 down the screen.
+    // right and cos 30 down the screen. Chromium refuses a gamma of 90.
     await turn(60, 89.9)
     await expect(instruction).toContainText("on its side")
-    // Turned to landscape: the screen's axes turn with it, so held upright
-    // sideways is gravity along the device's own -x and down the screen.
+    // Sideways: the screen's axes turn with it, so held upright on its side
+    // is gravity along the device's own -x and down the screen.
     await cdp.send("Emulation.setDeviceMetricsOverride", {
       width: 844,
       height: 390,
@@ -470,7 +485,7 @@ test.describe("the device helpers in a browser", () => {
     await expect(instruction).toContainText("Still on its side")
     await turn(30, -90)
     await expect(instruction).toContainText("Scroll this page")
-    // Scrolled with the phone moving, so readings keep arriving.
+    // Scrolled with the device moving, so readings keep arriving.
     for (let i = 0; i < 40 && !(await page.locator("#copy").isVisible()); i++) {
       await turn(30 + (i % 5), -90)
       await page.mouse.wheel(0, i % 2 === 0 ? 300 : -300)
@@ -483,6 +498,7 @@ test.describe("the device helpers in a browser", () => {
       permission: unknown[]
       steps: { id: string; outcome: string }[]
       scroll: { lowest: number }
+      orientation: { portrait: string; landscape: string; byHand: boolean }
     }
     expect(results.permission).toEqual([{ granted: true }])
     expect(results.steps.map((step) => [step.id, step.outcome])).toEqual([
@@ -497,6 +513,38 @@ test.describe("the device helpers in a browser", () => {
     await expect(page.locator("#status")).toContainText("Copied")
     const copied = await page.evaluate(() => navigator.clipboard.readText())
     expect(JSON.parse(copied)).toEqual(results)
+    return results
+  }
+
+  test("the tilt check locks the screen itself where it can, walks every pose, and copies what it found", async ({
+    page,
+    context,
+    browserName,
+  }) => {
+    test.skip(
+      browserName !== "chromium",
+      "Firefox and WebKit have no sensor override in Playwright",
+    )
+    const results = await walkTiltCheck(page, context, true)
+    expect(results.orientation).toMatchObject({
+      portrait: "locked",
+      landscape: "locked",
+      byHand: false,
+    })
+  })
+
+  test("where the screen cannot be locked, the tilt check asks for the device's own rotation lock", async ({
+    page,
+    context,
+    browserName,
+  }) => {
+    test.skip(
+      browserName !== "chromium",
+      "Firefox and WebKit have no sensor override in Playwright",
+    )
+    const results = await walkTiltCheck(page, context, false)
+    expect(results.orientation.byHand).toBe(true)
+    expect(results.orientation.portrait).toContain("NotSupportedError")
   })
 
   // Measured headless on a desktop: Chromium and Firefox have the events and

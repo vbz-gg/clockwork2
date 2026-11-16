@@ -15,6 +15,7 @@ import {
   STEPS,
   STILL_MS,
   STILL_SPREAD,
+  turnedTooSoon,
 } from "../src/tilt/check"
 
 const pose = (
@@ -111,6 +112,24 @@ describe("the steps", () => {
     const steeredLeft = { ...pose(-50, -87, 0), at: 0 }
     expect(step("steer").arrived(steeredLeft, 0)).toBe(true)
     expect(judge(step("steer"), steeredLeft).outcome).toBe("failed")
+  })
+
+  test("an upright step takes no pose once the screen has turned by itself, and says so", () => {
+    const turnedFlat = { ...pose(0, 0, -100, 90), at: 0 }
+    expect(step("flat").arrived(turnedFlat, 0)).toBe(false)
+    const turnedUpright = { ...pose(0, -100, 0, 90), at: 0 }
+    expect(step("upright").arrived(turnedUpright, 0)).toBe(false)
+    expect(step("steer").arrived({ ...pose(50, -87, 0, 270), at: 0 }, 0)).toBe(
+      false,
+    )
+    expect(turnedTooSoon(step("upright"), 90, 0)).toBe(true)
+    expect(turnedTooSoon(step("upright"), 0, 0)).toBe(false)
+    expect(turnedTooSoon(step("sideways"), 90, 0)).toBe(false)
+    // A browser that cannot say its angle is taken at its word.
+    expect(turnedTooSoon(step("flat"), null, 0)).toBe(false)
+    expect(step("flat").arrived({ ...pose(0, 0, -100, 0), at: 0 }, null)).toBe(
+      true,
+    )
   })
 
   test("the sideways steps wait for the screen to turn, and only they may be skipped", () => {

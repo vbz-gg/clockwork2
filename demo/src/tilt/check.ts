@@ -42,7 +42,15 @@ export type StepId = "flat" | "upright" | "steer" | "sideways" | "sidewaysSteer"
 
 export interface Step {
   readonly id: StepId
+  /** What to do when the screen turns only when the person turns it. */
   readonly instruction: string
+  /**
+   * What to do when the page has locked the screen's orientation itself,
+   * where that differs: then the page turns the screen for a sideways step.
+   */
+  readonly instructionWhenLocked?: string
+  /** Whether the step needs the screen turned from where the check began. */
+  readonly sideways: boolean
   /** What a correct phone records, in words, for the result. */
   readonly expect: string
   /** A phone that cannot turn its screen may skip it. */
@@ -54,15 +62,35 @@ export interface Step {
 
 const inPlane = (pose: Sample): boolean => Math.abs(pose.z) <= 40
 const turned = (pose: Sample, portraitAngle: number | null): boolean =>
-  pose.angle !== null && pose.angle !== portraitAngle
+  pose.angle !== null && portraitAngle !== null && pose.angle !== portraitAngle
+
+/**
+ * Whether the screen has turned when the step needs it upright, which a phone
+ * does by itself when its rotation is not locked: the page then says so
+ * rather than taking a pose read in the wrong frame.
+ */
+export function turnedTooSoon(
+  step: Step,
+  angle: number | null,
+  portraitAngle: number | null,
+): boolean {
+  return (
+    !step.sideways &&
+    angle !== null &&
+    portraitAngle !== null &&
+    angle !== portraitAngle
+  )
+}
 
 export const STEPS: readonly Step[] = [
   {
     id: "flat",
     instruction: "Lay the phone flat on a table, screen up, and let go.",
     expect: "z near -100, x and y near 0",
+    sideways: false,
     skippable: false,
-    arrived: (pose) => Math.abs(pose.z) >= 85,
+    arrived: (pose, portraitAngle) =>
+      !turned(pose, portraitAngle) && Math.abs(pose.z) >= 85,
     passed: (pose) =>
       pose.z <= -85 && Math.abs(pose.x) <= 15 && Math.abs(pose.y) <= 15,
   },
@@ -71,9 +99,12 @@ export const STEPS: readonly Step[] = [
     instruction:
       "Pick it up and hold it upright in front of you, screen facing you, top edge up. Hold still.",
     expect: "y near -100, x and z near 0",
+    sideways: false,
     skippable: false,
-    arrived: (pose) =>
-      inPlane(pose) && Math.max(Math.abs(pose.x), Math.abs(pose.y)) >= 80,
+    arrived: (pose, portraitAngle) =>
+      !turned(pose, portraitAngle) &&
+      inPlane(pose) &&
+      Math.max(Math.abs(pose.x), Math.abs(pose.y)) >= 80,
     passed: (pose) => pose.y <= -80 && Math.abs(pose.x) <= 20,
   },
   {
@@ -81,15 +112,22 @@ export const STEPS: readonly Step[] = [
     instruction:
       "Still upright, turn it like a steering wheel so its right edge goes down, about a third of the way. Hold still.",
     expect: `x above ${TILTED}, y below 0`,
+    sideways: false,
     skippable: false,
-    arrived: (pose) => inPlane(pose) && Math.abs(pose.x) >= TILTED,
+    arrived: (pose, portraitAngle) =>
+      !turned(pose, portraitAngle) &&
+      inPlane(pose) &&
+      Math.abs(pose.x) >= TILTED,
     passed: (pose) => pose.x >= TILTED && pose.y < 0,
   },
   {
     id: "sideways",
     instruction:
-      "Turn the phone on its side and hold it upright, screen facing you, so the picture turns. If it does not turn, unlock screen rotation, or tap Skip.",
+      "Turn rotation lock off now. Then turn the phone on its side and hold it upright, screen facing you, so the picture turns with it. If it will not turn, tap Skip.",
+    instructionWhenLocked:
+      "The page has turned itself sideways. Turn the phone on its side to match, so the writing is the right way up, and hold it upright, screen facing you. Hold still.",
     expect: "the screen angle changes, y near -100, x and z near 0",
+    sideways: true,
     skippable: true,
     arrived: (pose, portraitAngle) =>
       turned(pose, portraitAngle) &&
@@ -102,6 +140,7 @@ export const STEPS: readonly Step[] = [
     instruction:
       "Still on its side, turn it like a steering wheel so the edge on your right goes down. Hold still.",
     expect: `x above ${TILTED}, y below 0`,
+    sideways: true,
     skippable: true,
     arrived: (pose, portraitAngle) =>
       turned(pose, portraitAngle) &&

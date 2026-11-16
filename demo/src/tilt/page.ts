@@ -30,6 +30,7 @@ import {
   SCROLL_MS,
   STEPS,
   type StepResult,
+  turnedTooSoon,
 } from "./check"
 
 /** Bumped when what the results carry changes. */
@@ -47,6 +48,7 @@ const dot = element("dot")
 const buttons = {
   allow: element<HTMLButtonElement>("allow"),
   retry: element<HTMLButtonElement>("retry"),
+  proceed: element<HTMLButtonElement>("continue"),
   skip: element<HTMLButtonElement>("skip"),
   copy: element<HTMLButtonElement>("copy"),
 }
@@ -72,6 +74,51 @@ function latest(log: readonly InputEvent[]): {
 
 function screenAngle(): number | null {
   return screen.orientation?.angle ?? null
+}
+
+/** The screen's orientation lock, which only some browsers have. */
+type Lockable = { lock?: (type: string) => Promise<void>; unlock?: () => void }
+
+function said(reason: unknown): string {
+  return reason instanceof Error
+    ? `${reason.name}: ${reason.message}`
+    : String(reason)
+}
+
+/** Locks the screen to `type`, and says how that went. */
+async function lockTo(type: string): Promise<string> {
+  const orientation = screen.orientation as
+    | (ScreenOrientation & Lockable)
+    | undefined
+  if (typeof orientation?.lock !== "function") return "unsupported"
+  try {
+    await orientation.lock(type)
+    return "locked"
+  } catch (reason) {
+    return said(reason)
+  }
+}
+
+/**
+ * Asks for full screen, which a browser needs before it will lock the
+ * screen's orientation. Called inside the tap, after the tilt request.
+ */
+function enterFullscreen(): Promise<string> {
+  const root = document.documentElement
+  if (typeof root.requestFullscreen !== "function") {
+    return Promise.resolve("unsupported")
+  }
+  return root.requestFullscreen().then(
+    () => "entered",
+    (reason: unknown) => said(reason),
+  )
+}
+
+function leaveFullscreen(): void {
+  ;(
+    screen.orientation as (ScreenOrientation & Lockable) | undefined
+  )?.unlock?.()
+  if (document.fullscreenElement !== null) void document.exitFullscreen()
 }
 
 function device() {
@@ -148,11 +195,20 @@ function start(): void {
     permission: [] as MotionAccess[],
     steps: [] as StepResult[],
     scroll: null as null | "skipped" | Record<string, unknown>,
+    // How the screen was kept upright: by the page, or by the person's own
+    // rotation lock when the page could not.
+    orientation: {
+      fullscreen: "not asked",
+      portrait: "not asked",
+      landscape: "not asked",
+      byHand: false,
+    },
     readings: 0,
     notices,
   }
 
-  let phase: "allow" | "step" | "scroll" | "done" = "allow"
+  let phase: "allow" | "rotation" | "step" | "scroll" | "done" = "allow"
+  let pageLocked = false
   let stepIndex = 0
   let samples: Sample[] = []
   let portraitAngle: number | null = screenAngle()
@@ -167,22 +223,54 @@ function start(): void {
     }
     samples = []
     say("progress", `Step ${stepIndex + 1} of ${STEPS.length + 1}`)
-    say("instruction", step.instruction)
+    say(
+      "instruction",
+      pageLocked && step.instructionWhenLocked !== undefined
+        ? step.instructionWhenLocked
+        : step.instruction,
+    )
     say("status", "Waiting for the phone to hold still in that position.")
     buttons.skip.hidden = !step.skippable
+    if (
+      pageLocked &&
+      step.sideways &&
+      results.orientation.landscape === "not asked"
+    ) {
+      void lockTo("landscape-primary").then((answer) => {
+        results.orientation.landscape = answer
+      })
+    }
+  }
+
+  // The steps begin with the screen upright, whichever way kept it there.
+  const beginSteps = (): void => {
+    phase = "step"
+    portraitAngle = screenAngle()
+    buttons.proceed.hidden = true
+    showStep()
+  }
+
+  const askForRotationLock = (): void => {
+    phase = "rotation"
+    results.orientation.byHand = true
+    say("progress", "Before you start")
+    say(
+      "instruction",
+      "Turn on your phone's rotation lock, so the screen stays upright while you tilt it. On an iPhone or iPad, swipe down from the top-right corner and tap the padlock. On Android, turn Auto-rotate off in the quick settings. Then tap Continue.",
+    )
+    say("status", "")
+    buttons.proceed.hidden = false
   }
 
   const next = (result: StepResult): void => {
     results.steps.push(result)
-    if (result.id === "upright" && result.pose !== null) {
-      portraitAngle = result.pose.angle
-    }
     stepIndex++
     showStep()
   }
 
   const beginScroll = (): void => {
     phase = "scroll"
+    if (pageLocked) void lockTo("portrait-primary")
     say("progress", `Step ${STEPS.length + 1} of ${STEPS.length + 1}`)
     say(
       "instruction",
@@ -195,6 +283,7 @@ function start(): void {
 
   const finish = (): void => {
     phase = "done"
+    leaveFullscreen()
     element("scroll").hidden = true
     buttons.skip.hidden = true
     results.readings = readingTimes.length
@@ -234,8 +323,8 @@ function start(): void {
     buttons.allow.hidden = true
     if (access.granted) {
       buttons.retry.hidden = true
-      phase = "step"
-      showStep()
+      if (pageLocked) beginSteps()
+      else askForRotationLock()
       return
     }
     say(
@@ -251,9 +340,21 @@ function start(): void {
   }
 
   // First thing in the tap, before anything is awaited: iOS asks only then.
+  // Full screen is asked for in the same tap, because a browser locks the
+  // screen's orientation only in full screen; where the lock is refused the
+  // page leaves full screen and asks for the phone's own rotation lock.
   buttons.allow.addEventListener("click", () => {
-    void requestMotion().then(asked)
+    const motion = requestMotion()
+    const kept = enterFullscreen().then(async (fullscreen) => {
+      results.orientation.fullscreen = fullscreen
+      if (fullscreen !== "entered") return
+      results.orientation.portrait = await lockTo("portrait-primary")
+      pageLocked = results.orientation.portrait === "locked"
+      if (!pageLocked) leaveFullscreen()
+    })
+    void Promise.all([motion, kept]).then(([access]) => asked(access))
   })
+  buttons.proceed.addEventListener("click", beginSteps)
   buttons.retry.addEventListener("click", () => {
     void requestMotion().then(asked)
   })
@@ -315,6 +416,14 @@ function start(): void {
     if (phase !== "step") return
     const step = STEPS[stepIndex]
     if (step === undefined) return
+    if (turnedTooSoon(step, screenAngle(), portraitAngle)) {
+      say(
+        "status",
+        "The screen turned. Turn rotation lock on, hold the phone upright until the screen turns back, then carry on.",
+      )
+      samples = []
+      return
+    }
     samples.push({
       at: performance.now(),
       x,
