@@ -421,7 +421,7 @@ test.describe("the device helpers in a browser", () => {
     )
   })
 
-  test("the phone tilt page records gravity across the screen and draws the dot where down is", async ({
+  test("the tilt check walks every pose, passes a correct phone, and copies what it found", async ({
     page,
     context,
     browserName,
@@ -430,7 +430,12 @@ test.describe("the device helpers in a browser", () => {
       browserName !== "chromium",
       "Firefox and WebKit have no sensor override in Playwright",
     )
-    await context.grantPermissions(["accelerometer", "gyroscope"])
+    await context.grantPermissions([
+      "accelerometer",
+      "gyroscope",
+      "clipboard-read",
+      "clipboard-write",
+    ])
     const cdp = await context.newCDPSession(page)
     await page.goto("/tilt.html")
     const turn = (beta: number, gamma: number) =>
@@ -439,25 +444,59 @@ test.describe("the device helpers in a browser", () => {
         beta,
         gamma,
       })
-    // Held upright: gravity points down the screen, so the dot drops.
-    await turn(90, 0)
-    await expect(page.locator("#recorded")).toHaveText("0, -100, 0")
-    const top = await page
-      .locator("#dot")
-      .evaluate((node) => Number.parseFloat((node as HTMLElement).style.top))
-    expect(top).toBeGreaterThan(90)
-    // Right edge lowered 30 degrees with the phone flat: the dot rolls right.
-    await turn(0, 30)
-    await expect(page.locator("#recorded")).toHaveText("50, 0, -87")
-    const left = await page
-      .locator("#dot")
-      .evaluate((node) => Number.parseFloat((node as HTMLElement).style.left))
-    expect(left).toBeGreaterThan(70)
+    const instruction = page.locator("#instruction")
+    await turn(10, 0)
     await page.locator("#allow").click()
-    await expect(page.locator("#answer")).toHaveText(
-      JSON.stringify({ granted: true }),
-    )
-    await expect(page.locator("#error")).toHaveText("")
+    await expect(instruction).toContainText("flat")
+    // Each pose is held still, and the page moves on by itself.
+    await turn(0, 0)
+    await expect(instruction).toContainText("upright")
+    await turn(90, 0)
+    await expect(instruction).toContainText("steering wheel")
+    // Upright with the right edge lowered 30 degrees: gravity is half to the
+    // right and cos 30 down the screen.
+    await turn(60, 89.9)
+    await expect(instruction).toContainText("on its side")
+    // Turned to landscape: the screen's axes turn with it, so held upright
+    // sideways is gravity along the device's own -x and down the screen.
+    await cdp.send("Emulation.setDeviceMetricsOverride", {
+      width: 844,
+      height: 390,
+      deviceScaleFactor: 1,
+      mobile: true,
+      screenOrientation: { type: "landscapePrimary", angle: 90 },
+    })
+    await turn(0, -90)
+    await expect(instruction).toContainText("Still on its side")
+    await turn(30, -90)
+    await expect(instruction).toContainText("Scroll this page")
+    // Scrolled with the phone moving, so readings keep arriving.
+    for (let i = 0; i < 40 && !(await page.locator("#copy").isVisible()); i++) {
+      await turn(30 + (i % 5), -90)
+      await page.mouse.wheel(0, i % 2 === 0 ? 300 : -300)
+      await page.waitForTimeout(100)
+    }
+    await expect(page.locator("#copy")).toBeVisible()
+    const results = JSON.parse(
+      (await page.locator("#results").textContent()) ?? "{}",
+    ) as {
+      permission: unknown[]
+      steps: { id: string; outcome: string }[]
+      scroll: { lowest: number }
+    }
+    expect(results.permission).toEqual([{ granted: true }])
+    expect(results.steps.map((step) => [step.id, step.outcome])).toEqual([
+      ["flat", "passed"],
+      ["upright", "passed"],
+      ["steer", "passed"],
+      ["sideways", "passed"],
+      ["sidewaysSteer", "passed"],
+    ])
+    expect(results.scroll.lowest).toBeGreaterThan(0)
+    await page.locator("#copy").click()
+    await expect(page.locator("#status")).toContainText("Copied")
+    const copied = await page.evaluate(() => navigator.clipboard.readText())
+    expect(JSON.parse(copied)).toEqual(results)
   })
 
   // Measured headless on a desktop: Chromium and Firefox have the events and

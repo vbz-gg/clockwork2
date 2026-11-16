@@ -1,16 +1,16 @@
 /**
- * A page for checking tilt by hand, on a real phone.
+ * The tilt check: a page that walks the person holding a phone through a few
+ * poses, takes the readings itself, and ends with a summary and a button that
+ * copies every reading, so the results can be pasted back to whoever asked.
  *
- * The counting game from the inputs page runs here with one mapping: tilt
- * onto its three signed axes, each the direction of gravity across the screen
- * times 100, so x is to the right, y is up the screen and z is out of it. The
- * page shows the browser's own reading beside what the helper recorded, and
- * draws a dot where gravity points, which sits at the lowest point of the box
- * whenever the signs and the screen rotation are right.
+ * The counting game from the inputs page runs here with one mapping, tilt onto
+ * its three signed axes, so what each step judges is exactly what the device
+ * helper records. `check.ts` decides when a step is done and whether it
+ * passed; this file only wires it to the page.
  *
  * Tilt is unverified on real phones until somebody holds one, which is what
- * this page is for. A browser spec checks that it runs, under Chromium's
- * orientation override.
+ * this page is for. A browser spec walks it under Chromium's orientation
+ * override.
  */
 
 import { assertManifest, type InputEvent } from "@clockwork2/engine"
@@ -18,16 +18,41 @@ import {
   type DeviceNotice,
   GameHost,
   InputCapture,
+  type MotionAccess,
   requestMotion,
 } from "@clockwork2/engine/host"
 import { createGame, type InputsView, MANIFEST } from "../inputs/game"
+import {
+  heldStill,
+  judge,
+  readingRate,
+  type Sample,
+  SCROLL_MS,
+  STEPS,
+  type StepResult,
+} from "./check"
 
-const field = document.querySelector("#field") as HTMLElement
-const dot = document.querySelector("#dot") as HTMLElement
+/** Bumped when what the results carry changes. */
+const CHECK_VERSION = 1
+/** How often the recorded tilt is looked at. */
+const SAMPLE_MS = 100
 
-function set(id: string, value: string): void {
-  const node = document.querySelector(`#${id}`)
-  if (node !== null) node.textContent = value
+const element = <T extends HTMLElement>(id: string): T => {
+  const node = document.querySelector<T>(`#${id}`)
+  if (node === null) throw new Error(`the page has no #${id}`)
+  return node
+}
+const field = element("field")
+const dot = element("dot")
+const buttons = {
+  allow: element<HTMLButtonElement>("allow"),
+  retry: element<HTMLButtonElement>("retry"),
+  skip: element<HTMLButtonElement>("skip"),
+  copy: element<HTMLButtonElement>("copy"),
+}
+
+function say(id: string, text: string): void {
+  element(id).textContent = text
 }
 
 /** The last recorded value of each tilt axis, or 0 before one arrives. */
@@ -45,28 +70,44 @@ function latest(log: readonly InputEvent[]): {
   return last
 }
 
+function screenAngle(): number | null {
+  return screen.orientation?.angle ?? null
+}
+
+function device() {
+  const legacy = (window as unknown as { orientation?: number }).orientation
+  const orientation = (
+    globalThis as unknown as {
+      DeviceOrientationEvent?: { requestPermission?: unknown }
+    }
+  ).DeviceOrientationEvent
+  return {
+    userAgent: navigator.userAgent,
+    platform: navigator.platform,
+    screen: {
+      width: screen.width,
+      height: screen.height,
+      pixelRatio: devicePixelRatio,
+    },
+    orientationType: screen.orientation?.type ?? null,
+    angleAtStart: screenAngle(),
+    windowOrientation: legacy ?? null,
+    secureContext: isSecureContext,
+    topLevel: window.top === window,
+    orientationEvents: orientation !== undefined,
+    asksPermission: typeof orientation?.requestPermission === "function",
+  }
+}
+
 function start(): void {
   assertManifest(MANIFEST)
   const notices: DeviceNotice[] = []
-  let shown = -1
   const host = new GameHost<InputsView>({
     module: createGame(),
     manifest: MANIFEST,
     seed: "tilt",
-    onFrame: () => {
-      const log = host.live?.recorded() ?? []
-      if (log.length === shown) return
-      shown = log.length
-      const { x, y, z } = latest(log)
-      set("recorded", `${x}, ${y}, ${z}`)
-      set("count", String(log.length))
-      // Gravity across the screen, x right and y up, so the dot falls to
-      // wherever down is.
-      dot.style.left = `${50 + x / 2.2}%`
-      dot.style.top = `${50 - y / 2.2}%`
-    },
     onError: (error) => {
-      set("error", error instanceof Error ? error.message : String(error))
+      say("status", error instanceof Error ? error.message : String(error))
     },
   })
   const queue = host.live
@@ -78,30 +119,215 @@ function start(): void {
     tilt: { x: "tiltX", y: "tiltY", z: "tiltZ" },
     onNotice: (notice) => {
       notices.push(notice)
-      set("notices", JSON.stringify(notices))
     },
   }).attach()
 
-  // The browser's reading, and how often it arrives, beside the recording.
-  let readings = 0
+  // The browser's own reading, and when each arrived.
+  let raw: {
+    beta: number | null
+    gamma: number | null
+    alpha: number | null
+    absolute: boolean
+  } = { beta: null, gamma: null, alpha: null, absolute: false }
+  const readingTimes: number[] = []
   window.addEventListener("deviceorientation", (event) => {
-    readings++
-    const beta = event.beta === null ? "null" : event.beta.toFixed(1)
-    const gamma = event.gamma === null ? "null" : event.gamma.toFixed(1)
-    set("raw", `${beta}, ${gamma}`)
+    raw = {
+      beta: event.beta,
+      gamma: event.gamma,
+      alpha: event.alpha,
+      absolute: event.absolute,
+    }
+    readingTimes.push(performance.now())
+    if (readingTimes.length > 5000) readingTimes.splice(0, 1000)
   })
-  setInterval(() => {
-    set("rate", String(readings))
-    readings = 0
-    set("angle", String(screen.orientation?.angle ?? "none"))
-  }, 1000)
+
+  const results = {
+    check: CHECK_VERSION,
+    at: new Date().toISOString(),
+    device: device(),
+    permission: [] as MotionAccess[],
+    steps: [] as StepResult[],
+    scroll: null as null | "skipped" | Record<string, unknown>,
+    readings: 0,
+    notices,
+  }
+
+  let phase: "allow" | "step" | "scroll" | "done" = "allow"
+  let stepIndex = 0
+  let samples: Sample[] = []
+  let portraitAngle: number | null = screenAngle()
+  let scrolledFrom: number | null = null
+  let scrolledTo = 0
+
+  const showStep = (): void => {
+    const step = STEPS[stepIndex]
+    if (step === undefined) {
+      beginScroll()
+      return
+    }
+    samples = []
+    say("progress", `Step ${stepIndex + 1} of ${STEPS.length + 1}`)
+    say("instruction", step.instruction)
+    say("status", "Waiting for the phone to hold still in that position.")
+    buttons.skip.hidden = !step.skippable
+  }
+
+  const next = (result: StepResult): void => {
+    results.steps.push(result)
+    if (result.id === "upright" && result.pose !== null) {
+      portraitAngle = result.pose.angle
+    }
+    stepIndex++
+    showStep()
+  }
+
+  const beginScroll = (): void => {
+    phase = "scroll"
+    say("progress", `Step ${STEPS.length + 1} of ${STEPS.length + 1}`)
+    say(
+      "instruction",
+      "Scroll this page up and down with your thumb for a few seconds, tilting the phone as you do.",
+    )
+    say("status", "Waiting for you to scroll.")
+    element("scroll").hidden = false
+    buttons.skip.hidden = false
+  }
+
+  const finish = (): void => {
+    phase = "done"
+    element("scroll").hidden = true
+    buttons.skip.hidden = true
+    results.readings = readingTimes.length
+    say("progress", "Done")
+    say(
+      "instruction",
+      "Tap Copy results and paste them into the chat with Claude. To check another device, open this page on it.",
+    )
+    say("status", "")
+    const summary = element("summary")
+    summary.replaceChildren()
+    for (const step of results.steps) {
+      const item = document.createElement("li")
+      item.className = step.outcome
+      const pose = step.pose
+      item.textContent = `${step.id}: ${step.outcome}${
+        pose === null ? "" : ` (x ${pose.x}, y ${pose.y}, z ${pose.z})`
+      }`
+      summary.append(item)
+    }
+    const scroll = document.createElement("li")
+    const rate = results.scroll
+    scroll.textContent =
+      rate === null || rate === "skipped"
+        ? "scroll: skipped"
+        : `scroll: at least ${String(rate.lowest)} readings a second while scrolling`
+    summary.append(scroll)
+    summary.hidden = false
+    element("results").textContent = JSON.stringify(results, null, 2)
+    element("results").hidden = false
+    buttons.copy.hidden = false
+    window.scrollTo(0, 0)
+  }
+
+  const asked = (access: MotionAccess): void => {
+    results.permission.push(access)
+    buttons.allow.hidden = true
+    if (access.granted) {
+      buttons.retry.hidden = true
+      phase = "step"
+      showStep()
+      return
+    }
+    say(
+      "status",
+      `The browser said no: ${access.code}, ${access.detail}. If a prompt appeared and you tapped Don't Allow, tap Ask again to see whether it asks a second time.`,
+    )
+    if (results.permission.length === 1) {
+      buttons.retry.hidden = false
+    } else {
+      buttons.retry.hidden = true
+      finish()
+    }
+  }
 
   // First thing in the tap, before anything is awaited: iOS asks only then.
-  document.querySelector("#allow")?.addEventListener("click", () => {
-    void requestMotion().then((access) => {
-      set("answer", JSON.stringify(access))
-    })
+  buttons.allow.addEventListener("click", () => {
+    void requestMotion().then(asked)
   })
+  buttons.retry.addEventListener("click", () => {
+    void requestMotion().then(asked)
+  })
+  buttons.skip.addEventListener("click", () => {
+    if (phase === "scroll") {
+      results.scroll = "skipped"
+      finish()
+      return
+    }
+    const step = STEPS[stepIndex]
+    if (step !== undefined) next(judge(step, null))
+  })
+  buttons.copy.addEventListener("click", () => {
+    const text = element("results").textContent ?? ""
+    navigator.clipboard.writeText(text).then(
+      () => say("status", "Copied. Paste it into the chat with Claude."),
+      () => {
+        const range = document.createRange()
+        range.selectNodeContents(element("results"))
+        getSelection()?.removeAllRanges()
+        getSelection()?.addRange(range)
+        say(
+          "status",
+          "Copying was refused: the text below is selected, so copy it by hand.",
+        )
+      },
+    )
+  })
+
+  window.addEventListener(
+    "scroll",
+    () => {
+      if (phase !== "scroll") return
+      const now = performance.now()
+      if (scrolledFrom === null) scrolledFrom = now
+      scrolledTo = now
+      const left = Math.ceil((SCROLL_MS - (now - scrolledFrom)) / 1000)
+      say("status", left > 0 ? `Keep going: ${left} s` : "Got it.")
+      if (now - scrolledFrom >= SCROLL_MS) {
+        const from = scrolledFrom
+        results.scroll = {
+          seconds: Math.round((scrolledTo - from) / 100) / 10,
+          ...readingRate(readingTimes, from, scrolledTo),
+          before: readingRate(readingTimes, from - 3000, from),
+        }
+        finish()
+      }
+    },
+    { passive: true },
+  )
+
+  setInterval(() => {
+    const { x, y, z } = latest(host.live?.recorded() ?? [])
+    say("live", `x ${x}, y ${y}, z ${z}  (angle ${String(screenAngle())})`)
+    // Gravity across the screen, x right and y up, so the dot falls to
+    // wherever down is.
+    dot.style.left = `${50 + x / 2.2}%`
+    dot.style.top = `${50 - y / 2.2}%`
+    if (phase !== "step") return
+    const step = STEPS[stepIndex]
+    if (step === undefined) return
+    samples.push({
+      at: performance.now(),
+      x,
+      y,
+      z,
+      ...raw,
+      angle: screenAngle(),
+    })
+    if (samples.length > 100) samples.splice(0, samples.length - 100)
+    const pose = heldStill(samples)
+    if (pose !== null && step.arrived(pose, portraitAngle))
+      next(judge(step, pose))
+  }, SAMPLE_MS)
 
   host.start()
 }
@@ -109,5 +335,5 @@ function start(): void {
 try {
   start()
 } catch (error) {
-  set("error", error instanceof Error ? error.message : String(error))
+  say("status", error instanceof Error ? error.message : String(error))
 }
