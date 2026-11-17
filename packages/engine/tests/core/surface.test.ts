@@ -357,11 +357,11 @@ describe("the reference game's view", () => {
 
 describe("how the reference game ends", () => {
   /**
-   * The game's own comment: without a time limit an idle run never ends, and
-   * "the run is bounded" becomes a promise the kernel's tick cap has to keep
-   * instead of the game. So each of the three endings has to be the game's.
+   * The reference game ends every way a game can end by itself, and tests
+   * that need a run with an ending rely on it. So each of the three endings
+   * has to be the game's, well short of the stop each test passes.
    */
-  test("the time limit ends an idle run before the tick cap does", () => {
+  test("the time limit ends an idle run", () => {
     const result = runSession({
       module: createReferenceGame(),
       seed: "idle-forever",
@@ -371,7 +371,7 @@ describe("how the reference game ends", () => {
       checkpointEvery: 600,
       counters: REFERENCE_COUNTERS,
     })
-    expect(result.terminal).not.toBe("max-ticks")
+    expect(result.terminal).toBe("completed")
     expect(result.endTick).toBeLessThanOrEqual(
       REFERENCE_CONFIG.timeLimitTicks + 1,
     )
@@ -400,6 +400,6 @@ describe("how the reference game ends", () => {
       checkpointEvery: 600,
       counters: REFERENCE_COUNTERS,
     })
-    expect(result.terminal).not.toBe("max-ticks")
+    expect(result.terminal).toBe("completed")
   })
 })

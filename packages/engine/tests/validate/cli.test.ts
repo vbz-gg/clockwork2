@@ -70,19 +70,19 @@ describe("run", () => {
   test("a non-conformant game exits 1 and names the code", async () => {
     const { code, out } = await run(
       "run",
-      join(FIXTURES, "unbounded"),
-      "--only=bound",
+      join(FIXTURES, "incomplete-snapshot"),
+      "--only=restore",
       "--seeds=t1",
     )
     expect(code).toBe(1)
-    expect(out).toContain("E_BOUND_NOT_OVER")
+    expect(out).toContain("E_RESTORE_MISMATCH")
   }, 60_000)
 
   test("--json prints a report another program can read", async () => {
     const { code, out } = await run(
       "run",
-      join(FIXTURES, "unbounded"),
-      "--only=bound",
+      join(FIXTURES, "incomplete-snapshot"),
+      "--only=restore",
       "--seeds=t1",
       "--json",
     )
@@ -92,8 +92,8 @@ describe("run", () => {
       outcomes: Array<{ check: string; findings: Array<{ code: string }> }>
     }
     expect(report.ok).toBe(false)
-    expect(report.outcomes.map((o) => o.check)).toEqual(["bound"])
-    expect(report.outcomes[0]?.findings[0]?.code).toBe("E_BOUND_NOT_OVER")
+    expect(report.outcomes.map((o) => o.check)).toEqual(["restore"])
+    expect(report.outcomes[0]?.findings[0]?.code).toBe("E_RESTORE_MISMATCH")
   }, 60_000)
 
   /**

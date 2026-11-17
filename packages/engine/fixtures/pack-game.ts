@@ -41,7 +41,7 @@ export function packManifest(
   id: string,
   assets: readonly AssetDeclaration[],
 ): Manifest {
-  return { ...fixtureManifest(id, 600), assets }
+  return { ...fixtureManifest(id), assets }
 }
 
 export function packGame(

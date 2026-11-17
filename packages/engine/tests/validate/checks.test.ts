@@ -35,17 +35,12 @@ import type { CheckOutcome, Subject } from "../../src/validate/types"
 
 function manifest(over: Partial<Manifest> = {}): Manifest {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     id: "stub",
     version: "1.0.0",
     name: "Stub",
     kernel: { version: "0.1.0" },
-    session: {
-      tickHz: 60,
-      maxTicks: 600,
-      maxWallSeconds: 120,
-      hasEnding: true,
-    },
+    session: { tickHz: 60, hasEnding: true },
     inputs: { push: { min: 0, max: 1 } },
     counters: [
       { name: "score", direction: "up", monotonic: true },

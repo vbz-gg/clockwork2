@@ -28,7 +28,7 @@ describe("the import-graph scan", () => {
 
   test("it follows a relative import", () => {
     // Every fixture imports ../manifest, which has to be read too.
-    const result = scan("unbounded")
+    const result = scan("endless")
     expect(result.files.length).toBe(2)
     expect(result.files.some((f) => f.endsWith("fixtures/manifest.ts"))).toBe(
       true,

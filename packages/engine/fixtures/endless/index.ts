@@ -1,9 +1,16 @@
-/** Deliberately non-conformant: the run never ends. */
+/**
+ * A game that never ends. It conforms: no run has a step limit, so every check
+ * plays it to the check window and passes, and the report says each run was
+ * still going when the window closed.
+ */
 import type { Counters, Effect, GameModule, Snapshot } from "@clockwork2/engine"
 import { fixtureManifest } from "../manifest"
 
-export class BadGame implements GameModule {
-  readonly manifest = fixtureManifest("unbounded", 600)
+export class EndlessGame implements GameModule {
+  readonly manifest = {
+    ...fixtureManifest("endless"),
+    session: { tickHz: 60, hasEnding: false },
+  } as const
   private ticks = 0
   init(): void {
     this.ticks = 0
@@ -24,8 +31,6 @@ export class BadGame implements GameModule {
     return { score: 0, ticksSurvived: this.ticks }
   }
   isOver(): boolean {
-    // Nothing ever makes this true, so the kernel's tick cap is the only
-    // bound - which is exactly the shape the platform must refuse.
     return false
   }
   effects(): readonly Effect[] {
@@ -33,6 +38,6 @@ export class BadGame implements GameModule {
   }
 }
 
-export default function createGame(): BadGame {
-  return new BadGame()
+export default function createGame(): EndlessGame {
+  return new EndlessGame()
 }

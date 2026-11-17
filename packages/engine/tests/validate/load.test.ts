@@ -21,12 +21,12 @@ import { isClockworkError } from "../../src"
 import { findEntry, loadSubject, readPacks } from "../../src/validate/load"
 
 const MANIFEST_LITERAL = `{
-  schemaVersion: 2,
+  schemaVersion: 3,
   id: "temp-bundle",
   version: "1.0.0",
   name: "Temp Bundle",
   kernel: { version: "0.1.0" },
-  session: { tickHz: 60, maxTicks: 600, maxWallSeconds: 120, hasEnding: true },
+  session: { tickHz: 60, hasEnding: true },
   inputs: { push: { min: 0, max: 1 } },
   counters: [
     { name: "score", direction: "up", monotonic: true },
@@ -223,17 +223,12 @@ describe("which manifest is judged", () => {
     const dir = bundle({
       "index.ts": gameSource({ exportAs: "default" }),
       "manifest.json": JSON.stringify({
-        schemaVersion: 2,
+        schemaVersion: 3,
         id: "from-disk",
         version: "1.0.0",
         name: "From Disk",
         kernel: { version: "0.1.0" },
-        session: {
-          tickHz: 60,
-          maxTicks: 600,
-          maxWallSeconds: 120,
-          hasEnding: true,
-        },
+        session: { tickHz: 60, hasEnding: true },
         inputs: { push: { min: 0, max: 1 } },
         counters: [
           { name: "score", direction: "up", monotonic: true },

@@ -57,11 +57,13 @@ export interface GameHostOptions<
   /** Ticks between state hashes. Defaults to one second of play. */
   readonly checkpointEvery?: number
   /**
-   * A cap below the manifest's.
+   * Where the session stops, with terminal `timeout`, if the game has not
+   * ended it by then.
    *
-   * Replaying a recording that was abandoned mid-run needs one: the log ends
-   * where the player stopped, and without a cap the replay carries on past it
-   * and reports a different end tick for a session that did not diverge.
+   * A replay of a recording passes `Math.max(endTick, 1)`: the log ends
+   * where the player stopped, and without a stop the replay carries on past
+   * it and reports a different end tick for a session that did not diverge.
+   * Left out, a session runs until the game ends it or `stop` is called.
    */
   readonly maxTicks?: number
   /** A multiplier on how fast the session advances. Replay speed lives here. */
@@ -177,7 +179,9 @@ export class GameHost<
       seed: this.options.seed,
       config: (this.options.config ?? {}) as TConfig,
       inputs: this.source,
-      maxTicks: this.options.maxTicks ?? this.options.manifest.session.maxTicks,
+      ...(this.options.maxTicks === undefined
+        ? {}
+        : { maxTicks: this.options.maxTicks }),
       checkpointEvery:
         this.options.checkpointEvery ?? this.options.manifest.session.tickHz,
       counters: this.options.manifest.counters,

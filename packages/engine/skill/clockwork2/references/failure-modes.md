@@ -96,14 +96,6 @@ scored, because there is no moment the score is final.
 Keep a boolean field that is only ever set, never cleared - and make sure
 `restore()` restores it.
 
-### E_TICK_LIMIT
-
-The session passed the `maxTicks` its manifest declares without `isOver()`
-becoming true. The kernel ends the run; this is the code it ends it with.
-
-If that is legitimate - an endless game - the manifest says `hasEnding: false`
-and `maxTicks` is the intended length. If it is not, see `E_BOUND_NOT_OVER`.
-
 ### E_INPUT_UNSORTED
 
 An input log was not sorted by tick. Recordings come out sorted; a log built by
@@ -159,13 +151,21 @@ file or a truncated upload.
 
 The manifest failed `assertManifest`. The detail names the field. Common ones:
 a `tickHz` that is not 30, 60 or 120; `rankBy` naming a counter that is not
-declared; `capabilities.deterministic` not `true`.
+declared, or `rankBy` without `tiePolicy`; `capabilities.deterministic` not
+`true`.
+
+A manifest written for an older format is refused at `schemaVersion`, and the
+message says what changed. Format 3 removed `session.maxTicks`,
+`session.maxWallSeconds` and `budgets.bundleBytes`, because no run has a step
+limit, so a format 3 manifest that still carries one of them is refused at
+that field: delete it.
 
 ### E_ARG_INVALID
 
 An argument the caller controls was outside the range the API accepts, and the
 detail names the value and the range. The APIs that report it are `maxTicks`
-and `tickHz` on a session, the tick counts `Timer.every()` and `Timer.after()`
+and `tickHz` on a session, `runSession` called without `maxTicks`, the tick
+counts `Timer.every()` and `Timer.after()`
 take, the replay speed on a host, `fixed.div()` by zero, `fixed.sqrt()` of a
 negative, `randomChoice()` on an empty array, and `dmath.copysign()` with a NaN
 in either argument.
@@ -282,16 +282,6 @@ import that looked harmless.
 The simulation's entry must not import the renderer. That one rule prevents
 most of this.
 
-### E_BOUND_NOT_OVER
-
-`isOver()` never became true inside `maxTicks`, under the idle, chaos or bot
-log. The platform has to bound what it pays to replay, so an unbounded game
-cannot be accepted.
-
-Add the ending: a time limit, a difficulty ramp that eventually beats any
-player, a life count. "The player can always quit" is not an ending - an idle
-player never quits, and the idle log is exactly that player.
-
 ### E_LINT_BANNED
 
 The static scan found a banned API in the simulation's import graph. The tag
@@ -335,8 +325,7 @@ state over the top.
 A declared asset is missing from the bundle, its bytes do not hash to the
 declared `sha256`, its length is not the declared `bytes`, or the declared
 assets together are over `budgets.assetBytes`. The check reads only declared
-files: a file the manifest does not mention is not reported, and
-`budgets.bundleBytes` is not checked.
+files: a file the manifest does not mention is not reported.
 
 `scripts/package.ts` prints the `assets` array to paste into the manifest.
 

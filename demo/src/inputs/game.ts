@@ -34,16 +34,14 @@ const SIGNED: InputDeclaration = { min: -100, max: 100 }
 export const TICK_HZ = 60
 
 export const MANIFEST: Manifest = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   id: "clockwork2-inputs",
   version: "1.0.0",
   name: "Every input helper",
   kernel: { version: "0.1.0" },
   session: {
     tickHz: TICK_HZ,
-    // Ten minutes, long past any spec. The game never ends by itself.
-    maxTicks: TICK_HZ * 60 * 10,
-    maxWallSeconds: 900,
+    // The game never ends by itself: a spec stops it.
     hasEnding: false,
   },
   inputs: {

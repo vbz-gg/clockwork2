@@ -41,8 +41,6 @@ export const ERROR_CODES = {
     "an input is not one the manifest declares, or is out of its range",
   /** A log holding more inputs than the budget allows (`checkInputs`). */
   E_INPUT_BUDGET: "a log holds more inputs than any player makes",
-  /** The session passed the tick cap its manifest declares. */
-  E_TICK_LIMIT: "session passed maxTicks without ending",
   /** A manifest failed validation. */
   E_MANIFEST_INVALID: "manifest is invalid",
   /** An argument the caller controls was outside the range the API accepts. */
@@ -71,8 +69,6 @@ export const ERROR_CODES = {
     "two runs of the same session reached different states",
   /** The module threw when loaded or stepped with no browser present. */
   E_HEADLESS_THREW: "module threw in a headless run",
-  /** isOver() never became true inside maxTicks. */
-  E_BOUND_NOT_OVER: "the run does not end inside maxTicks",
   /** The static scan found a banned API in the simulation's import graph. */
   E_LINT_BANNED: "a banned API appears in the simulation's import graph",
   /** await, async or .then appears in the simulation, or a microtask changed state. */

@@ -53,6 +53,8 @@ export type ToWorker =
       readonly type: "init"
       readonly seed: string
       readonly config: PlainValue
+      /** Where the session stops. Left out, it runs until the game ends it. */
+      readonly maxTicks?: number
       /** Every start pack, and any demand pack the page already has. */
       readonly packs?: readonly PackTransfer[]
     }
@@ -168,7 +170,9 @@ export function runSimulationWorker(
             seed: message.seed,
             config: message.config,
             inputs: queue,
-            maxTicks: manifest.session.maxTicks,
+            ...(message.maxTicks === undefined
+              ? {}
+              : { maxTicks: message.maxTicks }),
             checkpointEvery: manifest.session.tickHz,
             counters: manifest.counters,
             assets: manifest.assets ?? [],
@@ -283,6 +287,12 @@ export interface WorkerSimulationOptions {
   readonly worker: Worker
   readonly seed: string
   readonly config?: PlainValue
+  /**
+   * Where the session stops, with terminal `timeout`, if the game has not
+   * ended it by then: `Math.max(endTick, 1)` for a replay. Left out, the
+   * session runs until the game ends it or `stop` is called.
+   */
+  readonly maxTicks?: number
   readonly onFrame?: (frame: {
     tick: number
     alpha: number
@@ -395,6 +405,9 @@ export class WorkerSimulation {
         type: "init",
         seed: options.seed,
         config: options.config ?? {},
+        ...(options.maxTicks === undefined
+          ? {}
+          : { maxTicks: options.maxTicks }),
         packs,
       } satisfies ToWorker,
       packs.map((pack) => pack.bytes),

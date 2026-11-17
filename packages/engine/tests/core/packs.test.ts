@@ -19,7 +19,7 @@ import type {
 } from "../../src/contract"
 import { ClockworkError, type ErrorCode } from "../../src/errors"
 import { RecordedInputSource } from "../../src/inputs"
-import { runSession, Session, type SessionOptions } from "../../src/loop"
+import { type RunSessionOptions, runSession, Session } from "../../src/loop"
 import type { AssetDeclaration } from "../../src/manifest/types"
 import {
   decodeJsonPack,
@@ -210,8 +210,8 @@ class PackGame implements GameModule {
 
 function options(
   game: GameModule,
-  extra: Partial<SessionOptions> = {},
-): SessionOptions {
+  extra: Partial<RunSessionOptions> = {},
+): RunSessionOptions {
   return {
     module: game,
     seed: "packs",

@@ -101,10 +101,10 @@ describe("SKILL.md", () => {
 
   test("it says its validate script is the engine's checks, not a platform's", () => {
     // A platform built on the engine may run checks of its own beside the
-    // twelve - vbz runs fifteen outcomes - so a guide that called the script
-    // what the platform runs would tell an author a local pass is a listing.
+    // engine's, so a guide that called the script what the platform runs
+    // would tell an author a local pass is a listing.
     expect(source).toContain(
-      "the engine's twelve checks; a platform may run more",
+      "the engine's eleven checks; a platform may run more",
     )
   })
 

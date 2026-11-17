@@ -95,7 +95,9 @@ function serverReplay(inputs: readonly InputEvent[]): {
     seed: "packs-hosts",
     config: { prefetch: false },
     inputs: new RecordedInputSource(inputs),
-    maxTicks: MANIFEST.session.maxTicks,
+    // Past tick 1800, where the game ends itself, as a server's replay
+    // stops at the end of the recording it replays.
+    maxTicks: 3600,
     checkpointEvery: MANIFEST.session.tickHz,
     counters: MANIFEST.counters,
     assets: MANIFEST.assets ?? [],

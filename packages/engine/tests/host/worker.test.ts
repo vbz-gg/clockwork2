@@ -89,7 +89,7 @@ describe("the worker protocol", () => {
       seed: "parity",
       config: REFERENCE_CONFIG,
       inputs: new RecordedInputSource(log),
-      maxTicks: REFERENCE_MANIFEST.session.maxTicks,
+      maxTicks: 18_000,
       checkpointEvery: 60,
       counters: REFERENCE_MANIFEST.counters,
     })
@@ -136,6 +136,31 @@ describe("the worker protocol", () => {
     expect(result.endTick).toBe(inline.endTick)
     expect(result.counters).toEqual(inline.counters)
     expect(checkpoints).toEqual([...inline.checkpoints])
+  })
+
+  test("a maxTicks the page gives stops the worker's session there", () => {
+    // The reference game ends by itself at 3,600 ticks when nobody plays.
+    type Ended = { endTick: number; terminal: string }
+    const run = (maxTicks?: number): Ended | null => {
+      const pair = new FakeWorkerPair()
+      runSimulationWorker(createReferenceGame, REFERENCE_MANIFEST, pair.scope)
+      let ended = null as Ended | null
+      const simulation = new WorkerSimulation({
+        worker: pair.page,
+        seed: "stop",
+        config: REFERENCE_CONFIG,
+        ...(maxTicks === undefined ? {} : { maxTicks }),
+        onEnded: (result) => {
+          ended = { endTick: result.endTick, terminal: result.terminal }
+        },
+      })
+      for (let frame = 0; ended === null && frame < 10_000; frame++) {
+        simulation.frame(1000 / 60)
+      }
+      return ended
+    }
+    expect(run(90)).toEqual({ endTick: 90, terminal: "timeout" })
+    expect(run()).toEqual({ endTick: 3600, terminal: "completed" })
   })
 
   test("the view it sends survives a structured clone", () => {

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Runs the engine's twelve conformance checks against a game.
+# Runs the engine's eleven conformance checks against a game.
 #
-# This is the authority on those twelve. Where SKILL.md and this script
+# This is the authority on those eleven. Where SKILL.md and this script
 # disagree, the script is right: prose cannot fail a build. A platform built on
-# the engine runs the same twelve and may run more of its own.
+# the engine runs the same eleven and may run more of its own.
 #
 # Run it from the game's own root, with <guide> the directory SKILL.md is in:
 #

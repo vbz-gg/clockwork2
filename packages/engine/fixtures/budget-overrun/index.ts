@@ -21,7 +21,7 @@ import type {
 } from "@clockwork2/engine"
 import { fixtureManifest } from "../manifest"
 
-const base = fixtureManifest("budget-overrun", 600)
+const base = fixtureManifest("budget-overrun")
 
 export const MANIFEST: Manifest = {
   ...base,

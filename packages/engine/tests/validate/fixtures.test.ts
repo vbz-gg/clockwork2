@@ -11,6 +11,7 @@ import { describe, expect, test } from "bun:test"
 import { join } from "node:path"
 import type { ErrorCode } from "../../src"
 import { packReaderFor } from "../../src/testing"
+import { CHECK_WINDOW_TICKS } from "../../src/validate"
 import { loadSubject } from "../../src/validate/load"
 import { formatReport, validate } from "../../src/validate/runner"
 
@@ -42,7 +43,7 @@ describe("the conforming fixture", () => {
   test("every check ran or said why it did not", async () => {
     const subject = await loadSubject(join(FIXTURES, "conforming"))
     const report = await validate(subject, { seeds: ["t1"] })
-    expect(report.outcomes.length).toBe(12)
+    expect(report.outcomes.length).toBe(11)
     for (const outcome of report.outcomes) {
       expect(outcome.ok || outcome.skipped !== undefined, outcome.check).toBe(
         true,
@@ -65,7 +66,7 @@ describe("the conforming fixture with data packs", () => {
         (o) => `${o.check}: ${o.findings.map((f) => f.detail).join("; ")}`,
       ),
     ).toEqual([])
-    expect(report.outcomes.length).toBe(12)
+    expect(report.outcomes.length).toBe(11)
     // Two seeds, three logs, three runs each, and the on-demand run.
     const determinism = report.outcomes.find((o) => o.check === "determinism")
     expect(determinism?.note).toBe("19 runs compared")
@@ -83,7 +84,6 @@ describe("each non-conformant fixture reports its own code", () => {
     ["banned-clock", ["E_LINT_BANNED", "E_BANNED_API"]],
     ["banned-pow", ["E_LINT_BANNED", "E_BANNED_API"]],
     ["async-tick", ["E_ASYNC_DETECTED", "E_ASYNC_TICK"]],
-    ["unbounded", ["E_BOUND_NOT_OVER"]],
     ["incomplete-snapshot", ["E_RESTORE_MISMATCH"]],
     // Four ways one asset declaration can be wrong, all at once.
     ["budget-overrun", ["E_BUDGET_EXCEEDED"]],
@@ -112,15 +112,29 @@ describe("each non-conformant fixture reports its own code", () => {
   }
 })
 
-describe("isolation", () => {
-  test("unbounded fails only the bound check", async () => {
-    const subject = await loadSubject(join(FIXTURES, "unbounded"))
+describe("a game that never ends", () => {
+  test("passes every check, each run stopped by the check window", async () => {
+    // No run has a step limit, so a game that never ends is not refused for
+    // it. What the suite owes its reader is where every run stopped.
+    const subject = await loadSubject(join(FIXTURES, "endless"))
     const report = await validate(subject, { seeds: ["t1"] })
-    expect(report.outcomes.filter((o) => !o.ok).map((o) => o.check)).toEqual([
-      "bound",
-    ])
-  }, 30_000)
+    expect(report.outcomes.filter((o) => !o.ok).map((o) => o.check)).toEqual([])
+    const ends = report.outcomes.find((o) => o.check === "determinism")?.ends
+    expect(ends).toEqual(
+      ["idle", "chaos", "bot"].map((log) => ({
+        seed: "t1",
+        log,
+        endTick: CHECK_WINDOW_TICKS,
+        terminal: "timeout",
+      })),
+    )
+    expect(formatReport(report)).toContain(
+      `t1: idle ran the whole window (${CHECK_WINDOW_TICKS}), chaos ran the whole window (${CHECK_WINDOW_TICKS}), bot ran the whole window (${CHECK_WINDOW_TICKS})`,
+    )
+  }, 60_000)
+})
 
+describe("isolation", () => {
   test("a bundle whose assets do not add up fails only the budgets check", async () => {
     // The game conforms. Only the manifest's account of the bundle does not,
     // and no check that runs a session can see that.
@@ -191,12 +205,37 @@ describe("a freshly evaluated module, not a fresh instance", () => {
 
 describe("the report", () => {
   test("reads as lines a person can act on", async () => {
-    const subject = await loadSubject(join(FIXTURES, "unbounded"))
-    const report = await validate(subject, { seeds: ["t1"], only: ["bound"] })
+    const subject = await loadSubject(join(FIXTURES, "incomplete-snapshot"))
+    const report = await validate(subject, { seeds: ["t1"], only: ["restore"] })
     const text = formatReport(report)
     expect(text).toContain("FAIL")
-    expect(text).toContain("E_BOUND_NOT_OVER")
-    expect(text).toContain("isOver() never became true")
+    expect(text).toContain("E_RESTORE_MISMATCH")
+    expect(text).toContain("diverged")
+  }, 30_000)
+
+  test("says where each seed's run of each log ended", async () => {
+    // The conforming fixture ends at tick 1800 whatever is pressed.
+    const subject = await loadSubject(join(FIXTURES, "conforming"))
+    const report = await validate(subject, {
+      seeds: ["t1", "t2"],
+      only: ["determinism"],
+    })
+    const ends = report.outcomes[0]?.ends ?? []
+    expect(ends.map((end) => `${end.seed} ${end.log}`)).toEqual([
+      "t1 idle",
+      "t1 chaos",
+      "t1 bot",
+      "t2 idle",
+      "t2 chaos",
+      "t2 bot",
+    ])
+    for (const end of ends) {
+      expect(end.endTick).toBe(1800)
+      expect(end.terminal).toBe("completed")
+    }
+    expect(formatReport(report)).toContain(
+      "t2: idle ended at 1800, chaos ended at 1800, bot ended at 1800",
+    )
   }, 30_000)
 
   test("a passing report says so", async () => {

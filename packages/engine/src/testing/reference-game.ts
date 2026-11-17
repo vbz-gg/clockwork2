@@ -55,17 +55,12 @@ export const REFERENCE_COUNTERS: readonly CounterDeclaration[] = [
 ]
 
 export const REFERENCE_MANIFEST: Manifest = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   id: "reference-drift",
   version: "1.0.0",
   name: "Reference Drift",
   kernel: { version: "0.1.0" },
-  session: {
-    tickHz: 60,
-    maxTicks: 60 * 60 * 5,
-    maxWallSeconds: 360,
-    hasEnding: true,
-  },
+  session: { tickHz: 60, hasEnding: true },
   inputs: {
     left: { min: 0, max: 1, label: "Turn left" },
     right: { min: 0, max: 1, label: "Turn right" },
@@ -236,8 +231,8 @@ export class ReferenceGame
 
     if (this.scoreValue >= this.config.targetScore) this.ended = true
     if (this.livesLost >= this.config.lives) this.ended = true
-    // Without a time limit an idle run never ends, and "the run is bounded"
-    // becomes a promise the kernel's tick cap has to keep instead of the game.
+    // A time limit, so an idle run ends too: this game ends every way a game
+    // can end by itself, and the tests that need an ending rely on it.
     if (this.ticks >= this.config.timeLimitTicks) this.ended = true
   }
 

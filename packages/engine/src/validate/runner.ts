@@ -7,7 +7,7 @@
 
 import { CHECKS } from "./checks/index.js"
 import { codeFromError } from "./checks/support.js"
-import type { CheckOutcome, Report, Subject } from "./types.js"
+import type { CheckOutcome, Report, RunEnd, Subject } from "./types.js"
 
 export interface ValidateOptions {
   /** Seeds every check runs against. More seeds, more confidence, more time. */
@@ -72,6 +72,22 @@ export async function validate(
   }
 }
 
+/**
+ * Where each run ended, one line per seed: `conformance-1: idle ended at
+ * 3600, chaos ran the whole window (36000), bot ended at 2210`.
+ */
+function endLines(ends: readonly RunEnd[]): string[] {
+  const bySeed = new Map<string, string[]>()
+  for (const end of ends) {
+    const said =
+      end.terminal === "timeout"
+        ? `${end.log} ran the whole window (${end.endTick})`
+        : `${end.log} ended at ${end.endTick}`
+    bySeed.set(end.seed, [...(bySeed.get(end.seed) ?? []), said])
+  }
+  return [...bySeed].map(([seed, said]) => `${seed}: ${said.join(", ")}`)
+}
+
 /** A report as a person reads it. */
 export function formatReport(report: Report): string {
   const lines: string[] = []
@@ -84,6 +100,7 @@ export function formatReport(report: Report): string {
       `${mark}  ${outcome.check.padEnd(14)} ${String(outcome.ms).padStart(6)}ms  ${outcome.title}`,
     )
     if (note !== "") lines.push(`      ${note}`)
+    for (const line of endLines(outcome.ends ?? [])) lines.push(`      ${line}`)
     for (const finding of outcome.findings) {
       const where =
         finding.tick !== undefined

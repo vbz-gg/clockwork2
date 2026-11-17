@@ -541,10 +541,10 @@ export declare function quantisePoint(value: number, fromSize: number, toUnits: 
 
 ### runSession
 
-Drives a session to its end. This is what the validator runs.
+Drives a session to its end, or to `maxTicks`. This is what a validator runs, with `maxTicks` at `Math.max(endTick, 1)` of the recording it replays.
 
 ```ts
-export declare function runSession<TView = unknown, TConfig = PlainValue>(options: SessionOptions<TView, TConfig>): SessionResult;
+export declare function runSession<TView = unknown, TConfig = PlainValue>(options: RunSessionOptions<TView, TConfig>): SessionResult;
 ```
 
 ### sha256Hex
@@ -682,8 +682,6 @@ ERROR_CODES: {
     readonly E_INPUT_UNDECLARED: "an input is not one the manifest declares, or is out of its range";
     /** A log holding more inputs than the budget allows (`checkInputs`). */
     readonly E_INPUT_BUDGET: "a log holds more inputs than any player makes";
-    /** The session passed the tick cap its manifest declares. */
-    readonly E_TICK_LIMIT: "session passed maxTicks without ending";
     /** A manifest failed validation. */
     readonly E_MANIFEST_INVALID: "manifest is invalid";
     /** An argument the caller controls was outside the range the API accepts. */
@@ -704,8 +702,6 @@ ERROR_CODES: {
     readonly E_DETERMINISM_DIVERGED: "two runs of the same session reached different states";
     /** The module threw when loaded or stepped with no browser present. */
     readonly E_HEADLESS_THREW: "module threw in a headless run";
-    /** isOver() never became true inside maxTicks. */
-    readonly E_BOUND_NOT_OVER: "the run does not end inside maxTicks";
     /** The static scan found a banned API in the simulation's import graph. */
     readonly E_LINT_BANNED: "a banned API appears in the simulation's import graph";
     /** await, async or .then appears in the simulation, or a microtask changed state. */
@@ -753,6 +749,14 @@ Every `KeyboardEvent.code` value a manifest may bind: the UI Events KeyboardEven
 
 ```ts
 KEY_CODES: readonly string[]
+```
+
+### MANIFEST_FORMAT
+
+The format this kernel reads. A manifest at any other is refused.
+
+```ts
+MANIFEST_FORMAT = 3
 ```
 
 ### MAX_INPUTS_PER_TICK
@@ -1015,8 +1019,13 @@ export interface SessionOptions<TView = unknown, TConfig = PlainValue> {
     readonly seed: string;
     readonly config: TConfig;
     readonly inputs: InputSource;
-    /** The tick cap from the manifest. The run ends here whatever the game says. */
-    readonly maxTicks: number;
+    /**
+     * Where the session stops, with terminal `timeout`, if the game has not
+     * ended it first. A replay passes `Math.max(endTick, 1)` from the recording
+     * it replays, so it stops where the run it replays stopped. Left out, the
+     * session runs until the game ends it or `abandon` is called.
+     */
+    readonly maxTicks?: number;
     /** Ticks between state hashes. 0 turns checkpointing off. */
     readonly checkpointEvery?: number;
     /** Declared counters, checked as the run goes. */
@@ -1195,8 +1204,13 @@ export type Inputs = {
 
 ```ts
 export type Manifest = {
-    /** 2 since `inputs` declares the game's own inputs rather than binding devices. */
-    readonly schemaVersion: 2;
+    /**
+     * The manifest's format. 3 since no run has a step limit: format 3 has no
+     * `session.maxTicks`, `session.maxWallSeconds` or `budgets.bundleBytes`,
+     * and `rankBy` and `tiePolicy` are optional. Format 2 was the first to
+     * declare the game's own inputs rather than binding devices.
+     */
+    readonly schemaVersion: typeof MANIFEST_FORMAT;
     /** Immutable across every version of the game. */
     readonly id: string;
     /** Strictly increasing. */
@@ -1209,14 +1223,12 @@ export type Manifest = {
     readonly session: Session;
     readonly inputs: Inputs;
     readonly counters: readonly CounterDeclaration[];
-    readonly rankBy: readonly string[];
-    readonly tiePolicy: TiePolicy;
     readonly params?: ParamSchema;
     readonly assets?: readonly AssetDeclaration[];
     readonly budgets?: Budgets;
     readonly display?: Display;
     readonly capabilities: Capabilities;
-};
+} & Ranking;
 ```
 
 ### MergeRule
@@ -1295,6 +1307,20 @@ Ranking: earlier entries decide first.
 export type RankBy = readonly string[];
 ```
 
+### Ranking
+
+How a ranked run is ordered, declared together or not at all.
+
+```ts
+export type Ranking = {
+    readonly rankBy: readonly string[];
+    readonly tiePolicy: TiePolicy;
+} | {
+    readonly rankBy?: never;
+    readonly tiePolicy?: never;
+};
+```
+
 ### Recording
 
 ```ts
@@ -1327,6 +1353,16 @@ export type Recording = {
      * "there were no frames".
      */
     readonly hostStats: HostStats | null;
+};
+```
+
+### RunSessionOptions
+
+What `runSession` takes: a session's options with `maxTicks` required. A loop with nothing to stop it would run for ever on a game that never ends, and a replay always knows where the run it replays stopped.
+
+```ts
+export type RunSessionOptions<TView = unknown, TConfig = PlainValue> = SessionOptions<TView, TConfig> & {
+    readonly maxTicks: number;
 };
 ```
 
@@ -1830,7 +1866,7 @@ export declare class ReferenceGame implements GameModule<ReferenceView, Referenc
 
 ### botInputs
 
-Someone working the game's own inputs: a press held for a while and let go, and every other input moved across its range now and then, edges included. Representative rather than good, so "the run ends inside maxTicks" is tested against something that keeps playing.
+Someone working the game's own inputs: a press held for a while and let go, and every other input moved across its range now and then, edges included. Representative rather than good, so a game is checked against something that keeps playing.
 
 ```ts
 export declare function botInputs(manifest: Manifest, seed: string, endTick: number): readonly InputEvent[];
@@ -2428,11 +2464,13 @@ export interface GameHostOptions<TView = unknown, TContainer = unknown, TConfig 
     /** Ticks between state hashes. Defaults to one second of play. */
     readonly checkpointEvery?: number;
     /**
-     * A cap below the manifest's.
+     * Where the session stops, with terminal `timeout`, if the game has not
+     * ended it by then.
      *
-     * Replaying a recording that was abandoned mid-run needs one: the log ends
-     * where the player stopped, and without a cap the replay carries on past it
-     * and reports a different end tick for a session that did not diverge.
+     * A replay of a recording passes `Math.max(endTick, 1)`: the log ends
+     * where the player stopped, and without a stop the replay carries on past
+     * it and reports a different end tick for a session that did not diverge.
+     * Left out, a session runs until the game ends it or `stop` is called.
      */
     readonly maxTicks?: number;
     /** A multiplier on how fast the session advances. Replay speed lives here. */
@@ -2720,6 +2758,12 @@ export interface WorkerSimulationOptions {
     readonly worker: Worker;
     readonly seed: string;
     readonly config?: PlainValue;
+    /**
+     * Where the session stops, with terminal `timeout`, if the game has not
+     * ended it by then: `Math.max(endTick, 1)` for a replay. Left out, the
+     * session runs until the game ends it or `stop` is called.
+     */
+    readonly maxTicks?: number;
     readonly onFrame?: (frame: {
         tick: number;
         alpha: number;
@@ -2805,6 +2849,8 @@ export type ToWorker = {
     readonly type: "init";
     readonly seed: string;
     readonly config: PlainValue;
+    /** Where the session stops. Left out, it runs until the game ends it. */
+    readonly maxTicks?: number;
     /** Every start pack, and any demand pack the page already has. */
     readonly packs?: readonly PackTransfer[];
 } | {
@@ -2910,6 +2956,14 @@ Property names that are banned however the object was reached.
 BANNED_PROPERTIES: ReadonlyMap<string, string>
 ```
 
+### CHECK_WINDOW_TICKS
+
+How far the checks play each log: 36,000 ticks, ten minutes at 60 Hz. A run the game has not ended by then stops there, with terminal `timeout`, and the report says where every run ended. Nothing is refused for running the whole window, because no run has a step limit; the window bounds what the suite costs and nothing else.
+
+```ts
+CHECK_WINDOW_TICKS = 36000
+```
+
 ### CHECKS
 
 ```ts
@@ -2992,6 +3046,12 @@ export type CheckOutcome = {
      * and the engine that measured them, `memoryEngine`.
      */
     readonly measurements?: Readonly<Record<string, number | string>>;
+    /**
+     * Where each seed's run of each log ended. The determinism check reports
+     * it, because it plays every log on every seed to its end or to the check
+     * window. A game that runs the whole window is not refused for it.
+     */
+    readonly ends?: readonly RunEnd[];
     readonly ms: number;
 };
 ```
@@ -3018,6 +3078,24 @@ export type Report = {
     readonly ok: boolean;
     readonly outcomes: readonly CheckOutcome[];
     readonly ms: number;
+};
+```
+
+### RunEnd
+
+Where one seed's run of one of the three logs ended, as the determinism check played it.
+
+```ts
+export type RunEnd = {
+    readonly seed: string;
+    /** `idle`, `chaos` or `bot`. */
+    readonly log: string;
+    readonly endTick: number;
+    /**
+     * How it ended: `completed` when the game ended it, `timeout` when it was
+     * still running when the check window closed at `CHECK_WINDOW_TICKS`.
+     */
+    readonly terminal: TerminalReason;
 };
 ```
 

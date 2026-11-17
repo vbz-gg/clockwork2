@@ -112,7 +112,7 @@ class instances, no `Map` or `Set` or `Date`.
 
 It has to hold *everything*. The test is not "does it look complete" but
 "does restoring at tick N and continuing reach the same state as never having
-stopped", which is what check 6 runs at several offsets. The fields people
+stopped", which is what the `restore` check runs at several offsets. The fields people
 forget, in order: the PRNG state, the timer state, an id counter, a cooldown,
 and the config.
 
@@ -122,12 +122,18 @@ and the config.
 
 ## Ending
 
-The run must end inside `maxTicks`, under an idle player, under chaos input,
-and under the platform's bot. The platform bounds what it pays to replay.
+No run has a step limit, and nothing requires a game to end by itself. A run
+ends when `isOver()` turns true or when its host stops it, and a replay stops
+where the run it replays stopped. The manifest's `session.hasEnding` says
+which kind of game this is and limits nothing.
 
-"The player can quit" is not an ending. The idle log is a player who does not.
+The checks play the idle, chaos and bot logs to the end of the run or to
+`CHECK_WINDOW_TICKS`, 36,000 ticks, whichever comes first, and the report says
+where each one stopped. A game that should end by itself and is still running
+when the window closes has a bug the report shows: the idle log is a player who
+never quits.
 
-*Checked by:* `bound`.
+*Reported by:* `determinism`, which gives each run's end tick and terminal.
 
 ## Counters
 

@@ -58,8 +58,13 @@ export interface SessionOptions<TView = unknown, TConfig = PlainValue> {
   readonly seed: string
   readonly config: TConfig
   readonly inputs: InputSource
-  /** The tick cap from the manifest. The run ends here whatever the game says. */
-  readonly maxTicks: number
+  /**
+   * Where the session stops, with terminal `timeout`, if the game has not
+   * ended it first. A replay passes `Math.max(endTick, 1)` from the recording
+   * it replays, so it stops where the run it replays stopped. Left out, the
+   * session runs until the game ends it or `abandon` is called.
+   */
+  readonly maxTicks?: number
   /** Ticks between state hashes. 0 turns checkpointing off. */
   readonly checkpointEvery?: number
   /** Declared counters, checked as the run goes. */
@@ -146,9 +151,12 @@ export class Session<TView = unknown, TConfig = PlainValue> {
   constructor(options: SessionOptions<TView, TConfig>) {
     this.options = options
     this.tracker = new CounterTracker(options.counters ?? [])
-    if (!Number.isInteger(options.maxTicks) || options.maxTicks <= 0) {
+    if (
+      options.maxTicks !== undefined &&
+      (!Number.isInteger(options.maxTicks) || options.maxTicks <= 0)
+    ) {
       fail("E_ARG_INVALID", {
-        detail: `maxTicks must be a positive whole number, got ${options.maxTicks}`,
+        detail: `maxTicks must be a positive whole number when it is given, got ${options.maxTicks}`,
       })
     }
 
@@ -439,7 +447,8 @@ export class Session<TView = unknown, TConfig = PlainValue> {
       this.maybeCheckpoint(this.ticksRun, true)
       return false
     }
-    if (this.ticksRun >= this.options.maxTicks) {
+    const stop = this.options.maxTicks
+    if (stop !== undefined && this.ticksRun >= stop) {
       this.over = true
       this.terminal = "timeout"
       this.maybeCheckpoint(this.ticksRun, true)
@@ -493,10 +502,33 @@ export class Session<TView = unknown, TConfig = PlainValue> {
   }
 }
 
-/** Drives a session to its end. This is what the validator runs. */
+/**
+ * What `runSession` takes: a session's options with `maxTicks` required. A
+ * loop with nothing to stop it would run for ever on a game that never ends,
+ * and a replay always knows where the run it replays stopped.
+ */
+export type RunSessionOptions<
+  TView = unknown,
+  TConfig = PlainValue,
+> = SessionOptions<TView, TConfig> & { readonly maxTicks: number }
+
+/**
+ * Drives a session to its end, or to `maxTicks`. This is what a validator
+ * runs, with `maxTicks` at `Math.max(endTick, 1)` of the recording it
+ * replays.
+ *
+ * @throws E_ARG_INVALID when `maxTicks` is missing, for a caller the types
+ *   did not reach
+ */
 export function runSession<TView = unknown, TConfig = PlainValue>(
-  options: SessionOptions<TView, TConfig>,
+  options: RunSessionOptions<TView, TConfig>,
 ): SessionResult {
+  if ((options.maxTicks as number | undefined) === undefined) {
+    fail("E_ARG_INVALID", {
+      detail:
+        "runSession needs maxTicks: a replay stops at Math.max(endTick, 1) of the recording it replays",
+    })
+  }
   const session = new Session(options)
   while (session.step()) {
     // The body is the point: one call per tick, exactly as the browser ran it.

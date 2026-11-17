@@ -1,15 +1,15 @@
 /**
  * The manifest: what the platform knows about this game without running it.
  *
- * Everything that decides how a session is run, ranked and bounded is here,
- * as data. `assertManifest` from the kernel is the schema - there is no
+ * Everything that decides how a session is run and ranked is here, as
+ * data. `assertManifest` from the kernel is the schema - there is no
  * second JSON Schema file to drift from it.
  */
 
 import type { Manifest } from "@clockwork2/engine"
 
 export const MANIFEST: Manifest = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   /** Immutable across every version of this game. Change it and it is a
    * different game, with a different leaderboard. */
   id: "lane-runner-3d",
@@ -18,9 +18,7 @@ export const MANIFEST: Manifest = {
   kernel: { version: "0.1.0" },
   session: {
     tickHz: 60,
-    /** The hard cap. The kernel ends the run here whatever the game says. */
-    maxTicks: 60 * 120,
-    maxWallSeconds: 300,
+    /** The game ends by itself: a rock hits, or the time limit passes. */
     hasEnding: true,
   },
   inputs: {

@@ -59,9 +59,11 @@ value in its range, and no more inputs than `INPUT_BUDGET_PER_TICK` per tick
 on average. A log that fails is refused without a replay.
 
 Then it replays the input log against a freshly evaluated module, with
-the packs of the version the session was issued for, and compares the state it
-reaches with the checkpoints the client recorded, then scores from *its own*
-counters. Nothing the client says about the score is
+the packs of the version the session was issued for, as far as the recording's
+own end, `Math.max(endTick, 1)`, and compares the state it reaches with the
+checkpoints the client recorded, then scores from *its own* counters. No run
+has a step limit, so where the run ended is the only place a replay can
+stop. Nothing the client says about the score is
 trusted, and nothing needs to be.
 
 A recording that does not replay is refused. So is one whose `gameVersion` is
@@ -76,11 +78,11 @@ From the game's own root, with `<guide>` the directory `SKILL.md` is in and
 built with the vbz kit):
 
 ```
-<guide>/scripts/validate.sh ./src          # the engine's twelve checks
+<guide>/scripts/validate.sh ./src          # the engine's eleven checks
 <guide>/scripts/run-headless.ts ./src      # what a session actually looks like
 <guide>/scripts/package.ts ./dist --manifest=./src/manifest.ts
 ```
 
-The twelve checks are the same code a platform built on this engine runs, and
+The eleven checks are the same code a platform built on this engine runs, and
 a platform may run more of its own. A local pass is a convenience; the
 platform's own run inside its isolate is the run that decides.

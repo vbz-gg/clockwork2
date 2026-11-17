@@ -12,7 +12,7 @@ import type { Counters, Effect, GameModule, Snapshot } from "@clockwork2/engine"
 import { fixtureManifest } from "../manifest"
 
 export class CounterFractionalGame implements GameModule {
-  readonly manifest = fixtureManifest("counter-fractional", 600)
+  readonly manifest = fixtureManifest("counter-fractional")
   private ticks = 0
   init(): void {
     this.ticks = 0

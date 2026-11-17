@@ -39,7 +39,7 @@ const result = runSession({
   config: run.config,
   inputs: new RecordedInputSource(run.inputs),
   // An ended-early run replays to where the player stopped, not past it.
-  maxTicks: Math.min(Math.max(run.endTick, 1), MANIFEST.session.maxTicks),
+  maxTicks: Math.max(run.endTick, 1),
   checkpointEvery: 60,
   counters: MANIFEST.counters,
   assets: MANIFEST.assets ?? [],

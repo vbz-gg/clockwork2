@@ -15,7 +15,7 @@ import type { Counters, Effect, GameModule, Snapshot } from "@clockwork2/engine"
 import { fixtureManifest } from "../manifest"
 
 export class GlobalsTouchedGame implements GameModule {
-  readonly manifest = fixtureManifest("globals-touched", 600)
+  readonly manifest = fixtureManifest("globals-touched")
   private ticks = 0
 
   /** The shape this arrives in: a "resume where you left off" convenience. */

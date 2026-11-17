@@ -15,6 +15,7 @@
  * set to `undefined`, which keeps the result canonically encodable.
  */
 
+import { TIE_POLICIES, type TiePolicy } from "../counters.js"
 import { fail } from "../errors.js"
 import type {
   Manifest,
@@ -22,7 +23,7 @@ import type {
   ParamSchema,
   ParamValues,
 } from "./types.js"
-import { TICK_RATES } from "./types.js"
+import { MANIFEST_FORMAT, TICK_RATES } from "./types.js"
 
 export type Issue = {
   /** Dotted path into the document, for example `counters[1].direction`. */
@@ -346,7 +347,7 @@ function checkInputDeclarations(inputs: unknown, issues: Issue[]): void {
       issues.push({
         at,
         message:
-          "is schema 1's; in schema 2 a game declares each input as { min, max } and binds devices in its own code",
+          "is format 1's; since format 2 a game declares each input as { min, max } and binds devices in its own code",
       })
       continue
     }
@@ -393,6 +394,19 @@ function checkInputDeclarations(inputs: unknown, issues: Issue[]): void {
   }
 }
 
+/** A field format 3 removed, refused by name so its author learns why. */
+const REMOVED =
+  "is not in format 3: no run has a step limit and nothing reads this, so remove it"
+
+/**
+ * What changed since each older format, so a manifest written for one says
+ * what to change rather than only that its number is wrong.
+ */
+const FORMAT_CHANGES: Readonly<Record<string, string>> = {
+  "1": "must be 3: format 1 bound device codes in inputs.map and declared inputs.controls, and since format 2 a game declares each input by name and range. Format 3 then removed session.maxTicks, session.maxWallSeconds and budgets.bundleBytes, and made rankBy and tiePolicy optional",
+  "2": "must be 3: format 3 removed session.maxTicks and session.maxWallSeconds, because no run has a step limit, and budgets.bundleBytes, which nothing read; rankBy and tiePolicy are optional, declared together or not at all",
+}
+
 /** Every problem with a manifest, in document order. */
 export function validateManifest(value: unknown): Issue[] {
   const issues: Issue[] = []
@@ -401,13 +415,11 @@ export function validateManifest(value: unknown): Issue[] {
   }
   const m = value as Record<string, unknown>
 
-  if (m.schemaVersion !== 2) {
+  if (m.schemaVersion !== MANIFEST_FORMAT) {
     issues.push({
       at: "schemaVersion",
       message:
-        m.schemaVersion === 1
-          ? "must be 2: schema 1 bound device codes in inputs.map and declared inputs.controls; schema 2 declares each input by name and range"
-          : "must be 2",
+        FORMAT_CHANGES[String(m.schemaVersion)] ?? `must be ${MANIFEST_FORMAT}`,
     })
   }
   if (typeof m.id !== "string" || !ID_PATTERN.test(m.id)) {
@@ -436,28 +448,17 @@ export function validateManifest(value: unknown): Issue[] {
         message: `must be one of ${TICK_RATES.join(", ")}`,
       })
     }
-    if (
-      !Number.isInteger(session.maxTicks) ||
-      (session.maxTicks as number) <= 0
-    ) {
-      issues.push({
-        at: "session.maxTicks",
-        message: "must be a positive whole number",
-      })
-    }
-    if (
-      typeof session.maxWallSeconds !== "number" ||
-      !Number.isFinite(session.maxWallSeconds) ||
-      session.maxWallSeconds <= 0
-    ) {
-      issues.push({
-        at: "session.maxWallSeconds",
-        message: "must be a positive number",
-      })
-    }
     if (typeof session.hasEnding !== "boolean") {
       issues.push({ at: "session.hasEnding", message: "must be true or false" })
     }
+    for (const field of ["maxTicks", "maxWallSeconds"]) {
+      if (session[field] !== undefined) {
+        issues.push({ at: `session.${field}`, message: REMOVED })
+      }
+    }
+  }
+  if (isPlainObject(m.budgets) && m.budgets.bundleBytes !== undefined) {
+    issues.push({ at: "budgets.bundleBytes", message: REMOVED })
   }
 
   const counters = m.counters
@@ -493,21 +494,34 @@ export function validateManifest(value: unknown): Issue[] {
     })
   }
 
+  // How a run ranks is optional, and declared whole: rankBy and tiePolicy
+  // together, or neither. Either one alone is a ranking half written.
   const rankBy = m.rankBy
-  if (!Array.isArray(rankBy) || rankBy.length === 0) {
-    issues.push({ at: "rankBy", message: "must name at least one counter" })
-  } else {
-    rankBy.forEach((name: unknown, index: number) => {
-      if (typeof name !== "string" || !counterNames.has(name)) {
-        issues.push({
-          at: `rankBy[${index}]`,
-          message: `${JSON.stringify(name)} is not a declared counter`,
-        })
-      }
+  if ((rankBy === undefined) !== (m.tiePolicy === undefined)) {
+    issues.push({
+      at: rankBy === undefined ? "rankBy" : "tiePolicy",
+      message:
+        "must be declared with the other: a game declares rankBy and tiePolicy together, or neither",
     })
   }
-
-  if (!["shared", "earliest", "none"].includes(m.tiePolicy as string)) {
+  if (rankBy !== undefined) {
+    if (!Array.isArray(rankBy) || rankBy.length === 0) {
+      issues.push({ at: "rankBy", message: "must name at least one counter" })
+    } else {
+      rankBy.forEach((name: unknown, index: number) => {
+        if (typeof name !== "string" || !counterNames.has(name)) {
+          issues.push({
+            at: `rankBy[${index}]`,
+            message: `${JSON.stringify(name)} is not a declared counter`,
+          })
+        }
+      })
+    }
+  }
+  if (
+    m.tiePolicy !== undefined &&
+    !TIE_POLICIES.includes(m.tiePolicy as TiePolicy)
+  ) {
     issues.push({
       at: "tiePolicy",
       message: 'must be "shared", "earliest" or "none"',

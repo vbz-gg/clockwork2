@@ -23,17 +23,12 @@ import type { Report, Subject } from "../../src/validate/types"
 function exploding(error: unknown): Subject {
   return {
     manifest: {
-      schemaVersion: 2,
+      schemaVersion: 3,
       id: "explodes",
       version: "1.0.0",
       name: "Explodes",
       kernel: { version: "0.1.0" },
-      session: {
-        tickHz: 60,
-        maxTicks: 600,
-        maxWallSeconds: 120,
-        hasEnding: true,
-      },
+      session: { tickHz: 60, hasEnding: true },
       inputs: { push: { min: 0, max: 1 } },
       counters: [{ name: "score", direction: "up", monotonic: true }],
       rankBy: ["score"],
@@ -133,9 +128,9 @@ describe("only", () => {
   test("runs just the checks named", async () => {
     const report = await validate(exploding(new Error("x")), {
       seeds: ["s1"],
-      only: ["bound", "restore"],
+      only: ["headless", "restore"],
     })
-    expect(report.outcomes.map((o) => o.check)).toEqual(["bound", "restore"])
+    expect(report.outcomes.map((o) => o.check)).toEqual(["headless", "restore"])
   }, 30_000)
 
   test("reports progress as each check starts", async () => {
@@ -144,10 +139,10 @@ describe("only", () => {
     const seen: string[] = []
     await validate(exploding(new Error("x")), {
       seeds: ["s1"],
-      only: ["bound", "restore"],
+      only: ["headless", "restore"],
       onProgress: (name) => seen.push(name),
     })
-    expect(seen).toEqual(["bound", "restore"])
+    expect(seen).toEqual(["headless", "restore"])
   }, 30_000)
 })
 
@@ -209,12 +204,12 @@ describe("formatReport", () => {
       ok: false,
       ms: 1000,
       outcomes: [
-        { check: "bound", title: "t", ok: false, findings: [], ms: 1 },
+        { check: "headless", title: "t", ok: false, findings: [], ms: 1 },
         { check: "restore", title: "t", ok: false, findings: [], ms: 1 },
         { check: "manifest", title: "t", ok: true, findings: [], ms: 1 },
       ],
     })
-    expect(text).toContain("2 check(s) failed: bound, restore")
+    expect(text).toContain("2 check(s) failed: headless, restore")
   })
 
   test("a skipped check reads as skipped, not as a pass", () => {

@@ -1,12 +1,12 @@
 ---
 name: clockwork2
-description: Build a browser game on Clockwork 2 that a platform can verify - fixed-step ticks, seeded randomness, an input log that replays to the same state on a server. Use when writing or reviewing a game module, a manifest, a renderer or a recording; when a conformance check fails with an E_ code; or when porting a variable-step game onto the fixed-step contract. Covers the simulation and renderer boundary, deterministic maths, snapshots and restore, counters and objectives, declared inputs and what to record, data packs, budgets, and the twelve checks in @clockwork2/engine/validate. Holds for a game on the engine alone and for the simulation of one built with the vbz kit.
+description: Build a browser game on Clockwork 2 that a platform can verify - fixed-step ticks, seeded randomness, an input log that replays to the same state on a server. Use when writing or reviewing a game module, a manifest, a renderer or a recording; when a conformance check fails with an E_ code; or when porting a variable-step game onto the fixed-step contract. Covers the simulation and renderer boundary, deterministic maths, snapshots and restore, counters and objectives, declared inputs and what to record, data packs, budgets, and the conformance checks in @clockwork2/engine/validate. Holds for a game on the engine alone and for the simulation of one built with the vbz kit.
 ---
 
 # Building a verifiable game
 
 **Where this file and `scripts/validate.sh` disagree, the script is right.** It
-runs the engine's twelve checks; a platform may run more. Prose cannot fail a
+runs the engine's eleven checks; a platform may run more. Prose cannot fail a
 build.
 
 A platform ranks on results, so a score has to be something it can verify
@@ -84,10 +84,10 @@ implements `packsNeeded`, and `init` hands it the reader; `references/assets.md`
 covers both. The full signatures are in `references/kernel-api.md`, which is
 generated from the type declarations.
 
-## The ten rules
+## The nine rules
 
 Each names the check that enforces it. Run `<guide>/scripts/validate.sh ./src`
-to run all twelve checks; `--only=name` runs one.
+to run all eleven checks; `--only=name` runs one.
 
 1. **`tick()` advances exactly one tick and takes no delta.** A fixed step is
    what makes a simulation independent of the player's frame rate. The host
@@ -129,26 +129,28 @@ to run all twelve checks; `--only=name` runs one.
    the timer state, an id counter, a cooldown, the config.
    *Checked by `restore`, at several offsets.*
 
-7. **The run ends inside `maxTicks`**, with an idle player, with chaos input,
-   and with the platform's bot. "The player can quit" is not an ending; the
-   idle log is a player who does not.
-   *Checked by `bound`.*
-
-8. **Counters are declared, integer, and honest.** A counter declared
+7. **Counters are declared, integer, and honest.** A counter declared
    `monotonic` never moves the wrong way and `isOver()` never goes back to
    false. Objectives are `counters[name] >= threshold`, computed by the
    platform, so a new kind of objective is a new counter rather than new code.
    *Checked by `counters`.*
 
-9. **The renderer reads and never writes.** `view()` returns
+8. **The renderer reads and never writes.** `view()` returns
    structured-cloneable plain data, with no class instances and no functions,
    because in worker mode it is cloned across a thread boundary.
    *Checked by `headless` and `render-smoke`.*
 
-10. **No browser inside the simulation.** `init` plus 600 ticks must run with
-    no `window`, `document`, WebGL, `AudioContext` or `fetch` present. Packs
-    come through the reader `init` is given, never through `fetch`.
-    *Checked by `headless`.*
+9. **No browser inside the simulation.** `init` plus 600 ticks must run with
+   no `window`, `document`, WebGL, `AudioContext` or `fetch` present. Packs
+   come through the reader `init` is given, never through `fetch`.
+   *Checked by `headless`.*
+
+No rule says how long a run lasts. A session runs until `isOver()` turns true
+or its host stops it; there is no step limit, and `session.hasEnding` in the
+manifest describes the game without limiting it. The checks play each log to
+its end or to 36,000 ticks (`CHECK_WINDOW_TICKS`), and the `determinism` line
+of the report says where every run stopped, which is how to see that a game
+meant to end by itself does.
 
 ## What the renderer may do
 
@@ -192,12 +194,11 @@ Every failure carries a stable code - `E_RESTORE_MISMATCH@1380`. Look it up in
 the order they actually turn up. Read the code, never the message: messages
 are prose and change.
 
-The three that account for most failures:
+The two that account for most failures:
 
 - `E_LINT_BANNED` - a banned API in the import graph. The tag names the file,
   line and column.
 - `E_RESTORE_MISMATCH` - a field missing from the snapshot.
-- `E_BOUND_NOT_OVER` - the game does not end by itself.
 
 ## Never
 
@@ -240,8 +241,8 @@ The three that account for most failures:
 
 Each runs from the game's own root, as `<guide>/scripts/...`.
 
-- `<guide>/scripts/validate.sh <path>` - the engine's twelve checks; a platform
-  may run more. The authority on those twelve.
+- `<guide>/scripts/validate.sh <path>` - the engine's eleven checks; a platform
+  may run more. The authority on those eleven.
 - `<guide>/scripts/run-headless.ts <path>` - run a session with no browser and
   print its checkpoints.
 - `<guide>/scripts/package.ts <dir> [--manifest=]` - hash assets and check the

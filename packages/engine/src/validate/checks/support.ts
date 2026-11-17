@@ -27,23 +27,31 @@ import type { Subject } from "../types.js"
 
 export const CHECKPOINT_EVERY = 60
 
+/**
+ * How far the checks play each log: 36,000 ticks, ten minutes at 60 Hz. A
+ * run the game has not ended by then stops there, with terminal `timeout`,
+ * and the report says where every run ended. Nothing is refused for running
+ * the whole window, because no run has a step limit; the window bounds what
+ * the suite costs and nothing else.
+ */
+export const CHECK_WINDOW_TICKS = 36_000
+
 export function countersOf(manifest: Manifest): readonly CounterDeclaration[] {
   return manifest.counters
 }
 
 /**
- * The three logs every game is run against, pressing what the game's own
- * manifest binds.
+ * The three logs every game is run against, pressing the inputs the game's
+ * own manifest declares, as far as the check window.
  */
 export function logsFor(
   manifest: Manifest,
   seed: string,
 ): ReadonlyMap<string, readonly InputEvent[]> {
-  const span = Math.min(manifest.session.maxTicks, 60 * 60 * 10)
   return new Map([
     ["idle", idleLog()],
-    ["chaos", chaosInputs(manifest, seed, span)],
-    ["bot", botInputs(manifest, seed, span)],
+    ["chaos", chaosInputs(manifest, seed, CHECK_WINDOW_TICKS)],
+    ["bot", botInputs(manifest, seed, CHECK_WINDOW_TICKS)],
   ])
 }
 
@@ -99,7 +107,7 @@ export async function runOnce(
     seed: options.seed,
     config: subject.config ?? {},
     inputs: new RecordedInputSource(options.inputs),
-    maxTicks: options.maxTicks ?? subject.manifest.session.maxTicks,
+    maxTicks: options.maxTicks ?? CHECK_WINDOW_TICKS,
     checkpointEvery: CHECKPOINT_EVERY,
     counters: countersOf(subject.manifest),
     ...sessionPacks(subject),
@@ -138,7 +146,7 @@ export async function runOnDemand(
     seed: options.seed,
     config: subject.config ?? {},
     inputs: new RecordedInputSource(options.inputs),
-    maxTicks: options.maxTicks ?? subject.manifest.session.maxTicks,
+    maxTicks: options.maxTicks ?? CHECK_WINDOW_TICKS,
     checkpointEvery: CHECKPOINT_EVERY,
     counters: countersOf(subject.manifest),
     assets: subject.manifest.assets ?? [],

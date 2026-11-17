@@ -6,6 +6,7 @@
  */
 
 export { CHECKS } from "./checks/index.js"
+export { CHECK_WINDOW_TICKS } from "./checks/support.js"
 export { findEntry, loadSubject, readPacks } from "./load.js"
 export {
   DEFAULT_SEEDS,
@@ -32,5 +33,6 @@ export type {
   CheckOutcome,
   Finding,
   Report,
+  RunEnd,
   Subject,
 } from "./types.js"

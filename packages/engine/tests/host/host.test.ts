@@ -351,6 +351,60 @@ describe("stepping by hand", () => {
     expect(ends[0]).toBe(host.result().endTick)
   })
 
+  test("with no maxTicks, a game that never ends runs until it is stopped", () => {
+    // 20,000 ticks is past the 18,000 the reference manifest once declared as
+    // a cap, and nothing stops the session there.
+    let ticks = 0
+    const endless = {
+      manifest: {},
+      init() {
+        ticks = 0
+      },
+      tick() {
+        ticks++
+      },
+      view: () => ({ ticks }),
+      snapshot: () => ({ ticks }),
+      restore() {},
+      score: () => ({}),
+      isOver: () => false,
+      effects: () => [],
+    }
+    const ended: Array<{ endTick: number; terminal: string }> = []
+    const host = new GameHost({
+      module: endless,
+      manifest: { ...REFERENCE_MANIFEST, counters: [] },
+      seed: "no-limit",
+      scheduler: new ManualScheduler(),
+      onEnded: (result) => ended.push(result),
+    })
+    let running = 0
+    for (let i = 0; i < 20_000; i++) if (host.stepOnce()) running++
+    expect(running).toBe(20_000)
+    expect(host.status).not.toBe("ended")
+    host.stop()
+    expect(ended).toEqual([
+      expect.objectContaining({ endTick: 20_000, terminal: "abandoned" }),
+    ])
+  })
+
+  test("a maxTicks stops the session there with timeout", () => {
+    const host = new GameHost({
+      module: createReferenceGame(),
+      manifest: REFERENCE_MANIFEST,
+      seed: "stop-here",
+      config: REFERENCE_CONFIG,
+      inputs: new RecordedInputSource([]),
+      scheduler: new ManualScheduler(),
+      maxTicks: 250,
+    })
+    while (host.stepOnce()) {
+      // to the stop
+    }
+    expect(host.result().endTick).toBe(250)
+    expect(host.result().terminal).toBe("timeout")
+  })
+
   test("stats count the ticks that were actually run", () => {
     const host = replayHost(log, new ManualScheduler())
     for (let i = 0; i < 17; i++) host.stepOnce()

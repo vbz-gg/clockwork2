@@ -29,7 +29,7 @@ describe("manifest validation", () => {
 
   test("it reports every problem at once, not the first", () => {
     const issues = validateManifest({
-      schemaVersion: 2,
+      schemaVersion: 3,
       id: "X",
       version: "one",
     })
@@ -37,18 +37,78 @@ describe("manifest validation", () => {
   })
 
   test("identity and version", () => {
-    issueAt({ ...REFERENCE_MANIFEST, schemaVersion: 3 }, "schemaVersion")
+    issueAt({ ...REFERENCE_MANIFEST, schemaVersion: 4 }, "schemaVersion")
     issueAt({ ...REFERENCE_MANIFEST, id: "Has Capitals" }, "id")
     issueAt({ ...REFERENCE_MANIFEST, id: "x" }, "id")
     issueAt({ ...REFERENCE_MANIFEST, version: "1.0" }, "version")
     withoutIssues({ ...REFERENCE_MANIFEST, version: "2.10.3-beta.1" })
   })
 
-  test("a version 1 manifest is told what changed", () => {
+  test("a format 1 manifest is told what changed", () => {
     const issues = validateManifest({ ...REFERENCE_MANIFEST, schemaVersion: 1 })
     const issue = issues.find((i) => i.at === "schemaVersion")
     expect(issue?.message).toMatch(/inputs\.controls/)
     expect(issue?.message).toMatch(/device/)
+    expect(issue?.message).toMatch(/session\.maxTicks/)
+  })
+
+  test("a format 2 manifest is refused and told what format 3 changed", () => {
+    // The manifest as format 2 wrote it: a step limit, a time limit and a
+    // bundle size, none of which anything reads any more.
+    const formatTwo = {
+      ...REFERENCE_MANIFEST,
+      schemaVersion: 2,
+      session: {
+        tickHz: 60,
+        maxTicks: 18_000,
+        maxWallSeconds: 360,
+        hasEnding: true,
+      },
+      budgets: { bundleBytes: 2_000_000 },
+    }
+    let caught: unknown
+    try {
+      assertManifest(formatTwo)
+    } catch (error) {
+      caught = error
+    }
+    expect((caught as { code?: unknown }).code).toBe("E_MANIFEST_INVALID")
+    const issue = validateManifest(formatTwo).find(
+      (i) => i.at === "schemaVersion",
+    )
+    expect(issue?.message).toMatch(/must be 3/)
+    for (const field of [
+      "session.maxTicks",
+      "session.maxWallSeconds",
+      "budgets.bundleBytes",
+      "rankBy and tiePolicy",
+    ]) {
+      expect(issue?.message).toContain(field)
+    }
+  })
+
+  test("format 3 refuses each field it removed, by name", () => {
+    const session = REFERENCE_MANIFEST.session
+    for (const [changed, at] of [
+      [{ session: { ...session, maxTicks: 7200 } }, "session.maxTicks"],
+      [
+        { session: { ...session, maxWallSeconds: 300 } },
+        "session.maxWallSeconds",
+      ],
+      [{ budgets: { bundleBytes: 2_000_000 } }, "budgets.bundleBytes"],
+    ] as const) {
+      const issue = validateManifest({
+        ...REFERENCE_MANIFEST,
+        ...changed,
+      }).find((i) => i.at === at)
+      expect(issue?.message, at).toMatch(
+        /not in format 3: no run has a step limit/,
+      )
+    }
+    withoutIssues({
+      ...REFERENCE_MANIFEST,
+      budgets: { assetBytes: 1_000, microsecondsPerTick: 400 },
+    })
   })
 
   test("the session block", () => {
@@ -58,13 +118,13 @@ describe("manifest validation", () => {
       "session.tickHz",
     )
     issueAt(
-      { ...REFERENCE_MANIFEST, session: { ...session, maxTicks: 0 } },
-      "session.maxTicks",
+      { ...REFERENCE_MANIFEST, session: { tickHz: 60 } },
+      "session.hasEnding",
     )
-    issueAt(
-      { ...REFERENCE_MANIFEST, session: { ...session, maxWallSeconds: -1 } },
-      "session.maxWallSeconds",
-    )
+    withoutIssues({
+      ...REFERENCE_MANIFEST,
+      session: { tickHz: 60, hasEnding: false },
+    })
     for (const rate of [30, 60, 120]) {
       withoutIssues({
         ...REFERENCE_MANIFEST,
@@ -94,7 +154,32 @@ describe("manifest validation", () => {
       "counters[1].name",
     )
     issueAt({ ...REFERENCE_MANIFEST, rankBy: ["nonesuch"] }, "rankBy[0]")
+    issueAt({ ...REFERENCE_MANIFEST, rankBy: [] }, "rankBy")
     issueAt({ ...REFERENCE_MANIFEST, tiePolicy: "coin-toss" }, "tiePolicy")
+  })
+
+  test("ranking is optional, and declared whole or not at all", () => {
+    const {
+      rankBy: _rankBy,
+      tiePolicy: _tiePolicy,
+      ...unranked
+    } = REFERENCE_MANIFEST
+    // A game played only on its own page says nothing about ranking.
+    withoutIssues(unranked)
+    expect(assertManifest(unranked)).toBe(unranked)
+    // Half a ranking is refused, at the half that is missing.
+    const withoutTie = { ...unranked, rankBy: ["score"] }
+    const withoutRank = { ...unranked, tiePolicy: "shared" }
+    for (const [half, at] of [
+      [withoutTie, "tiePolicy"],
+      [withoutRank, "rankBy"],
+    ] as const) {
+      const issue = validateManifest(half).find((i) => i.at === at)
+      expect(issue?.message, at).toMatch(/together, or neither/)
+    }
+    // The other half is still checked as it would be beside its partner.
+    issueAt({ ...unranked, tiePolicy: "coin-toss" }, "tiePolicy")
+    issueAt({ ...unranked, rankBy: ["nonesuch"] }, "rankBy[0]")
   })
 
   test("capabilities are refused where the platform has no room to move", () => {

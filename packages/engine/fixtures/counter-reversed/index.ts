@@ -10,7 +10,7 @@ import type { Counters, Effect, GameModule, Snapshot } from "@clockwork2/engine"
 import { fixtureManifest } from "../manifest"
 
 export class CounterReversedGame implements GameModule {
-  readonly manifest = fixtureManifest("counter-reversed", 600)
+  readonly manifest = fixtureManifest("counter-reversed")
   private ticks = 0
   init(): void {
     this.ticks = 0

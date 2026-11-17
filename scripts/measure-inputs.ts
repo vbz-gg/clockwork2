@@ -229,17 +229,12 @@ class CountingGame implements GameModule {
 
 function manifestFor(scenario: Scenario, variant: Variant): Manifest {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     id: `measure-${scenario.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
     version: "1.0.0",
     name: scenario.name,
     kernel: { version: "0.1.0" },
-    session: {
-      tickHz: TICK_HZ,
-      maxTicks: SESSION_TICKS,
-      maxWallSeconds: 900,
-      hasEnding: false,
-    },
+    session: { tickHz: TICK_HZ, hasEnding: false },
     inputs: variant.inputs,
     counters: [
       { name: "inputs", direction: "up", monotonic: true },
