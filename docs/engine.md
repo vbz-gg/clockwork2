@@ -1411,11 +1411,13 @@ trusting its angles: Safari there mirrors `screen.orientation.angle` and
 measures it from landscape, and `window.orientation` read 0 with the iPad
 upside down. Only the orientation's name was right in all four positions, so
 `screenAngleOf` works the angle out from it on a portrait-natural device. The
-iPad then passed every pose upright and on its side; its upside-down run was
-measured before that fix and is not yet repeated. While its page scrolled,
-the iPad's readings fell from 59 a second to between 1 and 5, so a game that
-steers by tilt must not let its page scroll during a run. No iPhone has been
-checked.
+iPad then passed every pose upright and on its side, and under iPadOS 26.7 it
+passed every pose from an upside-down start too: there `screen.orientation.angle`
+read 270, `window.orientation` 180 and the name `portrait-secondary`, and the
+helpers used 180. While its page scrolled, the iPad's readings fell from 59 a
+second to between 1 and 5 under 26.6, and from 59.7 to a lowest of 2 and an
+average of 9.3 over 3.7 seconds under 26.7, so a game that steers by tilt must
+not let its page scroll during a run. No iPhone has been checked.
 
 The input budget is a model's. `INPUT_BUDGET_PER_TICK` is 16, four times the
 busiest rate scripted runs of each helper produced, not a rate measured from
