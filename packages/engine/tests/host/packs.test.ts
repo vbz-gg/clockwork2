@@ -85,7 +85,14 @@ function gatedLoader(source: ReadonlyMap<string, PackBytes> = BYTES): {
   }
 }
 
-function serverReplay(inputs: readonly InputEvent[]): {
+/**
+ * A server's replay. `checked` says how its packs are given: all checked up
+ * front, or held in memory and checked when the run first needs each.
+ */
+function serverReplay(
+  inputs: readonly InputEvent[],
+  checked: "verify" | "lazy" = "verify",
+): {
   result: SessionResult
   openedAt: number
 } {
@@ -101,7 +108,7 @@ function serverReplay(inputs: readonly InputEvent[]): {
     checkpointEvery: MANIFEST.session.tickHz,
     counters: MANIFEST.counters,
     assets: MANIFEST.assets ?? [],
-    packs: PackSet.verify(MANIFEST.assets, BYTES),
+    packs: PackSet[checked](MANIFEST.assets, BYTES),
   })
   return { result, openedAt: game.view().openedAt }
 }
@@ -358,6 +365,37 @@ function codes(errors: readonly unknown[]): string[] {
     error instanceof ClockworkError ? error.code : String(error),
   )
 }
+
+describe("a replay checking each pack when it first needs it", () => {
+  test("reaches the checkpoints of a host given every pack at the start", () => {
+    const game = createGame()
+    const host = new GameHost<PacksView>({
+      module: game,
+      manifest: MANIFEST,
+      seed: "packs-hosts",
+      config: { prefetch: false },
+      inputs: new RecordedInputSource(PLAN),
+      scheduler: new ManualScheduler(),
+      packs: { preloaded: BYTES },
+    })
+    while (host.stepOnce()) {
+      // to the game's own end
+    }
+    const eager = host.result()
+    const lazy = serverReplay(PLAN, "lazy")
+    // A run that read the demand pack, from the tick it named it, and that
+    // the plan's presses moved.
+    expect(game.view().openedAt).toBe(LEVEL_FROM)
+    expect(lazy.openedAt).toBe(LEVEL_FROM)
+    expect(eager.checkpoints.length).toBeGreaterThan(20)
+    expect(lazy.result.checkpoints).toEqual(eager.checkpoints)
+    expect(lazy.result.counters).toEqual(eager.counters)
+    expect(lazy.result.endTick).toBe(eager.endTick)
+    expect(serverReplay(PLAN, "verify").result.checkpoints).toEqual(
+      eager.checkpoints,
+    )
+  })
+})
 
 describe("the browser host's pack rules", () => {
   test("a start pack that was not preloaded fails construction", () => {

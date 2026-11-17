@@ -954,6 +954,17 @@ packs once so that any number of sessions can share it: the conformance suite
 runs about seventy sessions of a game on one set, and a server can keep one
 per game version.
 
+A replay that has every pack of a version in memory, and should pay that hash
+only for the packs the run it replays actually reads, takes `PackSet.lazy`
+instead. It refuses an undeclared path when it is made and checks nothing
+else then. A session built on it checks each start pack before `init`, which
+may read it, and each demand pack before the first tick after `packsNeeded()`
+names it, inside `step()` and so inside `runSession`'s loop, so wrong bytes are
+`E_PACK_HASH_MISMATCH` at that tick and a pack the run never names is never
+hashed. Each pack is checked once however many sessions share the set, and
+the kernel's copy is kept from then on. Until a pack is first needed the set
+holds the bytes it was given, so the caller must leave them alone until then.
+
 ### Memory
 
 A demand pack a host delivered is dropped once the game has named it and then
@@ -1048,7 +1059,7 @@ const result = runSession({
   checkpointEvery: recording.tickHz,
   counters: MANIFEST.counters,
   assets: MANIFEST.assets ?? [],
-  packs: PackSet.verify(MANIFEST.assets, packBytes),
+  packs: PackSet.lazy(MANIFEST.assets, packBytes),
 })
 ```
 
@@ -1057,8 +1068,9 @@ the player abandoned has no ending of its own and a replay that carried on past
 it would report a different end tick for a run that did not diverge.
 `runSession` requires it, since a loop with nothing to stop it would never
 return on a game that never ends. `packBytes` maps each pack's path to its
-bytes. A replay that leaves out a pack the run read stops with
-`E_PACK_NOT_DELIVERED` at the tick that needed it.
+bytes, and `PackSet.lazy` checks each one only when the run first needs it.
+A replay that leaves out a pack the run read stops with `E_PACK_NOT_DELIVERED`
+at the tick that needed it.
 
 `compareToRecording` then reports whether the checkpoints, the end tick and the
 counters agree, and where the first disagreement was.

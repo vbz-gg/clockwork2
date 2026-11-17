@@ -150,8 +150,30 @@ export declare class PackSet {
      *   the ones declared.
      */
     static verify(assets: readonly AssetDeclaration[] | undefined, packs: Iterable<readonly [string, PackBytes]>): PackSet;
+    /**
+     * Holds packs to check when a session first needs each one, for a replay
+     * that has every pack in memory and should pay the hash, a pass over every
+     * byte, only for those the run reads.
+     *
+     * A start pack is checked when a session is built, because `init` may read
+     * it. A demand pack is checked before the first tick after `packsNeeded()`
+     * names it, so wrong bytes are `E_PACK_HASH_MISMATCH` at that tick, and a
+     * pack the run never names is never hashed at all. Each is checked once,
+     * however many sessions share the set, and the kernel's copy is kept from
+     * then on. Everything happens inside the session's own synchronous steps,
+     * so `runSession` replays with it as it does with any set.
+     *
+     * The set holds the bytes it was given until a session needs them, so the
+     * caller must not change them before then. What is checked is what is
+     * read either way: the check copies the bytes and reads only the copy.
+     *
+     * @throws E_PACK_UNDECLARED for a path the manifest does not declare as a
+     *   pack, now; a wrong size or hash only when a session needs that pack.
+     */
+    static lazy(assets: readonly AssetDeclaration[] | undefined, packs: Iterable<readonly [string, PackBytes]>): PackSet;
     /** The packs in this set, in the order they were given. */
     get paths(): readonly string[];
+    /** Whether the set holds the pack, checked or not yet. */
     has(path: string): boolean;
 }
 ```
@@ -221,7 +243,11 @@ One run of one game.
 export declare class Session<TView = unknown, TConfig = PlainValue> {
     /** The packs this game may read, or null when no assets were given. */
     /** Start packs: readable in init, restore and every tick. */
-    /** Packs checked before the session, possibly shared with other sessions. */
+    /**
+     * The set given before the session, possibly shared with other sessions,
+     * or null. A pack in it may not have been checked yet; `checkedPack`
+     * checks it the first time any session needs it.
+     */
     /** Demand packs delivered to this session alone. */
     /** Demand packs `packsNeeded()` has named since they were last released. */
     /** What `packsNeeded()` said for the next tick. */
@@ -237,6 +263,8 @@ export declare class Session<TView = unknown, TConfig = PlainValue> {
      * same entries this session declares. A set checked against another version
      * of the manifest would otherwise hand this one bytes it never declared.
      */
+    /** Whether the set this session was given holds the pack, checked or not. */
+    /** A pack from the set, checked first if no session has needed it yet. */
     /** The bytes behind a read, after every rule about reading has held. */
     /** Runs one of the game's calls that may read packs. */
     /** Asks the game what the next tick will read, once per tick. */
@@ -274,7 +302,9 @@ export declare class Session<TView = unknown, TConfig = PlainValue> {
      * hold every one of them. If the game names it again, `packsMissing` says
      * so and the host delivers it again; what the game can read never depends
      * on whether that happened quickly. A pack prefetched and not yet named is
-     * kept, and so is everything in a shared set.
+     * kept, and so is everything in a shared set. A pack from the set that no
+     * session has needed before is checked here, before the tick that may read
+     * it, so wrong bytes fail at that tick.
      */
     /** Ends the session early, for a player who walked away or a host error. */
     abandon(reason?: TerminalReason): void;
@@ -1054,9 +1084,11 @@ export interface SessionOptions<TView = unknown, TConfig = PlainValue> {
      */
     readonly assets?: readonly AssetDeclaration[];
     /**
-     * Packs the kernel has already checked. Every start pack must be here,
-     * because `init` runs inside the constructor and may read one. Demand packs
-     * may be here too, or arrive later through `deliver`.
+     * Packs in hand before the session, from `PackSet.verify`, which checked
+     * them all, or `PackSet.lazy`, which checks each when a session first
+     * needs it. Every start pack must be here, because `init` runs inside the
+     * constructor and may read one. Demand packs may be here too, or arrive
+     * later through `deliver`.
      */
     readonly packs?: PackSet;
     /**

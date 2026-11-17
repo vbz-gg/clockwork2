@@ -27,6 +27,7 @@ import { hashCanonical } from "./hash/canonical.js"
 import type { InputSource } from "./inputs.js"
 import type { AssetDeclaration } from "./manifest/types.js"
 import {
+  checkedPack,
   decodeJsonPack,
   isStartPack,
   logicPacks,
@@ -34,6 +35,7 @@ import {
   type PackReader,
   type PackSet,
   prefetchPaths,
+  type Verified,
   verified,
   verifyPack,
 } from "./packs.js"
@@ -81,9 +83,11 @@ export interface SessionOptions<TView = unknown, TConfig = PlainValue> {
    */
   readonly assets?: readonly AssetDeclaration[]
   /**
-   * Packs the kernel has already checked. Every start pack must be here,
-   * because `init` runs inside the constructor and may read one. Demand packs
-   * may be here too, or arrive later through `deliver`.
+   * Packs in hand before the session, from `PackSet.verify`, which checked
+   * them all, or `PackSet.lazy`, which checks each when a session first
+   * needs it. Every start pack must be here, because `init` runs inside the
+   * constructor and may read one. Demand packs may be here too, or arrive
+   * later through `deliver`.
    */
   readonly packs?: PackSet
   /**
@@ -130,8 +134,12 @@ export class Session<TView = unknown, TConfig = PlainValue> {
   private readonly declared: ReadonlyMap<string, AssetDeclaration> | null
   /** Start packs: readable in init, restore and every tick. */
   private readonly start: ReadonlySet<string>
-  /** Packs checked before the session, possibly shared with other sessions. */
-  private readonly shared: ReadonlyMap<string, Uint8Array>
+  /**
+   * The set given before the session, possibly shared with other sessions,
+   * or null. A pack in it may not have been checked yet; `checkedPack`
+   * checks it the first time any session needs it.
+   */
+  private readonly shared: Verified | null
   /** Demand packs delivered to this session alone. */
   private readonly own = new Map<string, Uint8Array>()
   /** Demand packs `packsNeeded()` has named since they were last released. */
@@ -169,13 +177,16 @@ export class Session<TView = unknown, TConfig = PlainValue> {
     }
     this.start = start
     this.readable = start
-    const absent = [...start].filter((path) => !this.shared.has(path))
+    const absent = [...start].filter((path) => !this.inSet(path))
     if (absent.length > 0) {
       fail("E_PACK_NOT_DELIVERED", {
         tick: 0,
         detail: `start pack ${absent.join(", ")} must be given before init`,
       })
     }
+    // Checked now, whether or not the set was checked when it was made,
+    // because `init` may read any of them.
+    for (const path of start) this.checked(path, 0)
     this.packs = {
       open: (path) => this.packBytes(path).slice(),
       json: (path) => decodeJsonPack(this.packBytes(path), path),
@@ -210,14 +221,12 @@ export class Session<TView = unknown, TConfig = PlainValue> {
    * same entries this session declares. A set checked against another version
    * of the manifest would otherwise hand this one bytes it never declared.
    */
-  private sharedPacks(
-    set: PackSet | undefined,
-  ): ReadonlyMap<string, Uint8Array> {
-    if (set === undefined) return new Map()
-    const { declared, bytes } = verified(set)
-    for (const path of bytes.keys()) {
+  private sharedPacks(set: PackSet | undefined): Verified | null {
+    if (set === undefined) return null
+    const given = verified(set)
+    for (const path of given.paths) {
       const mine = this.declared?.get(path)
-      const theirs = declared.get(path) as AssetDeclaration
+      const theirs = given.declared.get(path) as AssetDeclaration
       if (mine === undefined) {
         fail("E_PACK_UNDECLARED", {
           detail: `${path} is in the packs given, and not a pack this session's assets declare`,
@@ -229,7 +238,20 @@ export class Session<TView = unknown, TConfig = PlainValue> {
         })
       }
     }
-    return bytes
+    return given
+  }
+
+  /** Whether the set this session was given holds the pack, checked or not. */
+  private inSet(path: string): boolean {
+    const set = this.shared
+    return set !== null && (set.bytes.has(path) || set.unchecked.has(path))
+  }
+
+  /** A pack from the set, checked first if no session has needed it yet. */
+  private checked(path: string, tick: number): Uint8Array | undefined {
+    return this.shared === null
+      ? undefined
+      : checkedPack(this.shared, path, tick)
   }
 
   /** The bytes behind a read, after every rule about reading has held. */
@@ -262,9 +284,10 @@ export class Session<TView = unknown, TConfig = PlainValue> {
             : `${path} is a demand pack, which ${this.reading}() cannot read`,
       })
     }
-    // A readable pack is always here: start packs are checked before init,
-    // and step() refuses to run a tick whose named packs are missing.
-    return (this.own.get(path) ?? this.shared.get(path)) as Uint8Array
+    // A readable pack is always here, and already checked: start packs are
+    // checked before init, and step() checks the packs a tick needs before
+    // running it, and refuses to run one whose named packs are missing.
+    return (this.own.get(path) ?? this.checked(path, tick)) as Uint8Array
   }
 
   /** Runs one of the game's calls that may read packs. */
@@ -326,13 +349,13 @@ export class Session<TView = unknown, TConfig = PlainValue> {
   packsMissing(): readonly string[] {
     if (this.over) return NO_PACKS
     return this.needed.filter(
-      (path) => !this.own.has(path) && !this.shared.has(path),
+      (path) => !this.own.has(path) && !this.inSet(path),
     )
   }
 
   /** Whether this session has the pack's bytes now, given or delivered. */
   holds(path: string): boolean {
-    return this.own.has(path) || this.shared.has(path)
+    return this.own.has(path) || this.inSet(path)
   }
 
   /**
@@ -350,7 +373,7 @@ export class Session<TView = unknown, TConfig = PlainValue> {
         detail: `${path} is not a pack this manifest declares`,
       })
     }
-    if (this.own.has(path) || this.shared.has(path)) return
+    if (this.own.has(path) || this.inSet(path)) return
     this.own.set(path, verifyPack(asset, bytes))
   }
 
@@ -405,7 +428,7 @@ export class Session<TView = unknown, TConfig = PlainValue> {
         detail: `packsNeeded() named ${missing.join(", ")} for this tick, and it was not delivered`,
       })
     }
-    this.handOver()
+    this.handOver(tick)
 
     const events = inputs.take(tick)
     this.calling("tick", () => {
@@ -467,16 +490,21 @@ export class Session<TView = unknown, TConfig = PlainValue> {
    * hold every one of them. If the game names it again, `packsMissing` says
    * so and the host delivers it again; what the game can read never depends
    * on whether that happened quickly. A pack prefetched and not yet named is
-   * kept, and so is everything in a shared set.
+   * kept, and so is everything in a shared set. A pack from the set that no
+   * session has needed before is checked here, before the tick that may read
+   * it, so wrong bytes fail at that tick.
    */
-  private handOver(): void {
+  private handOver(tick: number): void {
     for (const path of this.named) {
       if (!this.needed.includes(path)) {
         this.named.delete(path)
         this.own.delete(path)
       }
     }
-    for (const path of this.needed) this.named.add(path)
+    for (const path of this.needed) {
+      this.named.add(path)
+      if (!this.own.has(path)) this.checked(path, tick)
+    }
     this.readable =
       this.needed.length === 0
         ? this.start

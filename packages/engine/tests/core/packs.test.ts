@@ -288,6 +288,146 @@ describe("PackSet.verify", () => {
   })
 })
 
+describe("PackSet.lazy, for a replay with every pack in memory", () => {
+  /** The level with one byte changed: the right length, the wrong hash. */
+  const wrongLevel = (): Uint8Array => {
+    const bytes = LEVEL.slice()
+    bytes[2] = (bytes[2] as number) ^ 1
+    return bytes
+  }
+
+  /** Where a session stopped with an error, and the error it stopped with. */
+  function failsAt(session: Session): { tick: number; error: unknown } {
+    try {
+      while (session.step()) {
+        // until the error
+      }
+    } catch (error) {
+      return { tick: session.tick, error }
+    }
+    throw new Error("the session ran to its end")
+  }
+
+  test("is made without checking a byte, refusing only an undeclared path", () => {
+    const set = PackSet.lazy(ASSETS, [
+      ["packs/core.json", CORE],
+      ["packs/level-2.json", new Uint8Array(99)],
+    ])
+    expect(set.paths).toEqual(["packs/core.json", "packs/level-2.json"])
+    expect(set.has("packs/level-2.json")).toBe(true)
+    expect(set.has("art/index.json")).toBe(false)
+    expect(codeOf(() => PackSet.lazy(ASSETS, [["art/index.json", ART]]))).toBe(
+      "E_PACK_UNDECLARED",
+    )
+  })
+
+  test("replays to the state a run with every pack checked up front reaches", () => {
+    const eager = new PackGame()
+    const atOnce = runSession(options(eager))
+    const lazy = new PackGame()
+    const replayed = runSession(
+      options(lazy, { packs: PackSet.lazy(ASSETS, ALL) }),
+    )
+    // The run really did read the demand pack, from the tick it named it.
+    expect(lazy.openedAt).toBe(300)
+    expect(lazy.bonus).toBe(7 * 300)
+    expect(compareResults(atOnce, replayed).differences).toEqual([])
+  })
+
+  test("never checks a demand pack the run never names, so its bytes can be anything", () => {
+    // A check would hash the bytes and refuse them. Nothing refuses them, so
+    // nothing hashed them.
+    const never = { needFrom: Number.POSITIVE_INFINITY }
+    const reference = runSession(options(new PackGame(never)))
+    const game = new PackGame(never)
+    const replayed = runSession(
+      options(game, {
+        packs: PackSet.lazy(ASSETS, [
+          ["packs/core.json", CORE],
+          ["packs/level-2.json", new Uint8Array(LEVEL.length)],
+        ]),
+      }),
+    )
+    expect(game.openedAt).toBe(-1)
+    expect(replayed.endTick).toBe(600)
+    expect(compareResults(reference, replayed).differences).toEqual([])
+  })
+
+  test("refuses a wrong demand pack at the tick that first needs it", () => {
+    for (const [bytes, code] of [
+      [wrongLevel(), "E_PACK_HASH_MISMATCH"],
+      [new Uint8Array(LEVEL.length + 1), "E_PACK_TOO_LARGE"],
+    ] as const) {
+      const game = new PackGame()
+      const session = new Session(
+        options(game, {
+          packs: PackSet.lazy(ASSETS, [
+            ["packs/core.json", CORE],
+            ["packs/level-2.json", bytes],
+          ]),
+        }),
+      )
+      const { tick, error } = failsAt(session)
+      // Ticks 0 to 299 ran; the level is named for 300 and checked first.
+      expect(tick).toBe(300)
+      expect(error).toBeInstanceOf(ClockworkError)
+      expect((error as ClockworkError).code).toBe(code)
+      expect((error as ClockworkError).tick).toBe(300)
+      expect(game.openedAt).toBe(-1)
+    }
+  })
+
+  test("checks a start pack when the session is built, before init can read it", () => {
+    const game = new PackGame()
+    const corrupt = CORE.slice()
+    corrupt[0] = 0
+    expect(
+      codeOf(
+        () =>
+          new Session(
+            options(game, {
+              packs: PackSet.lazy(ASSETS, [["packs/core.json", corrupt]]),
+            }),
+          ),
+      ),
+    ).toBe("E_PACK_HASH_MISMATCH")
+    expect(game.packs).toBeNull()
+  })
+
+  test("checks each pack once however many sessions share it, and keeps its own copy", () => {
+    const level = LEVEL.slice()
+    const set = PackSet.lazy(ASSETS, [
+      ["packs/core.json", CORE],
+      ["packs/level-2.json", level],
+    ])
+    const first = runSession(options(new PackGame(), { packs: set }))
+    // Checked and copied by the first session. Were it checked again, these
+    // bytes would be refused; the second session reads the copy instead.
+    level.fill(0)
+    const game = new PackGame()
+    const second = runSession(options(game, { packs: set }))
+    expect(game.bonus).toBe(7 * 300)
+    expect(compareResults(first, second).differences).toEqual([])
+  })
+
+  test("checks the bytes as they are when first needed, so a change before then is refused", () => {
+    const level = LEVEL.slice()
+    const session = new Session(
+      options(new PackGame(), {
+        packs: PackSet.lazy(ASSETS, [
+          ["packs/core.json", CORE],
+          ["packs/level-2.json", level],
+        ]),
+      }),
+    )
+    for (let i = 0; i < 100; i++) session.step()
+    level[2] = (level[2] as number) ^ 1
+    const { tick, error } = failsAt(session)
+    expect(tick).toBe(300)
+    expect((error as ClockworkError).code).toBe("E_PACK_HASH_MISMATCH")
+  })
+})
+
 describe("decodeUtf8", () => {
   test("agrees with a fatal TextDecoder on text from every plane", () => {
     const text = [

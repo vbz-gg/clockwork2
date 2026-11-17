@@ -112,31 +112,68 @@ export function logicPacks(
 export function verifyPack(
   declared: AssetDeclaration,
   bytes: PackBytes,
+  tick?: number,
 ): Uint8Array {
+  const at = tick === undefined ? {} : { tick }
   const source = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)
   if (source.byteLength > declared.bytes) {
     fail("E_PACK_TOO_LARGE", {
+      ...at,
       detail: `${declared.path} is ${source.byteLength} bytes or more, the manifest declares ${declared.bytes}`,
     })
   }
   const copy = new Uint8Array(source)
   if (copy.byteLength !== declared.bytes) {
     fail("E_PACK_HASH_MISMATCH", {
+      ...at,
       detail: `${declared.path} is ${copy.byteLength} bytes, the manifest declares ${declared.bytes}`,
     })
   }
   const digest = sha256Hex(copy)
   if (digest !== declared.sha256) {
     fail("E_PACK_HASH_MISMATCH", {
+      ...at,
       detail: `${declared.path} hashes to ${digest}, the manifest declares ${declared.sha256}`,
     })
   }
   return copy
 }
 
-interface Verified {
+/** What the kernel holds for a `PackSet`. Not exported from the package. */
+export interface Verified {
   readonly declared: ReadonlyMap<string, AssetDeclaration>
-  readonly bytes: ReadonlyMap<string, Uint8Array>
+  /** The kernel's own copies of the packs checked so far. */
+  readonly bytes: Map<string, Uint8Array>
+  /**
+   * Packs given and not yet checked, as they were given. Always empty for a
+   * set `verify` made; a set `lazy` made moves each one into `bytes` when a
+   * session first needs it.
+   */
+  readonly unchecked: Map<string, PackBytes>
+  /** Every path given, in the order given. */
+  readonly paths: readonly string[]
+}
+
+/** The manifest entry for each path given, refusing one that is not a pack. */
+function declarationsFor(
+  assets: readonly AssetDeclaration[] | undefined,
+  packs: Iterable<readonly [string, PackBytes]>,
+): {
+  readonly declared: ReadonlyMap<string, AssetDeclaration>
+  readonly given: ReadonlyArray<readonly [AssetDeclaration, PackBytes]>
+} {
+  const declared = logicPacks(assets)
+  const given: Array<readonly [AssetDeclaration, PackBytes]> = []
+  for (const [path, raw] of packs) {
+    const declaration = declared.get(path)
+    if (declaration === undefined) {
+      fail("E_PACK_UNDECLARED", {
+        detail: `${path} is not a pack this manifest declares`,
+      })
+    }
+    given.push([declaration, raw])
+  }
+  return { declared, given }
 }
 
 const VERIFIED = new WeakMap<PackSet, Verified>()
@@ -148,8 +185,8 @@ const VERIFIED = new WeakMap<PackSet, Verified>()
  * under Bun and 299 ms under node 22 when this was written. A server replaying many runs of one version, or a conformance suite
  * running seventy sessions of one game, checks each pack once here and hands
  * the same set to every session. Each session reads through copies, so
- * sharing is safe. Only `verify` makes one; an object that merely looks like
- * a set is refused.
+ * sharing is safe. Only `verify` and `lazy` make one; an object that merely
+ * looks like a set is refused.
  */
 export class PackSet {
   private constructor() {}
@@ -165,29 +202,69 @@ export class PackSet {
     assets: readonly AssetDeclaration[] | undefined,
     packs: Iterable<readonly [string, PackBytes]>,
   ): PackSet {
-    const declared = logicPacks(assets)
+    const { declared, given } = declarationsFor(assets, packs)
     const bytes = new Map<string, Uint8Array>()
-    for (const [path, raw] of packs) {
-      const declaration = declared.get(path)
-      if (declaration === undefined) {
-        fail("E_PACK_UNDECLARED", {
-          detail: `${path} is not a pack this manifest declares`,
-        })
-      }
-      bytes.set(path, verifyPack(declaration, raw))
+    for (const [declaration, raw] of given) {
+      bytes.set(declaration.path, verifyPack(declaration, raw))
     }
+    return PackSet.made({ declared, given, bytes, unchecked: new Map() })
+  }
+
+  /**
+   * Holds packs to check when a session first needs each one, for a replay
+   * that has every pack in memory and should pay the hash, a pass over every
+   * byte, only for those the run reads.
+   *
+   * A start pack is checked when a session is built, because `init` may read
+   * it. A demand pack is checked before the first tick after `packsNeeded()`
+   * names it, so wrong bytes are `E_PACK_HASH_MISMATCH` at that tick, and a
+   * pack the run never names is never hashed at all. Each is checked once,
+   * however many sessions share the set, and the kernel's copy is kept from
+   * then on. Everything happens inside the session's own synchronous steps,
+   * so `runSession` replays with it as it does with any set.
+   *
+   * The set holds the bytes it was given until a session needs them, so the
+   * caller must not change them before then. What is checked is what is
+   * read either way: the check copies the bytes and reads only the copy.
+   *
+   * @throws E_PACK_UNDECLARED for a path the manifest does not declare as a
+   *   pack, now; a wrong size or hash only when a session needs that pack.
+   */
+  static lazy(
+    assets: readonly AssetDeclaration[] | undefined,
+    packs: Iterable<readonly [string, PackBytes]>,
+  ): PackSet {
+    const { declared, given } = declarationsFor(assets, packs)
+    const unchecked = new Map<string, PackBytes>()
+    for (const [declaration, raw] of given) unchecked.set(declaration.path, raw)
+    return PackSet.made({ declared, given, bytes: new Map(), unchecked })
+  }
+
+  private static made(parts: {
+    readonly declared: ReadonlyMap<string, AssetDeclaration>
+    readonly given: ReadonlyArray<readonly [AssetDeclaration, PackBytes]>
+    readonly bytes: Map<string, Uint8Array>
+    readonly unchecked: Map<string, PackBytes>
+  }): PackSet {
     const set = new PackSet()
-    VERIFIED.set(set, { declared, bytes })
+    VERIFIED.set(set, {
+      declared: parts.declared,
+      bytes: parts.bytes,
+      unchecked: parts.unchecked,
+      paths: [...new Set(parts.given.map(([declaration]) => declaration.path))],
+    })
     return set
   }
 
   /** The packs in this set, in the order they were given. */
   get paths(): readonly string[] {
-    return [...verified(this).bytes.keys()]
+    return verified(this).paths
   }
 
+  /** Whether the set holds the pack, checked or not yet. */
   has(path: string): boolean {
-    return verified(this).bytes.has(path)
+    const { bytes, unchecked } = verified(this)
+    return bytes.has(path) || unchecked.has(path)
   }
 }
 
@@ -196,10 +273,33 @@ export function verified(set: PackSet): Verified {
   const found = VERIFIED.get(set)
   if (found === undefined) {
     fail("E_ARG_INVALID", {
-      detail: "packs must be a PackSet made by PackSet.verify",
+      detail: "packs must be a PackSet made by PackSet.verify or PackSet.lazy",
     })
   }
   return found
+}
+
+/**
+ * A pack's checked bytes from a set, checking it first if this is the first
+ * time any session needed it, or undefined when the set does not hold it.
+ * Not exported from the package.
+ *
+ * @throws E_PACK_TOO_LARGE or E_PACK_HASH_MISMATCH, at `tick`, for bytes that
+ *   are not the ones declared
+ */
+export function checkedPack(
+  set: Verified,
+  path: string,
+  tick: number,
+): Uint8Array | undefined {
+  const done = set.bytes.get(path)
+  if (done !== undefined) return done
+  const raw = set.unchecked.get(path)
+  if (raw === undefined) return undefined
+  const copy = verifyPack(set.declared.get(path) as AssetDeclaration, raw, tick)
+  set.bytes.set(path, copy)
+  set.unchecked.delete(path)
+  return copy
 }
 
 /**
