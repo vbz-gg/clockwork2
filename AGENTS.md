@@ -448,7 +448,8 @@ tools can install it from `node_modules`. What has to hold because of that:
 - It is true for a game on the engine alone and for the simulation of a game
   built with the vbz kit. Its `scripts/new.ts` and templates are for the first
   and are never copied into the second, and `scripts/validate.sh` is the
-  engine's twelve checks, not everything a platform runs.
+  engine's eleven checks every game needs, and its thirteen ranked ones with
+  `--ranked`, not everything a platform runs.
 
 ## Commit gates
 
