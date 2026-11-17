@@ -19,6 +19,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { isClockworkError } from "../../src"
 import { findEntry, loadSubject, readPacks } from "../../src/validate/load"
+import { validate } from "../../src/validate/runner"
 
 const MANIFEST_LITERAL = `{
   schemaVersion: 3,
@@ -283,6 +284,50 @@ describe("the Subject that comes back", () => {
     expect((await loadSubject(dir)).config).toEqual({ speed: 1 })
     const withConfig = await loadSubject(dir, { config: { speed: 2 } })
     expect(withConfig.config).toEqual({ speed: 2 })
+  })
+
+  test("refuses a required parameter with no default, unless it is handed a config to play", async () => {
+    // No config can be served for it, so the checks have nothing honest to
+    // play: an empty config is one validateParams refuses.
+    const dir = bundle({
+      "index.ts": `const MANIFEST = { ...${MANIFEST_LITERAL}, params: {
+  level: { type: "int", label: "Level", min: 1 },
+} }
+class TheGame {
+  manifest = MANIFEST
+  ticks = 0
+  endAt = 0
+  init(seed, config) { this.ticks = 0; this.endAt = config.level * 100 }
+  tick() { this.ticks++ }
+  view() { return { ticks: this.ticks } }
+  snapshot() { return { ticks: this.ticks, endAt: this.endAt } }
+  restore(s) { this.ticks = s.ticks; this.endAt = s.endAt }
+  score() { return { score: 0, ticksSurvived: this.ticks } }
+  isOver() { return this.ticks >= this.endAt }
+  effects() { return [] }
+}
+export default function make() { return new TheGame() }
+`,
+    })
+    let refused: unknown
+    try {
+      await loadSubject(dir)
+    } catch (error) {
+      refused = error
+    }
+    expect(isClockworkError(refused) && refused.code).toBe("E_MANIFEST_INVALID")
+    expect(String(refused)).toContain(
+      "params.level is required and has no default, so a platform cannot serve it",
+    )
+    const subject = await loadSubject(dir, { config: { level: 3 } })
+    const report = await validate(subject, {
+      set: "every-game",
+      seeds: ["t1"],
+      only: ["determinism"],
+    })
+    expect(report.outcomes[0]?.ends?.map((end) => end.endTick)).toEqual([
+      300, 300, 300,
+    ])
   })
 
   test("a game with no parameters is served an empty config", async () => {

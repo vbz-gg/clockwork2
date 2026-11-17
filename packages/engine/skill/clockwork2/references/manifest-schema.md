@@ -95,9 +95,13 @@ the game sees it. The values arrive as the `config` argument to `init`, so
 they are part of what a recording carries and what a replay restores. A
 ranked or practice run plays the config the platform serves, which is every
 declared parameter at its default, `servedConfig(manifest)`; the player never
-chooses one. The conformance checks play that config too, so a parameter
-without a default is left out of what the checks play and what the platform
-serves, and the game has to cope with its absence.
+chooses one. The conformance checks play that config too. An optional
+parameter without a default is left out of it, and the game has to cope with
+its absence. A required parameter without a default cannot be served at all,
+so `servedConfig` refuses the manifest with `E_MANIFEST_INVALID`, naming it,
+and so does `loadSubject` unless it is handed a config to play; a default its
+own definition refuses, such as one outside its range, is refused the same
+way.
 
 `inputs` is everything the game records. Each entry is a name and the whole
 numbers it carries, `min` to `max` inclusive, with an optional `label` a page

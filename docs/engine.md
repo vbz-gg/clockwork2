@@ -1173,7 +1173,10 @@ and arrive as the `config` argument to `init`. They travel in the recording, so
 a replay applies the same values. A platform serving a ranked or practice run
 chooses them, never the player: every declared parameter at its default, which
 `servedConfig(manifest)` builds. The conformance checks play the same config,
-so a game is checked as it is played.
+so a game is checked as it is played. What `servedConfig` returns always passes
+`validateParams`: a required parameter with no default, or a default its own
+definition refuses, makes it throw `E_MANIFEST_INVALID` naming the parameter,
+because no config could be served for that manifest.
 
 `assets` lists every file the game ships, art and [data packs](#data-packs)
 alike. A path is relative and made of ASCII letters, digits, `.`, `_`, `-` and

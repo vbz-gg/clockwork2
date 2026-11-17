@@ -372,14 +372,66 @@ describe("parameters", () => {
   })
 
   describe("servedConfig", () => {
+    // The schema above less the three that are required with no default,
+    // which nothing can serve.
+    const {
+      palette: _palette,
+      title: _title,
+      slug: _slug,
+      ...servable
+    } = schema
+
     test("is every declared parameter at its default, and nothing else", () => {
-      const served = servedConfig({ ...REFERENCE_MANIFEST, params: schema })
+      const served = servedConfig({ ...REFERENCE_MANIFEST, params: servable })
       expect(served).toEqual({ theme: "#112233", mode: "easy", lives: 3 })
-      expect(served).toEqual(mergeParamDefaults(schema, null))
+      expect(served).toEqual(mergeParamDefaults(servable, null))
     })
 
     test("is empty for a game that declares no parameters", () => {
       expect(servedConfig(REFERENCE_MANIFEST)).toEqual({})
+    })
+
+    test("refuses a required parameter with no default, naming each", () => {
+      let caught: unknown
+      try {
+        servedConfig({
+          ...REFERENCE_MANIFEST,
+          params: {
+            level: { type: "int", label: "Level", min: 1 },
+            mode: { type: "enum", label: "Mode", values: ["a", "b"] },
+            note: { type: "string", label: "Note", optional: true },
+            lives: { type: "int", label: "Lives", default: 3 },
+          },
+        })
+      } catch (error) {
+        caught = error
+      }
+      expect((caught as { code?: unknown }).code).toBe("E_MANIFEST_INVALID")
+      const said = String(caught)
+      expect(said).toContain(
+        "params.level is required and has no default, so a platform cannot serve it",
+      )
+      expect(said).toContain(
+        "params.mode is required and has no default, so a platform cannot serve it",
+      )
+      // An optional one with no default is left out, which is no problem.
+      expect(said).not.toContain("params.note")
+    })
+
+    test("refuses a default its own definition refuses", () => {
+      expect(() =>
+        servedConfig({
+          ...REFERENCE_MANIFEST,
+          params: {
+            lives: { type: "int", label: "Lives", min: 1, default: 0 },
+          },
+        }),
+      ).toThrow("params.lives: its default must be at least 1")
+    })
+
+    test("passes validateParams whenever it serves anything", () => {
+      const served = servedConfig({ ...REFERENCE_MANIFEST, params: servable })
+      expect(validateParams(servable, served)).toEqual([])
     })
   })
 })

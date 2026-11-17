@@ -156,6 +156,11 @@ a `tickHz` that is not 30, 60 or 120; `rankBy` naming a counter that is not
 declared, or `rankBy` without `tiePolicy`; `capabilities.deterministic` not
 `true`.
 
+`servedConfig`, and `loadSubject` given no config, report it too for a
+parameter that is required and has no default, which no platform can serve,
+or a default its own definition refuses. Give the parameter a default, or
+make it optional.
+
 A manifest written for an older format is refused at `schemaVersion`, and the
 message says what changed. Format 3 removed `session.maxTicks`,
 `session.maxWallSeconds` and `budgets.bundleBytes`, because no run has a step

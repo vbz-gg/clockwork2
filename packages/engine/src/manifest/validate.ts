@@ -315,10 +315,38 @@ export function mergeParamDefaults(
  * replayed and agree with itself. The conformance checks play this too, so
  * what they check is what a session plays.
  *
- * A parameter with no default is left out, as `mergeParamDefaults` leaves it.
+ * An optional parameter with no default is left out, as `mergeParamDefaults`
+ * leaves it. What comes back always passes `validateParams`.
+ *
+ * @throws E_MANIFEST_INVALID naming every parameter that is required and has
+ *   no default, which no config can be served without, and every default its
+ *   own definition refuses
  */
 export function servedConfig(manifest: Manifest): ParamValues {
-  return mergeParamDefaults(manifest.params ?? {}, null)
+  const schema = manifest.params ?? {}
+  const served = mergeParamDefaults(schema, null)
+  const unserved = new Set(
+    Object.entries(schema)
+      .filter(([name, definition]) => {
+        return definition.optional !== true && served[name] === undefined
+      })
+      .map(([name]) => `params.${name}`),
+  )
+  const problems = [
+    ...[...unserved].map(
+      (at) =>
+        `${at} is required and has no default, so a platform cannot serve it`,
+    ),
+    // A default the parameter's own definition refuses: out of its range,
+    // not one of its values, or the wrong type.
+    ...validateParams(schema, served)
+      .filter((issue) => !unserved.has(issue.at))
+      .map((issue) => `${issue.at}: its default ${issue.message}`),
+  ]
+  if (problems.length > 0) {
+    fail("E_MANIFEST_INVALID", { detail: problems.join("; ") })
+  }
+  return served
 }
 
 /** A declared input's name: what a recorded input carries as its `code`. */
