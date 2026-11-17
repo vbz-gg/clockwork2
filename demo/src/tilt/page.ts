@@ -362,7 +362,7 @@ function start(): void {
     }
     say(
       "status",
-      `The browser said no: ${access.code}, ${access.detail}. If a prompt appeared and you tapped Don't Allow, tap Ask again to see whether it asks a second time.`,
+      `The browser said no: ${access.code}, ${access.detail}. If a prompt appeared and you refused it (iPadOS calls the button Cancel), tap Ask again to see whether it asks a second time.`,
     )
     if (results.permission.length === 1) {
       buttons.retry.hidden = false
