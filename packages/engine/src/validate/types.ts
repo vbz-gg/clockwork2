@@ -7,7 +7,12 @@
  * can change; a code is a promise.
  */
 
-import type { ErrorCode, GameModule, Manifest } from "../index.js"
+import type {
+  ErrorCode,
+  GameModule,
+  Manifest,
+  TerminalReason,
+} from "../index.js"
 
 export type Finding = {
   readonly code: ErrorCode
@@ -18,6 +23,22 @@ export type Finding = {
   readonly tick?: number
   /** Where in the source, when that is known. */
   readonly at?: string
+}
+
+/**
+ * Where one seed's run of one of the three logs ended, as the determinism
+ * check played it.
+ */
+export type RunEnd = {
+  readonly seed: string
+  /** `idle`, `chaos` or `bot`. */
+  readonly log: string
+  readonly endTick: number
+  /**
+   * How it ended: `completed` when the game ended it, `timeout` when it was
+   * still running when the check window closed at `CHECK_WINDOW_TICKS`.
+   */
+  readonly terminal: TerminalReason
 }
 
 export type CheckOutcome = {
@@ -35,10 +56,18 @@ export type CheckOutcome = {
    * and the engine that measured them, `memoryEngine`.
    */
   readonly measurements?: Readonly<Record<string, number | string>>
+  /**
+   * Where each seed's run of each log ended. The determinism check reports
+   * it, because it plays every log on every seed to its end or to the check
+   * window. A game that runs the whole window is not refused for it.
+   */
+  readonly ends?: readonly RunEnd[]
   readonly ms: number
 }
 
 export type Report = {
+  /** The set that ran. */
+  readonly set: CheckSet
   readonly ok: boolean
   readonly outcomes: readonly CheckOutcome[]
   readonly ms: number
@@ -63,7 +92,12 @@ export type Subject = {
   readonly entry?: string
   /** The directory holding the bundle and its assets, for the budget check. */
   readonly root?: string
-  /** A default config, when the game takes one. */
+  /**
+   * The config every check plays. `loadSubject` sets it to
+   * `servedConfig(manifest)`, every declared parameter at its default, unless
+   * it is given another. A subject built by hand without one plays the served
+   * config too, never an empty one.
+   */
   readonly config?: unknown
   /**
    * The bytes of the game's data packs, by manifest path, unchecked. The
@@ -73,6 +107,14 @@ export type Subject = {
    */
   readonly packs?: ReadonlyMap<string, Uint8Array>
 }
+
+/**
+ * Which checks a caller runs. `every-game` is what any game on the engine
+ * needs. `ranked` adds what a ranked or practice run on a platform needs:
+ * that the seed changes the game, and that the manifest says how a run ranks.
+ * There is no default; every caller names its set.
+ */
+export type CheckSet = "every-game" | "ranked"
 
 export type CheckContext = {
   readonly subject: Subject

@@ -53,15 +53,25 @@ on different ticks on different machines.
 
 ## What is verified
 
+This is what a platform checks of a ranked or practice run, one it served a
+seed and a config for and replays on its server. A game played only on its own
+page submits nothing, and none of it applies there.
+
+The config is the platform's: every parameter the manifest declares, at its
+default, as `servedConfig(manifest)` builds it. The player never picks one, and
+the conformance checks play the same config.
+
 Before anything runs, the server holds the input log to the manifest it
 stored for the version with `checkInputs`: every input a declared name with a
 value in its range, and no more inputs than `INPUT_BUDGET_PER_TICK` per tick
 on average. A log that fails is refused without a replay.
 
 Then it replays the input log against a freshly evaluated module, with
-the packs of the version the session was issued for, and compares the state it
-reaches with the checkpoints the client recorded, then scores from *its own*
-counters. Nothing the client says about the score is
+the packs of the version the session was issued for, as far as the recording's
+own end, `Math.max(endTick, 1)`, and compares the state it reaches with the
+checkpoints the client recorded, then scores from *its own* counters. No run
+has a step limit, so where the run ended is the only place a replay can
+stop. Nothing the client says about the score is
 trusted, and nothing needs to be.
 
 A recording that does not replay is refused. So is one whose `gameVersion` is
@@ -76,11 +86,13 @@ From the game's own root, with `<guide>` the directory `SKILL.md` is in and
 built with the vbz kit):
 
 ```
-<guide>/scripts/validate.sh ./src          # the engine's twelve checks
+<guide>/scripts/validate.sh ./src --ranked # every check, the ranked set's two included
 <guide>/scripts/run-headless.ts ./src      # what a session actually looks like
 <guide>/scripts/package.ts ./dist --manifest=./src/manifest.ts
 ```
 
-The twelve checks are the same code a platform built on this engine runs, and
-a platform may run more of its own. A local pass is a convenience; the
+The checks are the same code a platform built on this engine runs, and a
+platform may run more of its own. `--ranked` adds the two a ranked or practice
+run needs: that the seed changes the game, and that the manifest says how a run
+ranks. A local pass is a convenience; the
 platform's own run inside its isolate is the run that decides.

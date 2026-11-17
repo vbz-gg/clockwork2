@@ -57,8 +57,11 @@ manifest pins each one by its SHA-256, the host fetches it, and the kernel hands
 it to the simulation at a tick the game names, so a slow download changes how
 long the loop waits and never what it computes.
 
-The conformance suite is twelve checks with stable error codes, run the same way
-on your machine and by whatever platform accepts the game.
+The conformance suite is eleven checks every game needs and two more for a
+game a platform ranks, with stable error codes, run the same way on your
+machine and by whatever platform accepts the game. No run has a step limit:
+the checks play each test log to its end or to a fixed window of 36,000 ticks,
+under the config a platform would serve, and report where every run stopped.
 
 A presentation reads the view and writes nothing, which is what lets it use
 everything the simulation may not: `Math.random`, `performance.now`, WebGL,
@@ -116,7 +119,7 @@ import and drops the rest.
 | Import | What it is |
 | --- | --- |
 | `@clockwork2/engine` | The simulation kernel: loop, PRNG, timers, hashing, `dmath`, manifest, recording. |
-| `@clockwork2/engine/validate` | The twelve conformance checks and their CLI. |
+| `@clockwork2/engine/validate` | The conformance checks and their CLI. |
 | `@clockwork2/engine/host` | The frame loop, pack loading, audio, and optional device helpers that turn keys, pointers, the wheel, gamepads and tilt into a game's own inputs. |
 | `@clockwork2/engine/worker` | The simulation in a worker, with the clock on the page. |
 | `@clockwork2/engine/adapter-canvas2d` | Read-only presentation on a 2D canvas. |

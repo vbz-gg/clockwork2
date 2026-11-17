@@ -1,10 +1,11 @@
 /**
  * The three input logs every game is run against.
  *
- * `idle` proves a game ends without help, which is what makes validation cost
- * bounded. `chaos` proves it survives nonsense. `bot` is the platform's own
- * scripted player, and it is the one that matters most: a game that ends under
- * idle but not under a competent player has not really been bounded.
+ * `idle` is a player who never presses anything and never quits, so it shows
+ * whether a game meant to end by itself does. `chaos` proves it survives
+ * nonsense. `bot` is a scripted player who keeps playing, and it is the one
+ * that matters most: a game that only ever sees an idle player has not been
+ * played.
  *
  * They are generated rather than committed, from a seed, so a log is
  * reproducible from two numbers instead of a file.
@@ -51,8 +52,8 @@ export function chaosLog(seed: string, endTick: number): readonly InputEvent[] {
  * A plausible player: holds a direction for a while, thrusts in bursts.
  *
  * It is not good at the game, and it does not need to be. What it has to be is
- * *representative*, so that "the run ends inside maxTicks" is tested against
- * something that actually plays rather than against an idle screen.
+ * *representative*, so that a game is checked against something that actually
+ * plays rather than against an idle screen.
  */
 export function botLog(seed: string, endTick: number): readonly InputEvent[] {
   const rng = new Prng(`bot:${seed}`)
@@ -139,8 +140,8 @@ export function chaosInputs(
 /**
  * Someone working the game's own inputs: a press held for a while and let
  * go, and every other input moved across its range now and then, edges
- * included. Representative rather than good, so "the run ends inside
- * maxTicks" is tested against something that keeps playing.
+ * included. Representative rather than good, so a game is checked against
+ * something that keeps playing.
  */
 export function botInputs(
   manifest: Manifest,

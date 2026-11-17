@@ -4,6 +4,7 @@ import {
   mergeParamDefaults,
   type ParamSchema,
   type ParamValues,
+  servedConfig,
   validateManifest,
   validateParams,
 } from "../../src/manifest/index"
@@ -29,7 +30,7 @@ describe("manifest validation", () => {
 
   test("it reports every problem at once, not the first", () => {
     const issues = validateManifest({
-      schemaVersion: 2,
+      schemaVersion: 3,
       id: "X",
       version: "one",
     })
@@ -37,18 +38,112 @@ describe("manifest validation", () => {
   })
 
   test("identity and version", () => {
-    issueAt({ ...REFERENCE_MANIFEST, schemaVersion: 3 }, "schemaVersion")
+    issueAt({ ...REFERENCE_MANIFEST, schemaVersion: 4 }, "schemaVersion")
     issueAt({ ...REFERENCE_MANIFEST, id: "Has Capitals" }, "id")
     issueAt({ ...REFERENCE_MANIFEST, id: "x" }, "id")
     issueAt({ ...REFERENCE_MANIFEST, version: "1.0" }, "version")
     withoutIssues({ ...REFERENCE_MANIFEST, version: "2.10.3-beta.1" })
   })
 
-  test("a version 1 manifest is told what changed", () => {
+  test("a format 1 manifest is told what changed", () => {
     const issues = validateManifest({ ...REFERENCE_MANIFEST, schemaVersion: 1 })
     const issue = issues.find((i) => i.at === "schemaVersion")
     expect(issue?.message).toMatch(/inputs\.controls/)
     expect(issue?.message).toMatch(/device/)
+    expect(issue?.message).toMatch(/session\.maxTicks/)
+  })
+
+  test("a format 2 manifest is refused and told what format 3 changed", () => {
+    // The manifest as format 2 wrote it: a step limit, a time limit and a
+    // bundle size, none of which anything reads any more.
+    const formatTwo = {
+      ...REFERENCE_MANIFEST,
+      schemaVersion: 2,
+      session: {
+        tickHz: 60,
+        maxTicks: 18_000,
+        maxWallSeconds: 360,
+        hasEnding: true,
+      },
+      budgets: { bundleBytes: 2_000_000 },
+    }
+    let caught: unknown
+    try {
+      assertManifest(formatTwo)
+    } catch (error) {
+      caught = error
+    }
+    expect((caught as { code?: unknown }).code).toBe("E_MANIFEST_INVALID")
+    const issue = validateManifest(formatTwo).find(
+      (i) => i.at === "schemaVersion",
+    )
+    expect(issue?.message).toMatch(/must be 3/)
+    for (const field of [
+      "session.maxTicks",
+      "session.maxWallSeconds",
+      "budgets.bundleBytes",
+      "rankBy and tiePolicy",
+    ]) {
+      expect(issue?.message).toContain(field)
+    }
+  })
+
+  test("a format that is not a number says only what it must be", () => {
+    // Read from a plain object, "constructor" and "toString" would find an
+    // inherited function and hand it back as the message.
+    for (const schemaVersion of [
+      "constructor",
+      "toString",
+      "__proto__",
+      "hasOwnProperty",
+      "valueOf",
+      null,
+      4,
+    ]) {
+      const issue = validateManifest({
+        ...REFERENCE_MANIFEST,
+        schemaVersion,
+      }).find((i) => i.at === "schemaVersion")
+      expect(issue?.message, String(schemaVersion)).toBe("must be 3")
+    }
+  })
+
+  test("a format quoted as a string still gets its own message", () => {
+    for (const [schemaVersion, says] of [
+      ["2", "session.maxTicks"],
+      [2, "session.maxTicks"],
+      ["1", "inputs.controls"],
+    ] as const) {
+      const issue = validateManifest({
+        ...REFERENCE_MANIFEST,
+        schemaVersion,
+      }).find((i) => i.at === "schemaVersion")
+      expect(issue?.message, String(schemaVersion)).toContain(says)
+    }
+  })
+
+  test("format 3 refuses each field it removed, by name", () => {
+    const session = REFERENCE_MANIFEST.session
+    for (const [changed, at] of [
+      [{ session: { ...session, maxTicks: 7200 } }, "session.maxTicks"],
+      [
+        { session: { ...session, maxWallSeconds: 300 } },
+        "session.maxWallSeconds",
+      ],
+      [{ budgets: { bundleBytes: 2_000_000 } }, "budgets.bundleBytes"],
+    ] as const) {
+      const issue = validateManifest({
+        ...REFERENCE_MANIFEST,
+        ...changed,
+      }).find((i) => i.at === at)
+      expect(issue?.message, at).toMatch(
+        /not in format 3: no run has a step limit/,
+      )
+    }
+    withoutIssues({
+      ...REFERENCE_MANIFEST,
+      budgets: { assetBytes: 1_000, microsecondsPerTick: 400 },
+    })
   })
 
   test("the session block", () => {
@@ -58,13 +153,13 @@ describe("manifest validation", () => {
       "session.tickHz",
     )
     issueAt(
-      { ...REFERENCE_MANIFEST, session: { ...session, maxTicks: 0 } },
-      "session.maxTicks",
+      { ...REFERENCE_MANIFEST, session: { tickHz: 60 } },
+      "session.hasEnding",
     )
-    issueAt(
-      { ...REFERENCE_MANIFEST, session: { ...session, maxWallSeconds: -1 } },
-      "session.maxWallSeconds",
-    )
+    withoutIssues({
+      ...REFERENCE_MANIFEST,
+      session: { tickHz: 60, hasEnding: false },
+    })
     for (const rate of [30, 60, 120]) {
       withoutIssues({
         ...REFERENCE_MANIFEST,
@@ -94,7 +189,32 @@ describe("manifest validation", () => {
       "counters[1].name",
     )
     issueAt({ ...REFERENCE_MANIFEST, rankBy: ["nonesuch"] }, "rankBy[0]")
+    issueAt({ ...REFERENCE_MANIFEST, rankBy: [] }, "rankBy")
     issueAt({ ...REFERENCE_MANIFEST, tiePolicy: "coin-toss" }, "tiePolicy")
+  })
+
+  test("ranking is optional, and declared whole or not at all", () => {
+    const {
+      rankBy: _rankBy,
+      tiePolicy: _tiePolicy,
+      ...unranked
+    } = REFERENCE_MANIFEST
+    // A game played only on its own page says nothing about ranking.
+    withoutIssues(unranked)
+    expect(assertManifest(unranked)).toBe(unranked)
+    // Half a ranking is refused, at the half that is missing.
+    const withoutTie = { ...unranked, rankBy: ["score"] }
+    const withoutRank = { ...unranked, tiePolicy: "shared" }
+    for (const [half, at] of [
+      [withoutTie, "tiePolicy"],
+      [withoutRank, "rankBy"],
+    ] as const) {
+      const issue = validateManifest(half).find((i) => i.at === at)
+      expect(issue?.message, at).toMatch(/together, or neither/)
+    }
+    // The other half is still checked as it would be beside its partner.
+    issueAt({ ...unranked, tiePolicy: "coin-toss" }, "tiePolicy")
+    issueAt({ ...unranked, rankBy: ["nonesuch"] }, "rankBy[0]")
   })
 
   test("capabilities are refused where the platform has no room to move", () => {
@@ -282,6 +402,128 @@ describe("parameters", () => {
       const merged = mergeParamDefaults(schema, null)
       expect("title" in merged).toBe(false)
       expect("music" in merged).toBe(false)
+    })
+  })
+
+  describe("servedConfig", () => {
+    // The schema above less the three that are required with no default,
+    // which nothing can serve.
+    const {
+      palette: _palette,
+      title: _title,
+      slug: _slug,
+      ...servable
+    } = schema
+
+    test("is every declared parameter at its default, and nothing else", () => {
+      const served = servedConfig({ ...REFERENCE_MANIFEST, params: servable })
+      expect(served).toEqual({ theme: "#112233", mode: "easy", lives: 3 })
+      expect(served).toEqual(mergeParamDefaults(servable, null))
+    })
+
+    test("is empty for a game that declares no parameters", () => {
+      expect(servedConfig(REFERENCE_MANIFEST)).toEqual({})
+    })
+
+    test("refuses a required parameter with no default, naming each", () => {
+      let caught: unknown
+      try {
+        servedConfig({
+          ...REFERENCE_MANIFEST,
+          params: {
+            level: { type: "int", label: "Level", min: 1 },
+            mode: { type: "enum", label: "Mode", values: ["a", "b"] },
+            note: { type: "string", label: "Note", optional: true },
+            lives: { type: "int", label: "Lives", default: 3 },
+          },
+        })
+      } catch (error) {
+        caught = error
+      }
+      expect((caught as { code?: unknown }).code).toBe("E_MANIFEST_INVALID")
+      const said = String(caught)
+      expect(said).toContain(
+        "params.level is required and has no default, so a platform cannot serve it",
+      )
+      expect(said).toContain(
+        "params.mode is required and has no default, so a platform cannot serve it",
+      )
+      // An optional one with no default is left out, which is no problem.
+      expect(said).not.toContain("params.note")
+    })
+
+    test("refuses a default its own definition refuses", () => {
+      expect(() =>
+        servedConfig({
+          ...REFERENCE_MANIFEST,
+          params: {
+            lives: { type: "int", label: "Lives", min: 1, default: 0 },
+          },
+        }),
+      ).toThrow("params.lives: its default must be at least 1")
+    })
+
+    test("reads a parameter named like an object's own method as the parameter", () => {
+      // A plain object answers each of these names with a function from its
+      // prototype, so a read that does not ask for an own property finds a
+      // value nobody declared.
+      const int = (extra: object) =>
+        ({ type: "int", label: "X", ...extra }) as ParamSchema[string]
+      for (const name of [
+        "toString",
+        "constructor",
+        "valueOf",
+        "hasOwnProperty",
+      ]) {
+        const required: ParamSchema = { [name]: int({}) }
+        expect(
+          () => servedConfig({ ...REFERENCE_MANIFEST, params: required }),
+          name,
+        ).toThrow(
+          `params.${name} is required and has no default, so a platform cannot serve it`,
+        )
+        expect(validateParams(required, {}), name).toEqual([
+          { at: `params.${name}`, message: "is required" },
+        ])
+
+        const optional: ParamSchema = { [name]: int({ optional: true }) }
+        const servedOptional = servedConfig({
+          ...REFERENCE_MANIFEST,
+          params: optional,
+        })
+        expect(Object.hasOwn(servedOptional, name), name).toBe(false)
+        expect(validateParams(optional, servedOptional), name).toEqual([])
+
+        const defaulted: ParamSchema = { [name]: int({ default: 4 }) }
+        const served = servedConfig({
+          ...REFERENCE_MANIFEST,
+          params: defaulted,
+        })
+        expect(Object.hasOwn(served, name), name).toBe(true)
+        expect(served[name], name).toBe(4)
+        expect(validateParams(defaulted, { [name]: "four" }), name).toEqual([
+          { at: `params.${name}`, message: "must be a whole number" },
+        ])
+        // And a config naming one against a schema without it is unknown.
+        expect(validateParams({}, { [name]: 1 }), name).toEqual([
+          { at: `params.${name}`, message: "is not in the schema" },
+        ])
+      }
+    })
+
+    test("serves a parameter named __proto__ as a value, not a prototype", () => {
+      const schema = JSON.parse(
+        '{"__proto__": {"type": "int", "label": "X", "default": 4}}',
+      ) as ParamSchema
+      const served = servedConfig({ ...REFERENCE_MANIFEST, params: schema })
+      expect(Object.hasOwn(served, "__proto__")).toBe(true)
+      expect(Object.getPrototypeOf(served)).toBe(Object.prototype)
+      expect(validateParams(schema, served)).toEqual([])
+    })
+
+    test("passes validateParams whenever it serves anything", () => {
+      const served = servedConfig({ ...REFERENCE_MANIFEST, params: servable })
+      expect(validateParams(servable, served)).toEqual([])
     })
   })
 })

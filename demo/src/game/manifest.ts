@@ -2,17 +2,15 @@ import type { Manifest } from "@clockwork2/engine"
 import { GAME_CONFIG, TICK_HZ } from "./constants"
 
 export const MANIFEST: Manifest = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   id: "clockwork2-snake",
   version: "1.0.0",
   name: "Snake",
   kernel: { version: "0.1.0" },
   session: {
     tickHz: TICK_HZ,
-    // Ten minutes. The run ends long before this: walls keep arriving, so a
-    // snake that does nothing dies, which is what makes the bound real.
-    maxTicks: TICK_HZ * 60 * 10,
-    maxWallSeconds: 900,
+    // Walls keep arriving, so a snake that does nothing dies: the game ends
+    // by itself.
     hasEnding: true,
   },
   inputs: {

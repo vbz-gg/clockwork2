@@ -26,9 +26,12 @@ page, in code, and the game may draw whatever on-screen controls it likes.
 
 The live queue throws `E_INPUT_UNDECLARED` the moment a page pushes a name the
 manifest does not declare or a value outside its range. A server holds a
-submitted log to the same rules with `checkInputs`, and refuses a log holding
-more than `INPUT_BUDGET_PER_TICK` inputs per tick on average with
-`E_INPUT_BUDGET`. Both mean the page recorded something it should not have.
+submitted log to the same rules with `checkInputs`. For a ranked or practice
+run it also refuses a log holding more than `INPUT_BUDGET_PER_TICK` inputs per
+tick on average, with `E_INPUT_BUDGET`; that budget is a rule of the runs a
+platform replays, and the live queue does not count, so a run played only on
+the game's own page is never held to it. Both codes mean the page recorded
+something it should not have.
 
 ## Choosing what to record
 
@@ -67,8 +70,10 @@ of changes.
 
 `InputCapture` records only what its mapping names, only when a value changes,
 one value per tick, in each name's declared range, with a deadband on sticks
-and tilt. A game recording its own inputs by pushing to `host.live` has to do
-all of that itself.
+and tilt. A game played on its own page may record its inputs itself by
+pushing to `host.live`, and then has to do all of that itself. A ranked or
+practice run on a platform takes its inputs from the helpers only, with
+`scripted: "ignore"`, described below.
 
 ## Deciding a hit belongs in `tick`
 
@@ -91,6 +96,7 @@ if (live === null) throw new Error("a live session has a live input queue")
 new InputCapture({
   manifest: MANIFEST,
   queue: live,
+  scripted: "ignore",             // or "record"; required, see below
   element: canvas,                // pointers and the wheel are heard here
   keys: { ArrowLeft: "left", KeyA: "left" },
   pointers: [{ down: "tap", x: "aimX" }],
@@ -98,6 +104,20 @@ new InputCapture({
   onNotice: (notice) => showTo(player, notice),
 }).attach()
 ```
+
+`scripted` says what happens to an event a script made rather than the
+player: one the browser marks with `isTrusted: false`, from `dispatchEvent` or
+`new KeyboardEvent(...)`. `"ignore"` records nothing from one; `"record"`
+treats it like any other. It is required, so every page decides. A page
+playing a ranked or practice run on a platform sets `"ignore"`, because there
+an input has to come from the player's own devices and any script on the page
+could otherwise press for them; the vbz kit's pages do. A game played only on
+its own page may set `"record"`, to drive itself from a test or a tool. The
+setting covers keys, pointers (presses, positions, buttons and movement under
+mouse lock), hover, the wheel, and the blur, visibility and lock changes that
+release what is held. Gamepads are polled through `navigator.getGamepads()`,
+which carries no such mark, so a gamepad is read whatever `scripted` says.
+Tilt ignores a scripted reading under either setting, as it always has.
 
 `checkCapture(mapping, manifest)` checks a mapping without attaching it, so a
 page can run it before it starts a run. Every press the helpers record they

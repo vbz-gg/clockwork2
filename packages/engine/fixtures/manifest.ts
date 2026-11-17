@@ -1,14 +1,14 @@
 /** A minimal valid manifest, shared by the fixtures. */
 import type { Manifest } from "@clockwork2/engine"
 
-export function fixtureManifest(id: string, maxTicks = 3600): Manifest {
+export function fixtureManifest(id: string): Manifest {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     id,
     version: "1.0.0",
     name: id,
     kernel: { version: "0.1.0" },
-    session: { tickHz: 60, maxTicks, maxWallSeconds: 120, hasEnding: true },
+    session: { tickHz: 60, hasEnding: true },
     inputs: { push: { min: 0, max: 1 } },
     counters: [
       { name: "score", direction: "up", monotonic: true },

@@ -88,6 +88,7 @@ export {
   type Checkpoint,
   DEFAULT_MAX_CATCHUP_TICKS,
   DEFAULT_MAX_FRAME_MS,
+  type RunSessionOptions,
   runSession,
   Session,
   type SessionOptions,
@@ -100,11 +101,14 @@ export type {
   Manifest,
   ParamSchema,
   ParamValues,
+  Ranking,
   TickRate,
 } from "./manifest/index.js"
 export {
   assertManifest,
+  MANIFEST_FORMAT,
   mergeParamDefaults,
+  servedConfig,
   validateManifest,
   validateParams,
 } from "./manifest/index.js"

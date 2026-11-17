@@ -23,7 +23,7 @@
  */
 
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test"
-import type { PresentationContext } from "../../src"
+import type { Presentation, PresentationContext } from "../../src"
 
 class FakeCanvas {
   readonly style: Record<string, string> = {}
@@ -356,5 +356,76 @@ describe("unmounting once PIXI is up", () => {
     p.unmount()
     await flush()
     expect(built().destroys.length).toBe(1)
+  })
+})
+
+describe("prepare, which a host waits for before tick 0", () => {
+  test("resolves once init has, with the canvas on the page", async () => {
+    const { p } = presentation()
+    const container = mount(p)
+    let settled = false
+    const ready = p.prepare().then(() => {
+      settled = true
+    })
+    await flush()
+    expect(settled).toBe(false)
+    await built().ready()
+    await ready
+    expect(container.children).toEqual([built().canvas])
+  })
+
+  test("rejects with PIXI's own error when init fails", async () => {
+    const { p } = presentation()
+    mount(p)
+    const ready = p.prepare()
+    void built().refuse()
+    await expect(ready).rejects.toThrow("no WebGL context available")
+  })
+
+  test("a host starts no tick until PIXI is up, and none at all when it cannot start", async () => {
+    // The adapter as a GameHost drives it: without prepare the clock ran
+    // while PIXI was still starting, and a device with no WebGL played on
+    // with nothing on screen.
+    const { GameHost, ManualScheduler } = await import("../../src/host/index")
+    const { createReferenceGame, REFERENCE_CONFIG, REFERENCE_MANIFEST } =
+      await import("../../src/testing/index")
+    const run = (onError: (error: unknown) => void) => {
+      const scheduler = new ManualScheduler()
+      const host = new GameHost({
+        module: createReferenceGame(),
+        manifest: REFERENCE_MANIFEST,
+        seed: "pixi",
+        config: REFERENCE_CONFIG,
+        scheduler,
+        // The draw is never reached with a view of the wrong shape: the
+        // fake stage takes anything.
+        presentation: presentation().p as unknown as Presentation<
+          unknown,
+          HTMLElement
+        >,
+        container: new FakeContainer() as unknown as HTMLElement,
+        onError,
+      })
+      return { host, scheduler, started: host.start() }
+    }
+
+    const up = run(() => undefined)
+    up.scheduler.run(30, 1000 / 60)
+    expect(up.host.status).toBe("preparing")
+    expect(up.host.tick).toBe(0)
+    await built(0).ready()
+    expect(await up.started).toBe(true)
+    up.scheduler.run(30, 1000 / 60)
+    expect(up.host.tick).toBeGreaterThan(20)
+    expect(built(0).renders.length).toBeGreaterThan(20)
+
+    const errors: unknown[] = []
+    const down = run((error) => errors.push(error))
+    void built(1).refuse()
+    expect(await down.started).toBe(false)
+    down.scheduler.run(30, 1000 / 60)
+    expect(down.host.tick).toBe(0)
+    expect((errors[0] as { code?: unknown }).code).toBe("E_PRESENTATION_FAILED")
+    expect(String(errors[0])).toContain("no WebGL context available")
   })
 })

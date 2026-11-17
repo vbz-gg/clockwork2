@@ -41,14 +41,15 @@ export const ERROR_CODES = {
     "an input is not one the manifest declares, or is out of its range",
   /** A log holding more inputs than the budget allows (`checkInputs`). */
   E_INPUT_BUDGET: "a log holds more inputs than any player makes",
-  /** The session passed the tick cap its manifest declares. */
-  E_TICK_LIMIT: "session passed maxTicks without ending",
   /** A manifest failed validation. */
   E_MANIFEST_INVALID: "manifest is invalid",
   /** An argument the caller controls was outside the range the API accepts. */
   E_ARG_INVALID: "an argument is outside the range this API accepts",
   /** The host cannot supply something the engine needs to run correctly. */
   E_ENV_UNSUPPORTED: "this environment cannot run the engine correctly",
+  /** A presentation's `prepare()` rejected, so the session never started. */
+  E_PRESENTATION_FAILED:
+    "the presentation could not get ready to draw, so the session never started",
 
   // --- data packs ---------------------------------------------------------
   /** A pack was named that the manifest does not declare as one. */
@@ -71,8 +72,6 @@ export const ERROR_CODES = {
     "two runs of the same session reached different states",
   /** The module threw when loaded or stepped with no browser present. */
   E_HEADLESS_THREW: "module threw in a headless run",
-  /** isOver() never became true inside maxTicks. */
-  E_BOUND_NOT_OVER: "the run does not end inside maxTicks",
   /** The static scan found a banned API in the simulation's import graph. */
   E_LINT_BANNED: "a banned API appears in the simulation's import graph",
   /** await, async or .then appears in the simulation, or a microtask changed state. */
@@ -96,6 +95,14 @@ export const ERROR_CODES = {
   E_CHECK_THREW: "a conformance check threw while running",
   /** The subject could not be loaded: no entry file, or no module to run. */
   E_SUBJECT_LOAD: "the subject could not be loaded",
+
+  // --- conformance suite, ranked set ---------------------------------------
+  /** Two seeds passed through the same states on every log the seed check plays. */
+  E_SEED_IGNORED:
+    "two seeds passed through the same states on every log; the seed decides nothing",
+  /** The manifest says nothing about how a run ranks. */
+  E_RANK_UNDECLARED:
+    "the manifest declares no rankBy and tiePolicy, which a ranked run needs",
 } as const
 
 export type ErrorCode = keyof typeof ERROR_CODES

@@ -16,6 +16,7 @@
 import {
   Accumulator,
   type Checkpoint,
+  ClockworkError,
   type Counters,
   type Effect,
   fail,
@@ -29,18 +30,24 @@ import {
   PackSet,
   type PlainValue,
   type Presentation,
+  type PresentationContext,
   RECORDING_FORMAT,
   RECORDING_VERSION,
   type Recording,
   Session,
   type SessionResult,
   type Snapshot,
+  servedConfig,
   type TerminalReason,
 } from "../index.js"
 import { browserScheduler, type Scheduler } from "./clock.js"
 import { PackRequests, type PackSupply } from "./packs.js"
 
-export type HostState = "idle" | "running" | "paused" | "ended"
+/**
+ * Where a host is. `preparing` is the wait between `start` and the clock
+ * starting, while a presentation's `prepare` runs.
+ */
+export type HostState = "idle" | "preparing" | "running" | "paused" | "ended"
 
 export interface GameHostOptions<
   TView = unknown,
@@ -50,6 +57,13 @@ export interface GameHostOptions<
   readonly module: GameModule<TView, TConfig>
   readonly manifest: Manifest
   readonly seed: string
+  /**
+   * The config the session plays. Left out of a live session, it is
+   * `servedConfig(manifest)`, every declared parameter at its default, which
+   * is what a platform serves a ranked or practice run and what the
+   * conformance checks play. A replay, given `inputs`, must pass the
+   * recording's own config, because that is what the run it replays played.
+   */
   readonly config?: TConfig
   readonly presentation?: Presentation<TView, TContainer>
   readonly container?: TContainer
@@ -57,11 +71,13 @@ export interface GameHostOptions<
   /** Ticks between state hashes. Defaults to one second of play. */
   readonly checkpointEvery?: number
   /**
-   * A cap below the manifest's.
+   * Where the session stops, with terminal `timeout`, if the game has not
+   * ended it by then.
    *
-   * Replaying a recording that was abandoned mid-run needs one: the log ends
-   * where the player stopped, and without a cap the replay carries on past it
-   * and reports a different end tick for a session that did not diverge.
+   * A replay of a recording passes `Math.max(endTick, 1)`: the log ends
+   * where the player stopped, and without a stop the replay carries on past
+   * it and reports a different end tick for a session that did not diverge.
+   * Left out, a session runs until the game ends it or `stop` is called.
    */
   readonly maxTicks?: number
   /** A multiplier on how fast the session advances. Replay speed lives here. */
@@ -129,6 +145,17 @@ export class GameHost<
   private lastNow = 0
   private previousView: TView | null = null
   private mounted = false
+  /** While a presentation's `prepare` runs: what `start` hands every caller. */
+  private preparing: Promise<boolean> | null = null
+  /** `pause` was called while `prepare` ran: the host is paused when it is ready. */
+  private pauseWhenReady = false
+  /**
+   * Whether the live queue is paused because this host paused it. The host
+   * resumes only that: a queue the page paused itself stays paused.
+   */
+  private holdingQueue = false
+  /** What the presentation is mounted and prepared with: one object for both. */
+  private readonly context: PresentationContext
   private ticksRun = 0
   private speed: number
   /** Real time that passed while the loop held for a pack. */
@@ -137,10 +164,26 @@ export class GameHost<
   private heldFrames = 0
   private readonly requests: PackRequests
   private readonly packs: PackSet
+  /** The config given, or the served one: what the session and its recording carry. */
+  private readonly config: TConfig
 
   constructor(
     private readonly options: GameHostOptions<TView, TContainer, TConfig>,
   ) {
+    if (options.inputs !== undefined && options.config === undefined) {
+      fail("E_ARG_INVALID", {
+        detail:
+          "config is required for a replay: pass the recording's config, which is what the run it replays played",
+      })
+    }
+    this.config =
+      options.config ?? (servedConfig(options.manifest) as unknown as TConfig)
+    this.context = options.presentationContext ?? {
+      random: () => 0.5,
+      assets: new Map(),
+      devicePixelRatio: 1,
+      theme: "light",
+    }
     this.packs = PackSet.verify(
       options.manifest.assets,
       options.packs?.preloaded ?? [],
@@ -175,9 +218,11 @@ export class GameHost<
     return new Session<TView, TConfig>({
       module: this.options.module,
       seed: this.options.seed,
-      config: (this.options.config ?? {}) as TConfig,
+      config: this.config,
       inputs: this.source,
-      maxTicks: this.options.maxTicks ?? this.options.manifest.session.maxTicks,
+      ...(this.options.maxTicks === undefined
+        ? {}
+        : { maxTicks: this.options.maxTicks }),
       checkpointEvery:
         this.options.checkpointEvery ?? this.options.manifest.session.tickHz,
       counters: this.options.manifest.counters,
@@ -260,45 +305,140 @@ export class GameHost<
     const { presentation, container } = this.options
     if (presentation === undefined || container === undefined || this.mounted)
       return
-    presentation.mount(
-      container,
-      this.options.presentationContext ?? {
-        random: () => 0.5,
-        assets: new Map(),
-        devicePixelRatio: 1,
-        theme: "light",
-      },
-    )
+    presentation.mount(container, this.context)
     this.mounted = true
   }
 
-  start(): void {
-    if (this.state === "running") return
+  /**
+   * Starts the session's clock.
+   *
+   * A presentation with `prepare` is mounted, then prepared, and the clock
+   * starts only when `prepare` resolves. Until then `status` is
+   * `"preparing"`, no tick runs and the live queue takes no input, so nothing
+   * the player does before the game can draw is recorded. A `pause` while it
+   * waits is kept: the host is then `"paused"` when `prepare` resolves, and
+   * `resume` starts the clock. A presentation without `prepare`, or no
+   * presentation, starts the clock before `start` returns, as it always has.
+   * On a paused host `start` does what `resume` does.
+   *
+   * @returns whether the host is ready: true once the clock is running, or
+   *   paused because `pause` was called while `prepare` ran; false when it
+   *   never will be, because the session has ended, `prepare` rejected
+   *   (reported through `onError` as `E_PRESENTATION_FAILED`), or the host
+   *   was stopped or destroyed while `prepare` ran. It never rejects, so a
+   *   caller with nothing to wait for may leave it.
+   */
+  start(): Promise<boolean> {
+    if (this.state === "running") return Promise.resolve(true)
+    if (this.state === "paused") {
+      this.resume()
+      return Promise.resolve(true)
+    }
     // A finished session does not restart. Without this, start() on an ended
     // host schedules a frame, session.step() returns false immediately, and
     // finish() fires onEnded a second time - so a host bridge sends a second
     // `ended` and a second recording for one run. A shell that starts twice,
     // which a re-rendering effect does by itself, is enough to trigger it.
-    if (this.state === "ended") return
+    if (this.state === "ended") return Promise.resolve(false)
+    if (this.preparing !== null) return this.preparing
     this.mount()
+    const { presentation, container } = this.options
+    if (
+      !this.mounted ||
+      presentation?.prepare === undefined ||
+      container === undefined
+    ) {
+      this.run()
+      return Promise.resolve(true)
+    }
+    this.state = "preparing"
+    this.holdQueue()
+    let ready: Promise<void>
+    try {
+      ready = Promise.resolve(presentation.prepare(container, this.context))
+    } catch (error) {
+      ready = Promise.reject(error)
+    }
+    const preparing = ready.then(
+      () => {
+        this.preparing = null
+        // Stopped or destroyed while it waited: nothing starts.
+        if (this.state !== "preparing") return false
+        if (this.pauseWhenReady) {
+          // Paused while it waited, as a page put in the background is: the
+          // queue stays held, and resume starts the clock.
+          this.pauseWhenReady = false
+          this.state = "paused"
+          return true
+        }
+        this.releaseQueue()
+        this.run()
+        return true
+      },
+      (error: unknown) => {
+        this.preparing = null
+        if (this.state !== "preparing") return false
+        this.fail(
+          new ClockworkError("E_PRESENTATION_FAILED", {
+            detail: error instanceof Error ? error.message : String(error),
+            cause: error,
+          }),
+        )
+        return false
+      },
+    )
+    this.preparing = preparing
+    return preparing
+  }
+
+  /** Pauses the live queue, unless something else already has. */
+  private holdQueue(): void {
+    const live = this.live
+    if (live === null || live.paused || this.holdingQueue) return
+    live.pause()
+    this.holdingQueue = true
+  }
+
+  /** Resumes the live queue if this host was the one that paused it. */
+  private releaseQueue(): void {
+    if (!this.holdingQueue) return
+    this.holdingQueue = false
+    this.live?.resume()
+  }
+
+  /** Starts the clock now. */
+  private run(): void {
     this.state = "running"
     this.lastNow = this.scheduler.now()
     this.schedule()
   }
 
+  /**
+   * Pauses the clock. While `prepare` runs it is remembered, and the host is
+   * paused rather than running once the presentation is ready.
+   */
   pause(): void {
+    if (this.state === "preparing") {
+      this.pauseWhenReady = true
+      return
+    }
     if (this.state !== "running") return
     this.state = "paused"
     this.unschedule()
     // Whatever the player holds is released into the log, and nothing more
     // is taken until the run resumes.
-    this.live?.pause()
+    this.holdQueue()
   }
 
+  /** Resumes a paused clock; while `prepare` runs, takes back a `pause`. */
   resume(): void {
+    if (this.state === "preparing") {
+      this.pauseWhenReady = false
+      return
+    }
     if (this.state !== "paused") return
     this.state = "running"
-    this.live?.resume()
+    this.releaseQueue()
     // The clock restarts here rather than carrying the pause forward, so a
     // paused tab does not come back owing four minutes of simulation.
     this.lastNow = this.scheduler.now()
@@ -485,7 +625,7 @@ export class GameHost<
       manifestHash: hashCanonical(this.options.manifest as never),
       tickHz: this.options.manifest.session.tickHz,
       seed: this.options.seed,
-      config: (this.options.config ?? {}) as PlainValue,
+      config: this.config as PlainValue,
       inputs,
       checkpoints: result.checkpoints,
       endTick: result.endTick,

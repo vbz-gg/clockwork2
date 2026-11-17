@@ -7,6 +7,7 @@ template: the renderer is a choice, the simulation is not.
 ```
 bun install
 bun run validate     # the conformance suite; this passes before you change anything
+bun run validate --ranked   # and the checks a platform that ranks runs needs
 bun run dev          # play it
 ```
 

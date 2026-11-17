@@ -27,7 +27,7 @@ import {
 } from "@clockwork2/engine"
 import { fixtureManifest } from "../manifest"
 
-const base = fixtureManifest("packs-fixture", 3600)
+const base = fixtureManifest("packs-fixture")
 
 export const RULES = "data/rules.json"
 export const LEVEL = "data/level-2.json"

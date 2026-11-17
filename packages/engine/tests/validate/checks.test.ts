@@ -22,30 +22,27 @@ import { createHash } from "node:crypto"
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type {
-  Counters,
-  Effect,
-  GameModule,
-  Manifest,
-  PackReader,
-  Snapshot,
+import {
+  type Counters,
+  type Effect,
+  type GameModule,
+  type InputEvent,
+  type Manifest,
+  type PackReader,
+  Prng,
+  type Snapshot,
 } from "../../src"
-import { CHECKS } from "../../src/validate/checks/index"
+import { CHECK_SETS } from "../../src/validate/checks/index"
 import type { CheckOutcome, Subject } from "../../src/validate/types"
 
 function manifest(over: Partial<Manifest> = {}): Manifest {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     id: "stub",
     version: "1.0.0",
     name: "Stub",
     kernel: { version: "0.1.0" },
-    session: {
-      tickHz: 60,
-      maxTicks: 600,
-      maxWallSeconds: 120,
-      hasEnding: true,
-    },
+    session: { tickHz: 60, hasEnding: true },
     inputs: { push: { min: 0, max: 1 } },
     counters: [
       { name: "score", direction: "up", monotonic: true },
@@ -108,7 +105,7 @@ async function runCheck(
   subject: Subject,
   seeds: readonly string[] = ["s1"],
 ): Promise<Omit<CheckOutcome, "check" | "title" | "ms">> {
-  const check = CHECKS.find((c) => c.name === name)
+  const check = CHECK_SETS.ranked.find((c) => c.name === name)
   if (check === undefined) throw new Error(`no check named ${name}`)
   return await check.run({ subject, seeds, shims: true })
 }
@@ -329,6 +326,78 @@ describe("determinism", () => {
   })
 })
 
+describe("the config every check plays", () => {
+  test("is the served one for a subject built without a config", async () => {
+    // The game ends where its parameter's default says. Played with an empty
+    // config it would read undefined, never end, and run to the window.
+    class EndsAtDefault extends StubGame {
+      private endAt = 0
+      override init(_seed?: string, config?: unknown): void {
+        super.init()
+        this.endAt = (config as { endAt: number }).endAt
+      }
+      override isOver(): boolean {
+        return this.ticks >= this.endAt
+      }
+    }
+    const declared = manifest({
+      params: { endAt: { type: "int", label: "Ends at", default: 75 } },
+    })
+    const outcome = await runCheck(
+      "determinism",
+      { manifest: declared, load: () => new EndsAtDefault(declared) },
+      ["s1"],
+    )
+    expect(outcome.ok).toBe(true)
+    expect(outcome.ends?.map((end) => end.endTick)).toEqual([75, 75, 75])
+  })
+})
+
+describe("seed-sensitivity", () => {
+  /** A game that consults its seed only when something is pressed. */
+  class SeedOnPress extends StubGame {
+    private rng: Prng | null = null
+    private drawn = 0
+    override init(seed?: string): void {
+      super.init()
+      this.rng = new Prng(seed ?? "")
+      this.drawn = 0
+    }
+    override tick(inputs: readonly InputEvent[] = []): void {
+      super.tick()
+      for (const input of inputs) {
+        if (input.value > 0) this.drawn += this.rng?.randomInt(1, 6) ?? 0
+      }
+    }
+    override snapshot(): Snapshot {
+      return { ticks: this.ticks, drawn: this.drawn }
+    }
+  }
+
+  test("passes on the first log the seed changes, though idle does not", async () => {
+    // One differing pair is the claim: a game whose opening is fixed and
+    // whose play is seeded is an ordinary game.
+    const outcome = await runCheck(
+      "seed-sensitivity",
+      subjectFor(() => new SeedOnPress()),
+    )
+    expect(outcome.ok).toBe(true)
+    expect(outcome.note).toBe("chaos differs between seeds")
+  })
+
+  test("names every log that could not tell the seeds apart", async () => {
+    const outcome = await runCheck(
+      "seed-sensitivity",
+      subjectFor(() => new StubGame()),
+    )
+    expect(outcome.ok).toBe(false)
+    expect(outcome.findings[0]?.code).toBe("E_SEED_IGNORED")
+    expect(outcome.findings[0]?.detail).toContain(
+      "the idle, chaos, bot logs passed through the same states under vbz-seed-a and vbz-seed-b, checkpoint for checkpoint",
+    )
+  })
+})
+
 describe("performance", () => {
   /**
    * A budget of -1 microseconds per tick cannot be met by any run, so this
@@ -378,7 +447,7 @@ function game() {
     effects: () => [],
   }
 }
-const report = await validate({ manifest, load: () => game() }, { only: ["performance"], seeds: ["m"] })
+const report = await validate({ manifest, load: () => game() }, { set: "every-game", only: ["performance"], seeds: ["m"] })
 console.log(JSON.stringify(report.outcomes[0].measurements))
 `,
     )

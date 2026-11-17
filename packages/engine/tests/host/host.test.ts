@@ -8,10 +8,14 @@
  */
 
 import { describe, expect, test } from "bun:test"
+import createServedConfigGame, {
+  MANIFEST as SERVED_CONFIG_MANIFEST,
+} from "../../fixtures/served-config/index"
 import {
   decodeRecording,
   encodeRecording,
   type InputEvent,
+  type Presentation,
   RecordedInputSource,
   runSession,
 } from "../../src"
@@ -272,6 +276,31 @@ describe("speed", () => {
 })
 
 describe("pause and resume", () => {
+  test("start on a paused host does what resume does, so inputs are recorded again", () => {
+    // It used to restart the clock with the live queue still paused, and
+    // everything the player pressed from then on was dropped.
+    const scheduler = new ManualScheduler()
+    const host = new GameHost({
+      module: createReferenceGame(),
+      manifest: REFERENCE_MANIFEST,
+      seed: "start-after-pause",
+      config: REFERENCE_CONFIG,
+      scheduler,
+    })
+    void host.start()
+    scheduler.run(10, 1000 / 60)
+    host.pause()
+    void host.start()
+    expect(host.status).toBe("running")
+    expect(host.live?.paused).toBe(false)
+    const at = host.tick
+    host.live?.push({ code: "thrust", value: 1 })
+    scheduler.run(5, 1000 / 60)
+    expect(host.recording().inputs).toEqual([
+      { tick: at, code: "thrust", value: 1 },
+    ])
+  })
+
   test("a pause does not bank the time it was paused for", () => {
     const scheduler = new ManualScheduler()
     const host = replayHost(botLog("pause", 20_000), scheduler)
@@ -349,6 +378,116 @@ describe("stepping by hand", () => {
     expect(host.status).toBe("ended")
     expect(ends.length).toBe(1)
     expect(ends[0]).toBe(host.result().endTick)
+  })
+
+  test("with no maxTicks, a game that never ends runs until it is stopped", () => {
+    // 20,000 ticks is past the 18,000 the reference manifest once declared as
+    // a cap, and nothing stops the session there.
+    let ticks = 0
+    const endless = {
+      manifest: {},
+      init() {
+        ticks = 0
+      },
+      tick() {
+        ticks++
+      },
+      view: () => ({ ticks }),
+      snapshot: () => ({ ticks }),
+      restore() {},
+      score: () => ({}),
+      isOver: () => false,
+      effects: () => [],
+    }
+    const ended: Array<{ endTick: number; terminal: string }> = []
+    const host = new GameHost({
+      module: endless,
+      manifest: { ...REFERENCE_MANIFEST, counters: [] },
+      seed: "no-limit",
+      scheduler: new ManualScheduler(),
+      onEnded: (result) => ended.push(result),
+    })
+    let running = 0
+    for (let i = 0; i < 20_000; i++) if (host.stepOnce()) running++
+    expect(running).toBe(20_000)
+    expect(host.status).not.toBe("ended")
+    host.stop()
+    expect(ended).toEqual([
+      expect.objectContaining({ endTick: 20_000, terminal: "abandoned" }),
+    ])
+  })
+
+  test("a host given no config plays the served one, as the checks do", () => {
+    // The fixture ends at its endAt parameter's default, 900, and fills in no
+    // default of its own: an empty config would never end.
+    const play = (config?: { endAt: number }) => {
+      const host = new GameHost({
+        module: createServedConfigGame(),
+        manifest: SERVED_CONFIG_MANIFEST,
+        seed: "served",
+        scheduler: new ManualScheduler(),
+        ...(config === undefined ? {} : { config }),
+      })
+      let steps = 0
+      while (host.stepOnce() && steps < 5_000) steps++
+      return host
+    }
+    const served = play()
+    expect(served.result().endTick).toBe(900)
+    expect(served.result().terminal).toBe("completed")
+    expect(served.recording().config).toEqual({ endAt: 900 })
+    const given = play({ endAt: 120 })
+    expect(given.result().endTick).toBe(120)
+    expect(given.recording().config).toEqual({ endAt: 120 })
+  })
+
+  test("a replay without the recording's config is refused", () => {
+    // Defaulting it to the served config would replay a run under a config
+    // it may never have played, and report a divergence nobody caused.
+    let refused: unknown
+    try {
+      new GameHost({
+        module: createServedConfigGame(),
+        manifest: SERVED_CONFIG_MANIFEST,
+        seed: "served",
+        inputs: new RecordedInputSource([]),
+        scheduler: new ManualScheduler(),
+      })
+    } catch (error) {
+      refused = error
+    }
+    expect((refused as { code?: unknown }).code).toBe("E_ARG_INVALID")
+    expect(String(refused)).toContain("config is required for a replay")
+    // With the recording's config it replays that config, not the default.
+    const replay = new GameHost({
+      module: createServedConfigGame(),
+      manifest: SERVED_CONFIG_MANIFEST,
+      seed: "served",
+      config: { endAt: 120 },
+      inputs: new RecordedInputSource([]),
+      scheduler: new ManualScheduler(),
+    })
+    while (replay.stepOnce()) {
+      // to the end
+    }
+    expect(replay.result().endTick).toBe(120)
+  })
+
+  test("a maxTicks stops the session there with timeout", () => {
+    const host = new GameHost({
+      module: createReferenceGame(),
+      manifest: REFERENCE_MANIFEST,
+      seed: "stop-here",
+      config: REFERENCE_CONFIG,
+      inputs: new RecordedInputSource([]),
+      scheduler: new ManualScheduler(),
+      maxTicks: 250,
+    })
+    while (host.stepOnce()) {
+      // to the stop
+    }
+    expect(host.result().endTick).toBe(250)
+    expect(host.result().terminal).toBe("timeout")
   })
 
   test("stats count the ticks that were actually run", () => {
@@ -432,5 +571,259 @@ describe("what a renderer and a host UI read", () => {
     for (let i = 0; i < 40; i++) host.stepOnce()
     expect(host.snapshot()).not.toEqual(atStart)
     expect(host.counters()).toEqual(host.result().counters)
+  })
+})
+
+describe("a presentation that has to get ready to draw", () => {
+  /** A presentation whose prepare settles when the test says, and a log of calls. */
+  function slowPresentation() {
+    const calls: string[] = []
+    let settle: { resolve: () => void; reject: (error: unknown) => void } = {
+      resolve: () => {},
+      reject: () => {},
+    }
+    const presentation = {
+      mount: (container: unknown) => {
+        calls.push(`mount ${String(container)}`)
+      },
+      prepare: (container: unknown) => {
+        calls.push(`prepare ${String(container)}`)
+        return new Promise<void>((resolve, reject) => {
+          settle = { resolve, reject }
+        })
+      },
+      render: () => {
+        calls.push("render")
+      },
+      unmount: () => {
+        calls.push("unmount")
+      },
+    }
+    return {
+      calls,
+      presentation,
+      resolve: () => settle.resolve(),
+      reject: (error: unknown) => settle.reject(error),
+    }
+  }
+
+  function liveHost(
+    presentation: Presentation<unknown, string> | null,
+    extra: { onError?: (error: unknown) => void; onEnded?: () => void } = {},
+  ) {
+    const scheduler = new ManualScheduler()
+    const host = new GameHost({
+      module: createReferenceGame(),
+      manifest: REFERENCE_MANIFEST,
+      seed: "prepare",
+      config: REFERENCE_CONFIG,
+      scheduler,
+      ...(presentation === null ? {} : { presentation, container: "stage" }),
+      ...extra,
+    })
+    return { host, scheduler }
+  }
+
+  test("tick 0 waits for prepare, and nothing pressed while it runs is recorded", async () => {
+    const slow = slowPresentation()
+    const { host, scheduler } = liveHost(slow.presentation)
+    const started = host.start()
+    expect(slow.calls).toEqual(["mount stage", "prepare stage"])
+    expect(host.status).toBe("preparing")
+    // A press before anything can be drawn is not the player's yet.
+    host.live?.push({ code: "left", value: 1 })
+    scheduler.run(120, 1000 / 60)
+    expect(host.tick).toBe(0)
+    expect(scheduler.pendingCount).toBe(0)
+    expect(slow.calls).not.toContain("render")
+    // Asked again while it waits, start hands back the same answer.
+    expect(host.start()).toBe(started)
+
+    slow.resolve()
+    expect(await started).toBe(true)
+    expect(host.status).toBe("running")
+    scheduler.run(60, 1000 / 60)
+    expect(host.tick).toBeGreaterThan(50)
+    expect(slow.calls).toContain("render")
+    host.live?.push({ code: "right", value: 1 })
+    scheduler.advance(1000 / 60)
+    // Only the press made once the clock ran, on the tick it ran at.
+    expect(host.recording().inputs.map((input) => input.code)).toEqual([
+      "right",
+    ])
+  })
+
+  test("a prepare that rejects is E_PRESENTATION_FAILED before tick 0, with nothing recorded", async () => {
+    const slow = slowPresentation()
+    const errors: unknown[] = []
+    const { host, scheduler } = liveHost(slow.presentation, {
+      onError: (error) => errors.push(error),
+    })
+    const started = host.start()
+    host.live?.push({ code: "left", value: 1 })
+    slow.reject(new Error("EngineError: E1301: no usable GPU path"))
+    expect(await started).toBe(false)
+    expect(host.status).toBe("ended")
+    expect(errors.length).toBe(1)
+    const error = errors[0] as { code?: unknown; message?: unknown }
+    expect(error.code).toBe("E_PRESENTATION_FAILED")
+    expect(String(error.message)).toContain(
+      "EngineError: E1301: no usable GPU path",
+    )
+    scheduler.run(60, 1000 / 60)
+    expect(host.tick).toBe(0)
+    expect(host.recording().endTick).toBe(0)
+    expect(host.recording().inputs).toEqual([])
+    // A finished host does not start again.
+    expect(await host.start()).toBe(false)
+  })
+
+  test("a prepare that throws before returning is reported the same way", async () => {
+    const errors: unknown[] = []
+    const { host } = liveHost(
+      {
+        ...slowPresentation().presentation,
+        prepare: () => {
+          throw new Error("no canvas")
+        },
+      },
+      { onError: (error) => errors.push(error) },
+    )
+    expect(await host.start()).toBe(false)
+    expect((errors[0] as { code?: unknown }).code).toBe("E_PRESENTATION_FAILED")
+  })
+
+  test("destroyed while prepare runs, the host starts nothing when it resolves", async () => {
+    const slow = slowPresentation()
+    const errors: unknown[] = []
+    const { host, scheduler } = liveHost(slow.presentation, {
+      onError: (error) => errors.push(error),
+    })
+    const started = host.start()
+    host.destroy()
+    expect(slow.calls).toContain("unmount")
+    slow.resolve()
+    expect(await started).toBe(false)
+    scheduler.run(60, 1000 / 60)
+    expect(host.tick).toBe(0)
+    expect(scheduler.pendingCount).toBe(0)
+    expect(host.status).toBe("ended")
+    expect(errors).toEqual([])
+  })
+
+  test("stopped while prepare runs, it ends once at tick 0 and a rejection after says nothing", async () => {
+    const slow = slowPresentation()
+    const errors: unknown[] = []
+    let ended = 0
+    const { host, scheduler } = liveHost(slow.presentation, {
+      onError: (error) => errors.push(error),
+      onEnded: () => {
+        ended++
+      },
+    })
+    const started = host.start()
+    host.stop()
+    expect(ended).toBe(1)
+    expect(host.result().endTick).toBe(0)
+    expect(host.result().terminal).toBe("abandoned")
+    slow.reject(new Error("too late"))
+    expect(await started).toBe(false)
+    scheduler.run(60, 1000 / 60)
+    expect(host.tick).toBe(0)
+    expect(errors).toEqual([])
+    expect(ended).toBe(1)
+  })
+
+  test("a pause while prepare runs is kept: ready, the host is paused, and resume starts it", async () => {
+    // A tab put in the background while the renderer was still starting
+    // must not come back to a clock that ran while nobody could see it.
+    const slow = slowPresentation()
+    const { host, scheduler } = liveHost(slow.presentation)
+    const started = host.start()
+    host.pause()
+    slow.resolve()
+    expect(await started).toBe(true)
+    expect(host.status).toBe("paused")
+    host.live?.push({ code: "left", value: 1 })
+    scheduler.run(60, 1000 / 60)
+    expect(host.tick).toBe(0)
+    expect(scheduler.pendingCount).toBe(0)
+
+    host.resume()
+    expect(host.status).toBe("running")
+    host.live?.push({ code: "right", value: 1 })
+    scheduler.run(10, 1000 / 60)
+    expect(host.tick).toBeGreaterThan(5)
+    expect(host.recording().inputs.map((input) => input.code)).toEqual([
+      "right",
+    ])
+  })
+
+  test("a pause taken back while prepare runs leaves the host running when ready", async () => {
+    const slow = slowPresentation()
+    const { host } = liveHost(slow.presentation)
+    const started = host.start()
+    host.pause()
+    host.resume()
+    slow.resolve()
+    expect(await started).toBe(true)
+    expect(host.status).toBe("running")
+  })
+
+  test("a queue the page paused before start stays paused after prepare", async () => {
+    // The host resumes only what it paused itself.
+    const slow = slowPresentation()
+    const { host, scheduler } = liveHost(slow.presentation)
+    host.live?.pause()
+    const started = host.start()
+    slow.resolve()
+    expect(await started).toBe(true)
+    expect(host.status).toBe("running")
+    expect(host.live?.paused).toBe(true)
+    host.live?.push({ code: "left", value: 1 })
+    scheduler.run(10, 1000 / 60)
+    expect(host.tick).toBeGreaterThan(5)
+    expect(host.recording().inputs).toEqual([])
+    // And a pause and resume of the host leave the page's pause alone too.
+    host.pause()
+    host.resume()
+    expect(host.live?.paused).toBe(true)
+    host.live?.resume()
+    host.live?.push({ code: "right", value: 1 })
+    scheduler.advance(1000 / 60)
+    expect(host.recording().inputs.map((input) => input.code)).toEqual([
+      "right",
+    ])
+  })
+
+  test("mount and prepare are handed the same context", async () => {
+    const seen: unknown[] = []
+    const presentation: Presentation<unknown, string> = {
+      mount: (_container, context) => {
+        seen.push(context)
+      },
+      prepare: async (_container, context) => {
+        seen.push(context)
+      },
+      render: () => {},
+      unmount: () => {},
+    }
+    const { host } = liveHost(presentation)
+    expect(await host.start()).toBe(true)
+    expect(seen.length).toBe(2)
+    expect(seen[1]).toBe(seen[0])
+  })
+
+  test("a presentation without prepare starts the clock before start returns, as before", async () => {
+    const { prepare: _prepare, ...ready } = slowPresentation().presentation
+    for (const presentation of [ready, null]) {
+      const { host, scheduler } = liveHost(presentation)
+      const started = host.start()
+      expect(host.status).toBe("running")
+      expect(scheduler.pendingCount).toBe(1)
+      scheduler.run(30, 1000 / 60)
+      expect(host.tick).toBeGreaterThan(20)
+      expect(await started).toBe(true)
+    }
   })
 })

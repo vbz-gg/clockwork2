@@ -8,9 +8,12 @@
  * from Clockwork 1, where PIXI's ticker drove the engine: here PIXI is a draw
  * call and the host owns the clock.
  *
- * `Application.init` is asynchronous in PIXI 8 and `mount` is not, so the
- * first few frames after mounting do nothing and `whenReady()` resolves once
- * there is something to draw on.
+ * `Application.init` is asynchronous in PIXI 8 and `mount` is not, so
+ * `prepare` waits for it: a `GameHost` starts the session's clock only once
+ * PIXI can draw, and a device where init fails, as one with no WebGL, gets
+ * `E_PRESENTATION_FAILED` before tick 0 rather than a run with no picture. A
+ * host that never calls `prepare` still works: frames before init resolves
+ * draw nothing, and `whenReady()` resolves once there is something to draw on.
  */
 
 import { Application, type Container } from "pixi.js"
@@ -90,6 +93,15 @@ export class PixiPresentation<TView>
   /** Resolves when there is a renderer to draw with. */
   whenReady(): Promise<void> {
     return this.ready ?? Promise.resolve()
+  }
+
+  /**
+   * Waits for PIXI to start: resolves once its canvas is on the page, and
+   * rejects with PIXI's own error when `Application.init` fails. A host calls
+   * it after `mount` and starts the clock only when it resolves.
+   */
+  prepare(): Promise<void> {
+    return this.whenReady()
   }
 
   render(

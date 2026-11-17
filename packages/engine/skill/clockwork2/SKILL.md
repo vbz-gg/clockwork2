@@ -1,19 +1,22 @@
 ---
 name: clockwork2
-description: Build a browser game on Clockwork 2 that a platform can verify - fixed-step ticks, seeded randomness, an input log that replays to the same state on a server. Use when writing or reviewing a game module, a manifest, a renderer or a recording; when a conformance check fails with an E_ code; or when porting a variable-step game onto the fixed-step contract. Covers the simulation and renderer boundary, deterministic maths, snapshots and restore, counters and objectives, declared inputs and what to record, data packs, budgets, and the twelve checks in @clockwork2/engine/validate. Holds for a game on the engine alone and for the simulation of one built with the vbz kit.
+description: Build a browser game on Clockwork 2 that a platform can verify - fixed-step ticks, seeded randomness, an input log that replays to the same state on a server. Use when writing or reviewing a game module, a manifest, a renderer or a recording; when a conformance check fails with an E_ code; or when porting a variable-step game onto the fixed-step contract. Covers the simulation and renderer boundary, deterministic maths, snapshots and restore, counters and objectives, declared inputs and what to record, data packs, budgets, and the conformance checks in @clockwork2/engine/validate. Holds for a game on the engine alone and for the simulation of one built with the vbz kit.
 ---
 
 # Building a verifiable game
 
 **Where this file and `scripts/validate.sh` disagree, the script is right.** It
-runs the engine's twelve checks; a platform may run more. Prose cannot fail a
+runs the engine's eleven checks every game needs, and with `--ranked` the two
+a ranked or practice run needs; a platform may run more. Prose cannot fail a
 build.
 
 A platform ranks on results, so a score has to be something it can verify
 rather than trust. The browser records the player's inputs,
 the server replays them, and both sides must reach the same state - on V8,
 JavaScriptCore and SpiderMonkey alike. Everything below follows from that one
-sentence.
+sentence. The rules bind every session, including a game played only on its
+own page, except the few under "Ranked and practice runs", which bind only the
+runs a platform serves.
 
 ## Where the commands run
 
@@ -84,10 +87,10 @@ implements `packsNeeded`, and `init` hands it the reader; `references/assets.md`
 covers both. The full signatures are in `references/kernel-api.md`, which is
 generated from the type declarations.
 
-## The ten rules
+## The nine rules
 
 Each names the check that enforces it. Run `<guide>/scripts/validate.sh ./src`
-to run all twelve checks; `--only=name` runs one.
+to run all eleven checks; `--only=name` runs one.
 
 1. **`tick()` advances exactly one tick and takes no delta.** A fixed step is
    what makes a simulation independent of the player's frame rate. The host
@@ -129,26 +132,60 @@ to run all twelve checks; `--only=name` runs one.
    the timer state, an id counter, a cooldown, the config.
    *Checked by `restore`, at several offsets.*
 
-7. **The run ends inside `maxTicks`**, with an idle player, with chaos input,
-   and with the platform's bot. "The player can quit" is not an ending; the
-   idle log is a player who does not.
-   *Checked by `bound`.*
-
-8. **Counters are declared, integer, and honest.** A counter declared
+7. **Counters are declared, integer, and honest.** A counter declared
    `monotonic` never moves the wrong way and `isOver()` never goes back to
    false. Objectives are `counters[name] >= threshold`, computed by the
    platform, so a new kind of objective is a new counter rather than new code.
    *Checked by `counters`.*
 
-9. **The renderer reads and never writes.** `view()` returns
+8. **The renderer reads and never writes.** `view()` returns
    structured-cloneable plain data, with no class instances and no functions,
    because in worker mode it is cloned across a thread boundary.
    *Checked by `headless` and `render-smoke`.*
 
-10. **No browser inside the simulation.** `init` plus 600 ticks must run with
-    no `window`, `document`, WebGL, `AudioContext` or `fetch` present. Packs
-    come through the reader `init` is given, never through `fetch`.
-    *Checked by `headless`.*
+9. **No browser inside the simulation.** `init` plus 600 ticks must run with
+   no `window`, `document`, WebGL, `AudioContext` or `fetch` present. Packs
+   come through the reader `init` is given, never through `fetch`.
+   *Checked by `headless`.*
+
+No rule says how long a run lasts. A session runs until `isOver()` turns true
+or its host stops it; there is no step limit, and `session.hasEnding` in the
+manifest describes the game and nothing reads or checks it. The checks play each log to
+its end or to 36,000 ticks (`CHECK_WINDOW_TICKS`), and the `determinism` line
+of the report says where every run stopped, which is how to see that a game
+meant to end by itself does.
+
+## Ranked and practice runs
+
+A platform built on the engine serves some runs itself. It hands the page a
+seed and a config, replays the recording on its server, and for a ranked run
+ranks what the replay computed. Those runs carry rules of their own that a
+game played only on its own page does not need. Determinism is not one of
+them: the nine rules above bind every session, wherever it runs.
+`<guide>/scripts/validate.sh ./src --ranked` adds the two checks below.
+
+- **The seed changes the game.** Two seeds played over the same inputs pass
+  through different states, at some checkpoint, on at least one of the idle,
+  chaos and bot logs, or every seed the platform serves plays the same game.
+  Runs that all end alike are fine.
+  *Checked by `seed-sensitivity`, in the ranked set.*
+- **The manifest says how a run ranks**, with both `rankBy` and `tiePolicy`.
+  *Checked by `ranking`, in the ranked set.*
+- **The run plays the config the platform serves**: every parameter the
+  manifest declares, at its default, which `servedConfig(manifest)` builds. A
+  player never picks it. Every check plays the same config, so what passed the
+  checks is what a run plays.
+  *Every check plays it: `loadSubject` gives it to the suite.*
+- **At most `INPUT_BUDGET_PER_TICK`, 16, inputs a tick on average.** A
+  platform holds every log it replays to the budget with `checkInputs`; a page
+  that records only changes, in the coarsest range the game needs, stays far
+  under it. `references/inputs.md` has the measurements.
+  *Held by the platform, with `checkInputs`.*
+- **Inputs come only from the device helpers**, with `InputCapture`'s
+  `scripted: "ignore"`, so an event a script dispatches on the page is never
+  recorded as the player's. A game played on its own page may record its
+  inputs itself, or set `scripted: "record"`.
+  *Held by the page a platform's kit builds, which sets it.*
 
 ## What the renderer may do
 
@@ -176,7 +213,8 @@ Each command runs from the game's own root.
    `references/inputs.md` says how to keep what they record small.
 3. `<guide>/scripts/validate.sh ./src` after each meaningful change, not once
    at the end. A determinism bug found three edits after it was written is a
-   different job from one found three weeks after.
+   different job from one found three weeks after. Add `--ranked` for a game a
+   platform will rank.
 4. `<guide>/scripts/run-headless.ts ./src` to see what a session actually
    looks like - how long it runs, what the checkpoints are, whether it ends on
    its own.
@@ -192,12 +230,11 @@ Every failure carries a stable code - `E_RESTORE_MISMATCH@1380`. Look it up in
 the order they actually turn up. Read the code, never the message: messages
 are prose and change.
 
-The three that account for most failures:
+The two that account for most failures:
 
 - `E_LINT_BANNED` - a banned API in the import graph. The tag names the file,
   line and column.
 - `E_RESTORE_MISMATCH` - a field missing from the snapshot.
-- `E_BOUND_NOT_OVER` - the game does not end by itself.
 
 ## Never
 
@@ -240,8 +277,9 @@ The three that account for most failures:
 
 Each runs from the game's own root, as `<guide>/scripts/...`.
 
-- `<guide>/scripts/validate.sh <path>` - the engine's twelve checks; a platform
-  may run more. The authority on those twelve.
+- `<guide>/scripts/validate.sh <path> [--ranked]` - the engine's eleven checks
+  every game needs, and with `--ranked` the two a ranked or practice run needs;
+  a platform may run more. The authority on those checks.
 - `<guide>/scripts/run-headless.ts <path>` - run a session with no browser and
   print its checkpoints.
 - `<guide>/scripts/package.ts <dir> [--manifest=]` - hash assets and check the

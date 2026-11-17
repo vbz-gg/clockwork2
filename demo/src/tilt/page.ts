@@ -188,6 +188,7 @@ function start(): void {
   new InputCapture({
     manifest: MANIFEST,
     queue,
+    scripted: "ignore",
     element: field,
     tilt: { x: "tiltX", y: "tiltY", z: "tiltZ" },
     onNotice: (notice) => {

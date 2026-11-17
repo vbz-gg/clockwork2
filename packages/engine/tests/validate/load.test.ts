@@ -19,14 +19,15 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { isClockworkError } from "../../src"
 import { findEntry, loadSubject, readPacks } from "../../src/validate/load"
+import { validate } from "../../src/validate/runner"
 
 const MANIFEST_LITERAL = `{
-  schemaVersion: 2,
+  schemaVersion: 3,
   id: "temp-bundle",
   version: "1.0.0",
   name: "Temp Bundle",
   kernel: { version: "0.1.0" },
-  session: { tickHz: 60, maxTicks: 600, maxWallSeconds: 120, hasEnding: true },
+  session: { tickHz: 60, hasEnding: true },
   inputs: { push: { min: 0, max: 1 } },
   counters: [
     { name: "score", direction: "up", monotonic: true },
@@ -223,17 +224,12 @@ describe("which manifest is judged", () => {
     const dir = bundle({
       "index.ts": gameSource({ exportAs: "default" }),
       "manifest.json": JSON.stringify({
-        schemaVersion: 2,
+        schemaVersion: 3,
         id: "from-disk",
         version: "1.0.0",
         name: "From Disk",
         kernel: { version: "0.1.0" },
-        session: {
-          tickHz: 60,
-          maxTicks: 600,
-          maxWallSeconds: 120,
-          hasEnding: true,
-        },
+        session: { tickHz: 60, hasEnding: true },
         inputs: { push: { min: 0, max: 1 } },
         counters: [
           { name: "score", direction: "up", monotonic: true },
@@ -273,16 +269,75 @@ describe("the Subject that comes back", () => {
     expect(subject.root).toBe(dir)
   })
 
-  test("carries a config only when one was given", async () => {
+  test("carries the served config unless it was given another", async () => {
+    // What a platform serves a session is every declared parameter at its
+    // default, and the checks have to play that, not an empty config.
+    const dir = bundle({
+      "index.ts": gameSource({
+        manifest: `{ ...${MANIFEST_LITERAL}, params: {
+          speed: { type: "int", label: "Speed", min: 1, max: 3, default: 1 },
+          name: { type: "string", label: "Name", optional: true },
+        } }`,
+        exportAs: "default",
+      }),
+    })
+    expect((await loadSubject(dir)).config).toEqual({ speed: 1 })
+    const withConfig = await loadSubject(dir, { config: { speed: 2 } })
+    expect(withConfig.config).toEqual({ speed: 2 })
+  })
+
+  test("refuses a required parameter with no default, unless it is handed a config to play", async () => {
+    // No config can be served for it, so the checks have nothing honest to
+    // play: an empty config is one validateParams refuses.
+    const dir = bundle({
+      "index.ts": `const MANIFEST = { ...${MANIFEST_LITERAL}, params: {
+  level: { type: "int", label: "Level", min: 1 },
+} }
+class TheGame {
+  manifest = MANIFEST
+  ticks = 0
+  endAt = 0
+  init(seed, config) { this.ticks = 0; this.endAt = config.level * 100 }
+  tick() { this.ticks++ }
+  view() { return { ticks: this.ticks } }
+  snapshot() { return { ticks: this.ticks, endAt: this.endAt } }
+  restore(s) { this.ticks = s.ticks; this.endAt = s.endAt }
+  score() { return { score: 0, ticksSurvived: this.ticks } }
+  isOver() { return this.ticks >= this.endAt }
+  effects() { return [] }
+}
+export default function make() { return new TheGame() }
+`,
+    })
+    let refused: unknown
+    try {
+      await loadSubject(dir)
+    } catch (error) {
+      refused = error
+    }
+    expect(isClockworkError(refused) && refused.code).toBe("E_MANIFEST_INVALID")
+    expect(String(refused)).toContain(
+      "params.level is required and has no default, so a platform cannot serve it",
+    )
+    const subject = await loadSubject(dir, { config: { level: 3 } })
+    const report = await validate(subject, {
+      set: "every-game",
+      seeds: ["t1"],
+      only: ["determinism"],
+    })
+    expect(report.outcomes[0]?.ends?.map((end) => end.endTick)).toEqual([
+      300, 300, 300,
+    ])
+  })
+
+  test("a game with no parameters is served an empty config", async () => {
     const dir = bundle({
       "index.ts": gameSource({
         manifest: MANIFEST_LITERAL,
         exportAs: "default",
       }),
     })
-    expect("config" in (await loadSubject(dir))).toBe(false)
-    const withConfig = await loadSubject(dir, { config: { speed: 2 } })
-    expect(withConfig.config).toEqual({ speed: 2 })
+    expect((await loadSubject(dir)).config).toEqual({})
   })
 
   /**

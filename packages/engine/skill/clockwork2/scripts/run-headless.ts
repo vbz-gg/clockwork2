@@ -49,9 +49,9 @@ const validate = await resolveFrom<typeof Validate>(
 )
 
 const subject = await validate.loadSubject(target)
-const maxTicks = Number(
-  flag("ticks", String(subject.manifest.session.maxTicks)),
-)
+// As far as the conformance checks play a log, unless --ticks says otherwise.
+// Nothing stops a session but its caller, and this is the caller.
+const maxTicks = Number(flag("ticks", String(validate.CHECK_WINDOW_TICKS)))
 const logs = testing.standardLogs(seed, maxTicks)
 const inputs = logs.get(logName)
 if (inputs === undefined) {
@@ -87,8 +87,9 @@ console.log(
   `${result.terminal} at tick ${result.endTick} after ${inputs.length} inputs  ${counters}  (${ms.toFixed(0)} ms)`,
 )
 if (result.terminal === "timeout") {
-  console.error(
-    "\nthe run hit maxTicks without ending: check 3 (bound) will fail this",
+  // Not a failure: no check refuses a game for running this long. It says
+  // only that this run was still going when the window closed.
+  console.log(
+    `\nstill running at tick ${maxTicks}, where this run was stopped; the game had not ended it`,
   )
-  process.exit(1)
 }

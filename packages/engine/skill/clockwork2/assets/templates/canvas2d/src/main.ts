@@ -41,10 +41,12 @@ const live = host.live
 if (live === null) throw new Error("a live session has a live input queue")
 
 // Which keys press the game's inputs is this page's choice; the manifest
-// only says what is recorded.
+// only says what is recorded. Only the player's own keys drive it: an event a
+// script dispatches is ignored, as a ranked run on a platform requires.
 new InputCapture({
   manifest: MANIFEST,
   queue: live,
+  scripted: "ignore",
   keys: { ArrowLeft: "left", KeyA: "left", ArrowRight: "right", KeyD: "right" },
 }).attach()
 host.start()

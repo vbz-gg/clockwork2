@@ -10,9 +10,10 @@
 
 import { describe, expect, test } from "bun:test"
 import { ClockworkError } from "../../src"
-import { CHECKS } from "../../src/validate/checks/index"
+import { CHECK_SETS } from "../../src/validate/checks/index"
 import { codeFromError } from "../../src/validate/checks/support"
 import {
+  CHECK_NAME_WIDTH,
   DEFAULT_SEEDS,
   formatReport,
   validate,
@@ -23,17 +24,12 @@ import type { Report, Subject } from "../../src/validate/types"
 function exploding(error: unknown): Subject {
   return {
     manifest: {
-      schemaVersion: 2,
+      schemaVersion: 3,
       id: "explodes",
       version: "1.0.0",
       name: "Explodes",
       kernel: { version: "0.1.0" },
-      session: {
-        tickHz: 60,
-        maxTicks: 600,
-        maxWallSeconds: 120,
-        hasEnding: true,
-      },
+      session: { tickHz: 60, hasEnding: true },
       inputs: { push: { min: 0, max: 1 } },
       counters: [{ name: "score", direction: "up", monotonic: true }],
       rankBy: ["score"],
@@ -54,9 +50,10 @@ function exploding(error: unknown): Subject {
 describe("a check that throws", () => {
   test("is a failed check, and the rest of the suite still runs", async () => {
     const report = await validate(exploding(new Error("the wheels came off")), {
+      set: "every-game",
       seeds: ["s1"],
     })
-    expect(report.outcomes.length).toBe(CHECKS.length)
+    expect(report.outcomes.length).toBe(CHECK_SETS["every-game"].length)
     expect(report.ok).toBe(false)
   }, 30_000)
 
@@ -67,6 +64,7 @@ describe("a check that throws", () => {
    */
   test("with no code of its own is reported as E_CHECK_THREW", async () => {
     const report = await validate(exploding(new Error("the wheels came off")), {
+      set: "every-game",
       seeds: ["s1"],
       // The replay check is the one that lets a load error escape to the
       // runner. Most checks catch and report their own; this is the path that
@@ -87,7 +85,7 @@ describe("a check that throws", () => {
   test("carrying a code reports that code instead", async () => {
     const report = await validate(
       exploding(new ClockworkError("E_BANNED_API", { detail: "Math.random" })),
-      { seeds: ["s1"], only: ["replay"] },
+      { set: "every-game", seeds: ["s1"], only: ["replay"] },
     )
     expect(report.outcomes[0]?.findings[0]?.code).toBe("E_BANNED_API")
   }, 30_000)
@@ -129,13 +127,62 @@ describe("codeFromError", () => {
   })
 })
 
+describe("the set", () => {
+  async function refusal(options: unknown): Promise<unknown> {
+    let progress = 0
+    try {
+      await validate(exploding(new Error("x")), {
+        ...(options as object),
+        onProgress: () => progress++,
+      } as never)
+    } catch (error) {
+      expect(progress).toBe(0)
+      return error
+    }
+    throw new Error("validate ran")
+  }
+
+  test("has no default: a caller that names none is refused before any check runs", async () => {
+    const error = await refusal({ seeds: ["s1"] })
+    expect((error as { code?: unknown }).code).toBe("E_ARG_INVALID")
+    expect(String(error)).toContain("every-game, ranked")
+  })
+
+  test("must be one that exists", async () => {
+    const error = await refusal({ set: "everything", seeds: ["s1"] })
+    expect((error as { code?: unknown }).code).toBe("E_ARG_INVALID")
+  })
+
+  test("decides which checks only may name", async () => {
+    // seed-sensitivity is a ranked check; asked of the every-game set it
+    // would run nothing and pass, which reads as a pass of a check that never
+    // ran.
+    const error = await refusal({
+      set: "every-game",
+      seeds: ["s1"],
+      only: ["seed-sensitivity"],
+    })
+    expect((error as { code?: unknown }).code).toBe("E_ARG_INVALID")
+    expect(String(error)).toContain(
+      "only names seed-sensitivity, which the every-game set does not run",
+    )
+    const report = await validate(exploding(new Error("x")), {
+      set: "ranked",
+      seeds: ["s1"],
+      only: ["seed-sensitivity"],
+    })
+    expect(report.outcomes.map((o) => o.check)).toEqual(["seed-sensitivity"])
+  })
+})
+
 describe("only", () => {
   test("runs just the checks named", async () => {
     const report = await validate(exploding(new Error("x")), {
+      set: "every-game",
       seeds: ["s1"],
-      only: ["bound", "restore"],
+      only: ["headless", "restore"],
     })
-    expect(report.outcomes.map((o) => o.check)).toEqual(["bound", "restore"])
+    expect(report.outcomes.map((o) => o.check)).toEqual(["headless", "restore"])
   }, 30_000)
 
   test("reports progress as each check starts", async () => {
@@ -143,11 +190,12 @@ describe("only", () => {
     // a hang.
     const seen: string[] = []
     await validate(exploding(new Error("x")), {
+      set: "every-game",
       seeds: ["s1"],
-      only: ["bound", "restore"],
+      only: ["headless", "restore"],
       onProgress: (name) => seen.push(name),
     })
-    expect(seen).toEqual(["bound", "restore"])
+    expect(seen).toEqual(["headless", "restore"])
   }, 30_000)
 })
 
@@ -156,6 +204,7 @@ describe("formatReport", () => {
     findings: Report["outcomes"][number]["findings"],
   ): Report {
     return {
+      set: "every-game",
       ok: false,
       ms: 12,
       outcomes: [
@@ -206,20 +255,53 @@ describe("formatReport", () => {
 
   test("names every failed check in the summary line", () => {
     const text = formatReport({
+      set: "ranked",
       ok: false,
       ms: 1000,
       outcomes: [
-        { check: "bound", title: "t", ok: false, findings: [], ms: 1 },
+        { check: "headless", title: "t", ok: false, findings: [], ms: 1 },
         { check: "restore", title: "t", ok: false, findings: [], ms: 1 },
         { check: "manifest", title: "t", ok: true, findings: [], ms: 1 },
       ],
     })
-    expect(text).toContain("2 check(s) failed: bound, restore")
+    expect(text).toContain(
+      "2 check(s) in the ranked set failed: headless, restore",
+    )
+  })
+
+  test("every check's name fits its column, the longest included", () => {
+    // The column was 14 wide, two short of "seed-sensitivity", which pushed
+    // that line's time and title two places right of every other line's.
+    expect(CHECK_NAME_WIDTH).toBe("seed-sensitivity".length)
+    const names = CHECK_SETS.ranked.map((check) => check.name)
+    const text = formatReport({
+      set: "ranked",
+      ok: true,
+      ms: 10,
+      outcomes: names.map((check, i) => ({
+        check,
+        title: `title ${i}`,
+        ok: true,
+        findings: [],
+        ms: i * 37,
+      })),
+    })
+    const lines = text.split("\n").filter((line) => line.startsWith("pass"))
+    expect(lines.length).toBe(names.length)
+    const titleAt = new Set(lines.map((line) => line.indexOf("ms  title")))
+    expect([...titleAt]).toHaveLength(1)
+    for (const [i, line] of lines.entries()) {
+      // The name, then at least one space before the time.
+      expect(line).toMatch(
+        new RegExp(`^pass  ${names[i]} +\\d+ms  title ${i}$`),
+      )
+    }
   })
 
   test("a skipped check reads as skipped, not as a pass", () => {
     // A skip printed as a pass is how a check quietly stops running.
     const text = formatReport({
+      set: "every-game",
       ok: true,
       ms: 5,
       outcomes: [

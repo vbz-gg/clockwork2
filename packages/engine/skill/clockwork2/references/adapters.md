@@ -1,13 +1,38 @@
 # Renderers
 
 A renderer implements `Presentation<TView, TContainer>`: `mount`, `render`,
-`unmount`. The host calls `render(view, previousView, alpha, dtMs)` once per
-frame, whatever number of ticks that frame ran.
+`unmount`, and `prepare` when it starts asynchronously. The host calls
+`render(view, previousView, alpha, dtMs)` once per frame, whatever number of
+ticks that frame ran.
 
 It reads. It does not write. Not to the view, not to the simulation, not
 anywhere the simulation can read back. That is the entire contract, and it is
 what makes it safe for a renderer to use `Math.random`, `performance.now`,
 Three's `Quaternion` and anything else that is off-limits on the other side.
+
+## A renderer that has to get ready
+
+A renderer that cannot draw as soon as `mount` returns, because it spawns
+workers, compiles a WebAssembly core, builds shaders or asks for a GPU,
+implements `prepare(container, context): Promise<void>` and resolves it once
+it can draw. `GameHost.start()` mounts it, calls `prepare`, and starts the
+session's clock only when `prepare` resolves: no tick runs before that, and the
+live queue takes no input, so a player is never playing a game they cannot
+see. `start()` returns a promise of `true` once the clock runs.
+
+A rejection means this device cannot draw the game. The host reports it
+through `onError` as `E_PRESENTATION_FAILED`, carrying the presentation's own
+message, `start()` resolves `false`, and the session never starts. A host
+stopped or destroyed while `prepare` runs starts nothing when it settles.
+
+Of the three adapters here, PIXI is the one that starts asynchronously: its
+`Application.init` is a promise, so `PixiPresentation` has a `prepare` that
+waits for it, and a device where init fails gets `E_PRESENTATION_FAILED`
+before tick 0. canvas2d and three start inside `mount`: canvas2d takes its 2d
+context and three builds its `WebGLRenderer` there, synchronously, so they
+have no `prepare`, `start()` starts the clock before it returns, and a device
+that cannot draw them makes `mount`, and so `start()`, throw before any tick
+runs.
 
 ## The four arguments
 
@@ -59,7 +84,8 @@ them - rebuilding the scene each frame works and is slow.
 ## `@clockwork2/engine/adapter-pixi`
 
 The same contract with a PIXI `Application`, `autoStart: false`. The demo in
-this repository uses it.
+this repository uses it. `prepare` waits for PIXI's asynchronous init, so a
+host starts no tick before PIXI can draw.
 
 ## Nodes by id
 

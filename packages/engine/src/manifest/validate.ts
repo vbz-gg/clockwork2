@@ -15,6 +15,7 @@
  * set to `undefined`, which keeps the result canonically encodable.
  */
 
+import { TIE_POLICIES, type TiePolicy } from "../counters.js"
 import { fail } from "../errors.js"
 import type {
   Manifest,
@@ -22,7 +23,7 @@ import type {
   ParamSchema,
   ParamValues,
 } from "./types.js"
-import { TICK_RATES } from "./types.js"
+import { MANIFEST_FORMAT, TICK_RATES } from "./types.js"
 
 export type Issue = {
   /** Dotted path into the document, for example `counters[1].direction`. */
@@ -147,6 +148,24 @@ function checkParamDefinition(
   }
 }
 
+/**
+ * A parameter's own value in a config, never one the object inherits. A
+ * parameter may be called `toString`, `constructor` or `valueOf`, and a plain
+ * object answers each of those with a function from its prototype.
+ */
+function ownValue(values: object, name: string): unknown {
+  return Object.hasOwn(values, name)
+    ? (values as Record<string, unknown>)[name]
+    : undefined
+}
+
+/** Whether a parameter declares a default, by its own property. */
+function declaresDefault(definition: ParamDefinition): boolean {
+  return (
+    Object.hasOwn(definition, "default") && definition.default !== undefined
+  )
+}
+
 /** Checks a set of supplied values against a schema. */
 export function validateParams(
   schema: ParamSchema,
@@ -157,11 +176,9 @@ export function validateParams(
 
   for (const [name, definition] of Object.entries(schema)) {
     const at = `params.${name}`
-    const value = (supplied as Record<string, unknown>)[name]
+    const value = ownValue(supplied, name)
     if (value === undefined) {
-      const hasDefault =
-        "default" in definition && definition.default !== undefined
-      if (definition.optional !== true && !hasDefault) {
+      if (definition.optional !== true && !declaresDefault(definition)) {
         issues.push({ at, message: "is required" })
       }
       continue
@@ -170,7 +187,7 @@ export function validateParams(
   }
 
   for (const name of Object.keys(supplied)) {
-    if (!(name in schema)) {
+    if (!Object.hasOwn(schema, name)) {
       // game-base ignored these, so a typo in a config was invisible.
       issues.push({ at: `params.${name}`, message: "is not in the schema" })
     }
@@ -293,18 +310,69 @@ export function mergeParamDefaults(
   values: ParamValues | null | undefined,
 ): ParamValues {
   const merged: Record<string, string | number | boolean> = {}
-  const supplied = (values ?? {}) as Record<string, unknown>
+  const supplied = values ?? {}
+  // Defined rather than assigned, so a parameter named `__proto__` is a
+  // value in the config and not its prototype.
+  const set = (name: string, value: string | number | boolean): void => {
+    Object.defineProperty(merged, name, {
+      value,
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    })
+  }
   for (const [name, definition] of Object.entries(schema)) {
-    const value = supplied[name]
+    const value = ownValue(supplied, name)
     if (value !== undefined) {
-      merged[name] = value as string | number | boolean
+      set(name, value as string | number | boolean)
       continue
     }
-    if ("default" in definition && definition.default !== undefined) {
-      merged[name] = definition.default
+    if (declaresDefault(definition)) {
+      set(name, definition.default as string | number | boolean)
     }
   }
   return merged
+}
+
+/**
+ * The config a platform serves a ranked or practice run: every parameter the
+ * manifest declares, at its default. A player never supplies one, because a
+ * replay plays the recording's config, so a config the player chose would be
+ * replayed and agree with itself. The conformance checks play this too, so
+ * what they check is what a session plays.
+ *
+ * An optional parameter with no default is left out, as `mergeParamDefaults`
+ * leaves it. What comes back always passes `validateParams`.
+ *
+ * @throws E_MANIFEST_INVALID naming every parameter that is required and has
+ *   no default, which no config can be served without, and every default its
+ *   own definition refuses
+ */
+export function servedConfig(manifest: Manifest): ParamValues {
+  const schema = manifest.params ?? {}
+  const served = mergeParamDefaults(schema, null)
+  const unserved = new Set(
+    Object.entries(schema)
+      .filter(([name, definition]) => {
+        return definition.optional !== true && !Object.hasOwn(served, name)
+      })
+      .map(([name]) => `params.${name}`),
+  )
+  const problems = [
+    ...[...unserved].map(
+      (at) =>
+        `${at} is required and has no default, so a platform cannot serve it`,
+    ),
+    // A default the parameter's own definition refuses: out of its range,
+    // not one of its values, or the wrong type.
+    ...validateParams(schema, served)
+      .filter((issue) => !unserved.has(issue.at))
+      .map((issue) => `${issue.at}: its default ${issue.message}`),
+  ]
+  if (problems.length > 0) {
+    fail("E_MANIFEST_INVALID", { detail: problems.join("; ") })
+  }
+  return served
 }
 
 /** A declared input's name: what a recorded input carries as its `code`. */
@@ -316,7 +384,7 @@ const INPUT_BOUND = 0x7fffffff
 const INPUT_FIELDS = new Set(["min", "max", "label"])
 
 /**
- * The inputs a game records, by name and range. A schema 1 binding table is
+ * The inputs a game records, by name and range. A format 1 binding table is
  * refused by name, so a manifest written for the old schema says what to
  * change rather than failing on a field it never heard of.
  */
@@ -346,7 +414,7 @@ function checkInputDeclarations(inputs: unknown, issues: Issue[]): void {
       issues.push({
         at,
         message:
-          "is schema 1's; in schema 2 a game declares each input as { min, max } and binds devices in its own code",
+          "is format 1's; since format 2 a game declares each input as { min, max } and binds devices in its own code",
       })
       continue
     }
@@ -393,6 +461,37 @@ function checkInputDeclarations(inputs: unknown, issues: Issue[]): void {
   }
 }
 
+/** A field format 3 removed, refused by name so its author learns why. */
+const REMOVED =
+  "is not in format 3: no run has a step limit and nothing reads this, so remove it"
+
+/**
+ * What changed since each older format, so a manifest written for one says
+ * what to change rather than only that its number is wrong. A map, so a
+ * `schemaVersion` such as "constructor" finds nothing rather than something
+ * an object inherits.
+ */
+const FORMAT_CHANGES: ReadonlyMap<string | undefined, string> = new Map([
+  [
+    "1",
+    "must be 3: format 1 bound device codes in inputs.map and declared inputs.controls, and since format 2 a game declares each input by name and range. Format 3 then removed session.maxTicks, session.maxWallSeconds and budgets.bundleBytes, and made rankBy and tiePolicy optional",
+  ],
+  [
+    "2",
+    "must be 3: format 3 removed session.maxTicks and session.maxWallSeconds, because no run has a step limit, and budgets.bundleBytes, which nothing read; rankBy and tiePolicy are optional, declared together or not at all",
+  ],
+])
+
+/**
+ * The key an old format's message is filed under: 2 and "2" alike, since a
+ * manifest written by hand or read from elsewhere may quote the number.
+ */
+function formatKey(version: unknown): string | undefined {
+  return typeof version === "number" || typeof version === "string"
+    ? String(version)
+    : undefined
+}
+
 /** Every problem with a manifest, in document order. */
 export function validateManifest(value: unknown): Issue[] {
   const issues: Issue[] = []
@@ -401,13 +500,12 @@ export function validateManifest(value: unknown): Issue[] {
   }
   const m = value as Record<string, unknown>
 
-  if (m.schemaVersion !== 2) {
+  if (m.schemaVersion !== MANIFEST_FORMAT) {
     issues.push({
       at: "schemaVersion",
       message:
-        m.schemaVersion === 1
-          ? "must be 2: schema 1 bound device codes in inputs.map and declared inputs.controls; schema 2 declares each input by name and range"
-          : "must be 2",
+        FORMAT_CHANGES.get(formatKey(m.schemaVersion)) ??
+        `must be ${MANIFEST_FORMAT}`,
     })
   }
   if (typeof m.id !== "string" || !ID_PATTERN.test(m.id)) {
@@ -436,28 +534,17 @@ export function validateManifest(value: unknown): Issue[] {
         message: `must be one of ${TICK_RATES.join(", ")}`,
       })
     }
-    if (
-      !Number.isInteger(session.maxTicks) ||
-      (session.maxTicks as number) <= 0
-    ) {
-      issues.push({
-        at: "session.maxTicks",
-        message: "must be a positive whole number",
-      })
-    }
-    if (
-      typeof session.maxWallSeconds !== "number" ||
-      !Number.isFinite(session.maxWallSeconds) ||
-      session.maxWallSeconds <= 0
-    ) {
-      issues.push({
-        at: "session.maxWallSeconds",
-        message: "must be a positive number",
-      })
-    }
     if (typeof session.hasEnding !== "boolean") {
       issues.push({ at: "session.hasEnding", message: "must be true or false" })
     }
+    for (const field of ["maxTicks", "maxWallSeconds"]) {
+      if (session[field] !== undefined) {
+        issues.push({ at: `session.${field}`, message: REMOVED })
+      }
+    }
+  }
+  if (isPlainObject(m.budgets) && m.budgets.bundleBytes !== undefined) {
+    issues.push({ at: "budgets.bundleBytes", message: REMOVED })
   }
 
   const counters = m.counters
@@ -493,21 +580,34 @@ export function validateManifest(value: unknown): Issue[] {
     })
   }
 
+  // How a run ranks is optional, and declared whole: rankBy and tiePolicy
+  // together, or neither. Either one alone is a ranking half written.
   const rankBy = m.rankBy
-  if (!Array.isArray(rankBy) || rankBy.length === 0) {
-    issues.push({ at: "rankBy", message: "must name at least one counter" })
-  } else {
-    rankBy.forEach((name: unknown, index: number) => {
-      if (typeof name !== "string" || !counterNames.has(name)) {
-        issues.push({
-          at: `rankBy[${index}]`,
-          message: `${JSON.stringify(name)} is not a declared counter`,
-        })
-      }
+  if ((rankBy === undefined) !== (m.tiePolicy === undefined)) {
+    issues.push({
+      at: rankBy === undefined ? "rankBy" : "tiePolicy",
+      message:
+        "must be declared with the other: a game declares rankBy and tiePolicy together, or neither",
     })
   }
-
-  if (!["shared", "earliest", "none"].includes(m.tiePolicy as string)) {
+  if (rankBy !== undefined) {
+    if (!Array.isArray(rankBy) || rankBy.length === 0) {
+      issues.push({ at: "rankBy", message: "must name at least one counter" })
+    } else {
+      rankBy.forEach((name: unknown, index: number) => {
+        if (typeof name !== "string" || !counterNames.has(name)) {
+          issues.push({
+            at: `rankBy[${index}]`,
+            message: `${JSON.stringify(name)} is not a declared counter`,
+          })
+        }
+      })
+    }
+  }
+  if (
+    m.tiePolicy !== undefined &&
+    !TIE_POLICIES.includes(m.tiePolicy as TiePolicy)
+  ) {
     issues.push({
       at: "tiePolicy",
       message: 'must be "shared", "earliest" or "none"',

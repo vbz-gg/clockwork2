@@ -48,6 +48,59 @@ describe("usage", () => {
     expect(out).toContain("clockwork2-validate")
   }, 30_000)
 
+  test("an argument run does not take exits 2, names it and runs nothing", async () => {
+    // Ignored, a mistyped --rank or a --ranked=true ran the every-game set
+    // and exited 0, which read as a pass of the ranked set.
+    for (const [wrong, said] of [
+      ["--rank", "Unknown option '--rank'"],
+      ["--ranked=true", "Option '--ranked' does not take an argument"],
+      ["--only", "Option '--only <value>' argument missing"],
+      ["-r", "Unknown option '-r'"],
+      ["extra", "run takes one path, and was also given extra"],
+    ] as const) {
+      const { code, out, err } = await run(
+        "run",
+        join(FIXTURES, "conforming"),
+        "--seeds=t1",
+        wrong,
+      )
+      expect(code, wrong).toBe(2)
+      expect(err, wrong).toContain(said)
+      expect(out, wrong).not.toContain("pass ")
+    }
+  }, 60_000)
+
+  test("the path may come after the flags, but not be missing", async () => {
+    const after = await run(
+      "run",
+      "--only=manifest",
+      "--seeds=t1",
+      join(FIXTURES, "conforming"),
+    )
+    expect(after.code).toBe(0)
+    const missing = await run("run", "--ranked")
+    expect(missing.code).toBe(2)
+    expect(missing.err).toContain("run needs a path")
+    expect(missing.out).toContain("clockwork2-validate")
+  }, 30_000)
+
+  test("scan takes nothing but its path", async () => {
+    for (const [wrong, said] of [
+      ["--json", "Unknown option '--json'"],
+      ["--ranked", "Unknown option '--ranked'"],
+      ["another.ts", "scan takes one path, and was also given another.ts"],
+    ] as const) {
+      const { code, out, err } = await run(
+        "scan",
+        join(FIXTURES, "conforming/index.ts"),
+        wrong,
+      )
+      expect(code, wrong).toBe(2)
+      expect(err, wrong).toContain(said)
+      expect(out, wrong).not.toContain("finding(s)")
+    }
+  }, 30_000)
+
   test("an unknown command exits 2 and names it", async () => {
     const { code, err } = await run("frobnicate", "./somewhere")
     expect(code).toBe(2)
@@ -64,25 +117,25 @@ describe("run", () => {
       "--seeds=t1",
     )
     expect(code).toBe(0)
-    expect(out).toContain("all checks passed")
+    expect(out).toContain("all checks in the every-game set passed")
   }, 60_000)
 
   test("a non-conformant game exits 1 and names the code", async () => {
     const { code, out } = await run(
       "run",
-      join(FIXTURES, "unbounded"),
-      "--only=bound",
+      join(FIXTURES, "incomplete-snapshot"),
+      "--only=restore",
       "--seeds=t1",
     )
     expect(code).toBe(1)
-    expect(out).toContain("E_BOUND_NOT_OVER")
+    expect(out).toContain("E_RESTORE_MISMATCH")
   }, 60_000)
 
   test("--json prints a report another program can read", async () => {
     const { code, out } = await run(
       "run",
-      join(FIXTURES, "unbounded"),
-      "--only=bound",
+      join(FIXTURES, "incomplete-snapshot"),
+      "--only=restore",
       "--seeds=t1",
       "--json",
     )
@@ -92,8 +145,8 @@ describe("run", () => {
       outcomes: Array<{ check: string; findings: Array<{ code: string }> }>
     }
     expect(report.ok).toBe(false)
-    expect(report.outcomes.map((o) => o.check)).toEqual(["bound"])
-    expect(report.outcomes[0]?.findings[0]?.code).toBe("E_BOUND_NOT_OVER")
+    expect(report.outcomes.map((o) => o.check)).toEqual(["restore"])
+    expect(report.outcomes[0]?.findings[0]?.code).toBe("E_RESTORE_MISMATCH")
   }, 60_000)
 
   /**
@@ -127,6 +180,40 @@ describe("run", () => {
     )
     const report = JSON.parse(out) as { outcomes: Array<{ note?: string }> }
     expect(report.outcomes[0]?.note).toBe("2 recordings")
+  }, 60_000)
+
+  test("--ranked adds the ranked set's checks, and a game without a ranking fails it", async () => {
+    // The unranked fixture passes every check a game needs; only a caller
+    // that asks about ranked runs is told it cannot be ranked.
+    const local = await run(
+      "run",
+      join(FIXTURES, "unranked"),
+      "--only=manifest",
+      "--seeds=t1",
+    )
+    expect(local.code).toBe(0)
+    const ranked = await run(
+      "run",
+      join(FIXTURES, "unranked"),
+      "--ranked",
+      "--only=manifest,ranking",
+      "--seeds=t1",
+    )
+    expect(ranked.code).toBe(1)
+    expect(ranked.out).toContain("E_RANK_UNDECLARED")
+    expect(ranked.out).toContain("in the ranked set failed: ranking")
+  }, 60_000)
+
+  test("--only naming a ranked check without --ranked exits 2 and runs nothing", async () => {
+    const { code, out, err } = await run(
+      "run",
+      join(FIXTURES, "conforming"),
+      "--only=seed-sensitivity",
+      "--seeds=t1",
+    )
+    expect(code).toBe(2)
+    expect(err).toContain("the every-game set does not run")
+    expect(out).not.toContain("pass ")
   }, 60_000)
 
   test("a path that is not a bundle exits 3 rather than pretending to pass", async () => {

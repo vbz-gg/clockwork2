@@ -58,6 +58,14 @@ testable. Three things break it in practice:
 
 Each has a section below.
 
+The same game also plays on its own page with nobody checking it, and it is
+one build either way. Determinism binds every session wherever it runs. A few
+rules bind only the runs a platform serves and replays, its ranked and
+practice runs: the seed has to change the game, inputs come only from the
+device helpers, a log stays inside an input budget, and the run, like every
+conformance check, plays the config the platform serves. Each is marked as
+such where it comes up.
+
 ## Ticks
 
 A tick is one step of the simulation. Everything in the game advances in whole
@@ -327,16 +335,21 @@ than from the root generator.
 
 ### Ending
 
-Every session has to end inside the `maxTicks` its manifest declares, with an
-idle player, with random input, and with a competent one. A platform bounds
-what it pays to replay, so a game that can run forever cannot be accepted.
+A session ends when `isOver()` turns true or when whatever runs it stops it.
+No run has a step limit: the manifest declares none, and the kernel stops a
+session at a tick only when its caller passes one, which a replay does, at the
+tick where the run it replays ended.
 
-"The player can quit" is not an ending. An idle player never quits, and the
-conformance suite plays an idle log to check.
+A game that ends by itself says so in its manifest with `session.hasEnding:
+true`, and usually ends through a difficulty ramp that eventually beats anyone,
+a time limit, or a life count; the example above shrinks its spawn interval as
+the run goes on. A game that runs until its player stops says `false`. The
+field describes the game and nothing more: nothing in the engine reads it, and
+no check holds the game to it.
 
-Usually the ending is a difficulty ramp that eventually beats anyone, a time
-limit, or a life count. The example above shrinks its spawn interval as the
-run goes on.
+"The player can quit" is not an ending for a game that is meant to have one.
+An idle player never quits, and the conformance suite plays an idle log and
+reports where it stopped.
 
 ## Randomness
 
@@ -360,6 +373,13 @@ is checked against `alea@1.0.1` by a test that compares 10,000 draws.
 There is no unseeded constructor. Upstream alea seeds from the clock when called
 with no argument, which produces a stream nobody can reproduce, so `new Prng()`
 throws `E_SEED_REQUIRED`.
+
+A platform serving a ranked or practice run hands the game its seed, so for
+those runs the seed has to matter: a game that ignores it plays the same game
+on every seed. The conformance suite's ranked set checks that two seeds pass
+through different states (`seed-sensitivity`), comparing every checkpoint, so
+a game whose seed shapes play and whose runs all end alike passes. A game played only on its own page is
+free to use one seed for ever.
 
 ### Sub-streams
 
@@ -632,11 +652,14 @@ The live queue checks every input where it is pushed: a name the manifest does
 not declare, or a value outside its range, throws `E_INPUT_UNDECLARED`, so a
 misspelt name in a page is found while its author plays. A server holds a
 submitted log to the same rules with `checkInputs`, against the manifest it
-stored for the version, and to a budget of `INPUT_BUDGET_PER_TICK` inputs per
-tick on average (`E_INPUT_BUDGET`). A browser following the manifest never
-records anything else, but the code in a game's page is the game's own, and a
-log reaches a server from anywhere; the replay and `checkInputs` are what a
-score rests on.
+stored for the version. For a ranked or practice run, one a platform serves
+and replays, it also holds the log to a budget of `INPUT_BUDGET_PER_TICK`
+inputs per tick on average (`E_INPUT_BUDGET`). The budget is a rule of those
+runs: the live queue does not count, and a session played only on the game's
+own page is never held to it. A browser following the manifest never records
+anything else, but the code in a game's page is the game's own, and a log
+reaches a server from anywhere; the replay and `checkInputs` are what a score
+rests on.
 
 One thing to decide in `tick` rather than in the page: what a tap hit. A game
 that worked out in its drawing code that a tap landed on a target and recorded
@@ -672,13 +695,16 @@ was produced: the busiest, two thumbs on a pointer declared 0 to 1000, records
 ### The device helpers
 
 `InputCapture` in `@clockwork2/engine/host` is one way to record the common
-devices, and a game may use it, use part of it, or record its inputs itself by
-pushing to `host.live`. It takes a mapping in the game's code:
+devices. A game played on its own page may use it, use part of it, or record
+its inputs itself by pushing to `host.live`. A ranked or practice run on a
+platform takes its inputs from these helpers only, with `scripted: "ignore"`,
+below. It takes a mapping in the game's code:
 
 ```ts
 new InputCapture({
   manifest: MANIFEST,
   queue: live,                           // host.live, null only in a replay
+  scripted: "ignore",                    // what a script's events do; required
   element: canvas,                       // pointers and the wheel are heard here
   keys: { ArrowLeft: "left", KeyA: "left" },
   pointers: [{ down: "tap", x: "aimX", y: "aimY" }, { down: "tap" }],
@@ -688,6 +714,21 @@ new InputCapture({
   onNotice: (notice) => showTo(player, notice),
 }).attach()
 ```
+
+`scripted` decides what happens to an event a script made rather than the
+player, which the browser marks `isTrusted: false`: one from `dispatchEvent`,
+or a `new KeyboardEvent(...)`. `"ignore"` records nothing from one, and
+`"record"` treats it like any other. It has no default, so every page says. A
+page playing a ranked or practice run sets `"ignore"`: a recording is a claim
+about what the player pressed, and any script on the page, the game's own
+drawing code included, could otherwise dispatch presses that read as the
+player's. A game played only on its own page may set `"record"` to drive
+itself from a test or a tool. It covers every event the helpers listen to:
+keys, pointers, hover, the wheel, movement under mouse lock, and the blur,
+visibility and lock changes that release what is held. Gamepads are polled
+through `navigator.getGamepads()`, which carries no such mark, so a gamepad is
+read under either setting. Tilt ignores a scripted reading under either
+setting, as it did before the option existed.
 
 `checkCapture(mapping, manifest)` checks a mapping without attaching it: every
 name declared, a press's range holding 0 and 1, one source for a position or an
@@ -746,6 +787,7 @@ interface Presentation<TView, TContainer> {
   mount(container: TContainer, context: PresentationContext): void
   render(view: TView, previousView: TView | null, alpha: number, dtMs: number): void
   unmount(): void
+  prepare?(container: TContainer, context: PresentationContext): Promise<void>
 }
 ```
 
@@ -762,6 +804,25 @@ simulation judder on a 144 Hz screen.
 
 `dtMs` is real milliseconds since the previous frame, which is legitimate here
 precisely because nothing reads it back.
+
+`prepare` is for a renderer that starts asynchronously: one that spawns
+workers, compiles a WebAssembly core, builds shaders or asks the browser for a
+GPU before it can draw. Without it the session's clock starts as soon as the
+host does, and such a renderer leaves a run playing with no picture, or fails
+only after ticks have run and inputs have been recorded. With it, the host
+mounts the presentation, calls `prepare`, and starts the clock only once it
+resolves: no tick runs and the live queue takes no input before then. A
+rejection is reported as `E_PRESENTATION_FAILED`, carrying the presentation's
+own message, and the session never starts. A presentation that is ready when
+`mount` returns leaves `prepare` out and nothing about it changes.
+
+Of the three adapters below, the PIXI one needs `prepare`: PIXI 8's
+`Application.init` is asynchronous, so `PixiPresentation.prepare` waits for it
+and a device where it fails gets `E_PRESENTATION_FAILED` before tick 0. The
+canvas2d and three adapters start inside `mount`, taking a 2d context and
+building a `WebGLRenderer` synchronously, so they have no `prepare`; a device
+that cannot give them one makes `mount`, and so `start()`, throw before any
+tick runs.
 
 Three adapters ship, each read-only and driven the same way:
 
@@ -923,6 +984,26 @@ packs once so that any number of sessions can share it: the conformance suite
 runs about seventy sessions of a game on one set, and a server can keep one
 per game version.
 
+A replay that has every pack of a version in memory, and should pay that hash
+only for the packs the run it replays actually reads, takes `PackSet.lazy`
+instead. It refuses an undeclared path when it is made and checks nothing
+else then. A session built on it checks each start pack before `init`, which
+may read it, and each demand pack before the first tick after `packsNeeded()`
+names it, inside `step()` and so inside `runSession`'s loop, so wrong bytes are
+`E_PACK_HASH_MISMATCH` at that tick and a pack the run never names is never
+hashed. Each pack is checked once however many sessions share the set, and
+the kernel's copy is kept from then on. Until a pack is first needed the set
+holds the bytes it was given, so the caller must leave them alone until then.
+
+A lazy set is for a replay that has every byte before it starts, and a session
+counts its packs as held from the start, checked or not: `packsMissing()`
+never names one and `deliver()` ignores bytes for one. Nothing can replace a
+pack that turns out wrong, so a wrong byte is fatal, `E_PACK_HASH_MISMATCH` at
+the first tick that needs the pack, and a check that fails changes none of the
+session's packs. A host that fetches its packs holds the loop and fetches
+again instead, which is why `GameHost` is given bytes and a loader rather than
+a set.
+
 ### Memory
 
 A demand pack a host delivered is dropped once the game has named it and then
@@ -1013,16 +1094,22 @@ const result = runSession({
   seed: recording.seed,
   config: recording.config,
   inputs: new RecordedInputSource(recording.inputs),
-  maxTicks: recording.endTick,
+  maxTicks: Math.max(recording.endTick, 1),
   checkpointEvery: recording.tickHz,
   counters: MANIFEST.counters,
   assets: MANIFEST.assets ?? [],
-  packs: PackSet.verify(MANIFEST.assets, packBytes),
+  packs: PackSet.lazy(MANIFEST.assets, packBytes),
 })
 ```
 
-`packBytes` maps each pack's path to its bytes. A replay that leaves out a
-pack the run read stops with `E_PACK_NOT_DELIVERED` at the tick that needed it.
+`maxTicks` is where the replay stops: the recording's own end, because a run
+the player abandoned has no ending of its own and a replay that carried on past
+it would report a different end tick for a run that did not diverge.
+`runSession` requires it, since a loop with nothing to stop it would never
+return on a game that never ends. `packBytes` maps each pack's path to its
+bytes, and `PackSet.lazy` checks each one only when the run first needs it.
+A replay that leaves out a pack the run read stops with `E_PACK_NOT_DELIVERED`
+at the tick that needed it.
 
 `compareToRecording` then reports whether the checkpoints, the end tick and the
 counters agree, and where the first disagreement was.
@@ -1039,7 +1126,7 @@ not have to run it first.
 
 ```ts
 {
-  schemaVersion: 2,
+  schemaVersion: 3,             // the format; the engine reads 3 only
   id: "lane-runner",            // immutable across every version
   version: "1.0.0",             // semantic; a patch keeps the rules
   name: "Lane Runner",
@@ -1047,9 +1134,7 @@ not have to run it first.
 
   session: {
     tickHz: 60,                 // 30, 60 or 120
-    maxTicks: 7200,             // hard cap; the kernel ends the run here
-    maxWallSeconds: 300,
-    hasEnding: true,
+    hasEnding: true,            // describes the game; nothing reads or checks it
   },
 
   inputs: {                     // what the game records, by name and range
@@ -1059,7 +1144,7 @@ not have to run it first.
   },
 
   counters: [{ name: "motes", direction: "up", monotonic: true }],
-  rankBy: ["motes"],
+  rankBy: ["motes"],            // optional, together with tiePolicy
   tiePolicy: "shared",
 
   params: { speed: { type: "int", label: "Speed", min: 1, max: 3, default: 1 } },
@@ -1067,7 +1152,7 @@ not have to run it first.
              requiredForSim: false, license: "CC0" },
            { path: "packs/rules.json", sha256: "...", bytes: 512,
              requiredForSim: true, license: "CC0" }],
-  budgets: { bundleBytes: 2_000_000, microsecondsPerTick: 400 },
+  budgets: { assetBytes: 200_000, microsecondsPerTick: 400 },
   capabilities: { deterministic: true, physics: "none",
                   renderer: "canvas2d", multiplayer: false },
 }
@@ -1078,6 +1163,12 @@ schema. There is no second JSON Schema file, because two descriptions of one
 shape drift and the one that drifts is the one nobody runs.
 
 A few fields decide more than they look like they do.
+
+`schemaVersion` is the manifest's format, and the kernel reads format 3 only.
+Format 3 removed `session.maxTicks` and `session.maxWallSeconds`, because no
+run has a step limit, and `budgets.bundleBytes`, which nothing read. A manifest
+at an older format is refused and told what changed, and one at format 3 that
+still carries a removed field is refused at that field.
 
 `id` is immutable. Change it and it is a different game with a different
 leaderboard, which is why the guide's scaffold sets it once at creation.
@@ -1095,18 +1186,28 @@ its exact version and replays against that version only.
 `counters[name] >= threshold`, computed by the platform, so a new kind of
 objective is a new counter rather than new code on both sides. A counter
 declared `monotonic` may never move the wrong way, and the suite checks every
-tick.
+tick. `counters` is required, with at least one, because the kernel reads them
+every tick. `rankBy` and `tiePolicy` say how a ranked run is ordered and are
+declared together or not at all: a game played only on its own page needs
+neither, and a platform that ranks runs requires both, as the ranked set's
+`ranking` check does.
 
 `inputs` is everything the game records, each a name and the whole numbers it
 carries. Which key, finger or stick drives an input is the game's page's
 choice, made in code (see [Input](#input)); the manifest says only what is
-recorded, and a server refuses a log holding anything else. Schema 1 bound
-device codes here and declared on-screen controls; a schema 1 manifest is
+recorded, and a server refuses a log holding anything else. Format 1 bound
+device codes here and declared on-screen controls; a format 1 manifest is
 refused and told what changed.
 
 `params` are typed, validated against their ranges before the game sees them,
 and arrive as the `config` argument to `init`. They travel in the recording, so
-a replay applies the same values.
+a replay applies the same values. A platform serving a ranked or practice run
+chooses them, never the player: every declared parameter at its default, which
+`servedConfig(manifest)` builds. The conformance checks play the same config,
+so a game is checked as it is played. What `servedConfig` returns always passes
+`validateParams`: a required parameter with no default, or a default its own
+definition refuses, makes it throw `E_MANIFEST_INVALID` naming the parameter,
+because no config could be served for that manifest.
 
 `assets` lists every file the game ships, art and [data packs](#data-packs)
 alike. A path is relative and made of ASCII letters, digits, `.`, `_`, `-` and
@@ -1118,33 +1219,65 @@ the bundle's directory and a host builds a URL from it, and a deny-list for
 `budgets.microsecondsPerTick` sizes the CPU allowance the platform gives the
 session. Declaring a number you do not meet fails a check; declaring a large one
 costs you at submission. `budgets.assetBytes` caps the declared assets'
-total. `budgets.bundleBytes` is accepted and not checked yet.
+total.
 
 ## Conformance
 
-`@clockwork2/engine/validate` runs twelve checks. The same code runs locally and in the
-submission pipeline, and the platform's own run is the one that decides.
+`@clockwork2/engine/validate` runs the conformance checks, in two sets. The
+`every-game` set is the eleven every game needs, wherever it is played. The
+`ranked` set is those and two more, which hold what a ranked or practice run
+on a platform needs and a game played only on its own page does not. The same
+code runs locally and in the submission pipeline, and the platform's own run
+is the one that decides.
 
 ```bash
-bunx clockwork2-validate run ./src
+bunx clockwork2-validate run ./src                  # every-game
+bunx clockwork2-validate run ./src --ranked         # ranked
 bunx clockwork2-validate run ./src --only=determinism,restore
 bunx clockwork2-validate run ./src --json
 ```
 
+`validate(subject, { set })` has no default set: every caller names the
+question it is asking, and an `only` naming a check its set does not run is
+refused with `E_ARG_INVALID` before anything runs. The CLI, and the guide's
+`validate.sh`, refuse any argument they do not take with exit code 2, so a
+mistyped `--rank` runs nothing rather than the every-game set.
+
 | # | Check | What it does |
 | --- | --- | --- |
-| 1 | determinism | Runs the same seed, config and inputs repeatedly, in the same process and in freshly evaluated modules, against idle, chaos and bot input logs; a game with `packsNeeded` runs once more with each demand pack handed over only when named |
+| 1 | determinism | Runs the same seed, config and inputs repeatedly, in the same process and in freshly evaluated modules, against idle, chaos and bot input logs, and reports where each run ended; a game with `packsNeeded` runs once more with each demand pack handed over only when named |
 | 2 | headless | `init` plus 600 ticks with no `window`, `document`, WebGL, `AudioContext` or `fetch` |
-| 3 | bound | `isOver()` becomes true inside `maxTicks` under every log |
-| 4 | banned-apis | Static scan of the import graph, plus the runtime traps |
-| 5 | no-async | No `await`, `async` or `.then`; hashes state, drains microtasks, hashes again |
-| 6 | restore | Snapshot, restore into a fresh module, continue, compare against an uninterrupted run |
-| 7 | budgets | Every declared file present, its hash and size matching, the total inside `assetBytes` |
-| 8 | performance | Per-tick cost against the declared budget, and peak memory |
-| 9 | counters | Monotone counters never reverse, `isOver()` never flips back, values stay whole and inside 53 bits |
-| 10 | replay | Record through the real recorder, serialise, deserialise, replay, compare |
-| 11 | manifest | Schema validation, and the bundle touches no embedder global |
-| 12 | render-smoke | The render bundle draws a canned state without leaving the frame |
+| 3 | banned-apis | Static scan of the import graph, plus the runtime traps |
+| 4 | no-async | No `await`, `async` or `.then`; hashes state, drains microtasks, hashes again |
+| 5 | restore | Snapshot, restore into a fresh module, continue, compare against an uninterrupted run |
+| 6 | budgets | Every declared file present, its hash and size matching, the total inside `assetBytes` |
+| 7 | performance | Per-tick cost against the declared budget, and peak memory |
+| 8 | counters | Monotone counters never reverse, `isOver()` never flips back, values stay whole and inside 53 bits |
+| 9 | replay | Record through the real recorder, serialise, deserialise, replay to the recording's end, compare |
+| 10 | manifest | Schema validation, and the bundle touches no embedder global |
+| 11 | render-smoke | The render bundle draws a canned state without leaving the frame |
+| 12 | seed-sensitivity | Ranked set only. Two seeds, `vbz-seed-a` and `vbz-seed-b`, play the idle, chaos and bot logs for 3,600 ticks; at least one log must differ in some checkpoint, its end tick, its terminal or its counters, so a game whose seed shapes play and whose runs all end alike passes (`E_SEED_IGNORED`) |
+| 13 | ranking | Ranked set only. The manifest declares `rankBy` and `tiePolicy` (`E_RANK_UNDECLARED`) |
+
+Every check plays the config a platform serves: `loadSubject` gives the
+subject `servedConfig(manifest)`, every declared parameter at its default,
+unless it is handed another, and a subject built without one plays that too.
+An empty config, which the checks played before, differs from what a session
+plays for any game that declares a parameter with a default.
+
+Every check plays a log to the end of the run or to `CHECK_WINDOW_TICKS`,
+36,000 ticks, ten minutes at 60 Hz, whichever comes first, and reads nothing
+from the manifest about how long a run may be. A run still going when the
+window closes stops there with terminal `timeout`, and that is not a failure:
+the window bounds what the suite costs, not what a game may do. The
+`determinism` outcome carries `ends`, one entry per seed and log with its end
+tick and terminal, and the printed report gives them a line per seed:
+
+```
+pass  determinism      2210ms  The same seed, config and inputs reach the same state
+      27 runs compared
+      conformance-1: idle ended at 1500, chaos ran the whole window (36000), bot ended at 2210
+```
 
 Every failure carries a stable code, such as `E_RESTORE_MISMATCH@1380`. Catching
 code switches on the code, never on the message. The codes are listed with their
@@ -1198,6 +1331,7 @@ if (live === null) throw new Error("a live session has a live input queue")
 new InputCapture({
   manifest: MANIFEST,
   queue: live,
+  scripted: "ignore",
   element: container,
   keys: { ArrowLeft: "left", ArrowRight: "right" },
   pointers: [{ down: "tap", x: "aimX" }],
@@ -1206,7 +1340,20 @@ host.start()
 ```
 
 The host owns the accumulator, the checkpoints and the recording. The game
-knows about none of them. A game runs in its own page, on its own site; there is
+knows about none of them.
+
+`start()` returns a promise of whether the host is ready. With a presentation
+that has no `prepare`, the clock is running before `start()` returns and the
+promise resolves `true`, so a page can ignore it. With one, `status` reads
+`"preparing"` until `prepare` settles; the promise resolves `true` when the
+clock starts, and `false` when it never will: `prepare` rejected, which
+`onError` reports as `E_PRESENTATION_FAILED`, or the host was stopped or
+destroyed in the meantime, after which nothing starts. It never rejects. A
+`pause()` while `prepare` runs is kept, so a tab hidden while the renderer
+started comes back paused: the promise resolves `true` with `status`
+`"paused"`, and `resume()` starts the clock. `start()` on a paused host does
+what `resume()` does. The host resumes the live queue only when it paused it
+itself, so a queue the page paused stays paused. A game runs in its own page, on its own site; there is
 no frame between the page and the game.
 
 A game with data packs gives the host its start packs and a loader for the
@@ -1234,8 +1381,18 @@ forgotten and fetched again when needed. A needed pack that cannot be loaded,
 or that the kernel refuses, ends the session through `onError`, and so does a
 needed pack with no loader to fetch it, rather than a hold that never ends.
 Anything a loader settles after the session ended is ignored. A platform that
-issues sessions with a deadline has to allow for the longest hold in
-`maxWallSeconds`.
+closes a session it has stopped hearing from has to allow for the longest
+hold.
+
+A live session has no step limit: it runs until the game ends it or `stop` is
+called. `maxTicks` on the host is for a replay, which passes
+`Math.max(endTick, 1)` to stop where the run it replays stopped.
+
+A live host given no `config` plays `servedConfig(manifest)`, every declared
+parameter at its default, and its recording carries that config. That is what
+a platform serves and what the conformance checks play, so a page that passes
+none plays the game the checks passed. The worker host does the same, inside
+the worker, which holds the manifest.
 
 ### Watching a recorded run
 
@@ -1246,10 +1403,16 @@ it runs down the same loop and reaches the same states:
 const host = new GameHost({
   ...rest,
   seed: recording.seed,
+  config: recording.config,
   inputs: new RecordedInputSource(recording.inputs),
+  maxTicks: Math.max(recording.endTick, 1),
   speed: 2,
 })
 ```
+
+A replay plays the recording's own seed and config. `GameHost` refuses one
+given `inputs` and no `config` with `E_ARG_INVALID`, rather than filling in the
+served config, which the run being replayed may not have played.
 
 `host.live` is null for a replay, which does the rest of the work by itself: the
 device helpers have no queue to record into, so a key pressed by somebody
@@ -1275,7 +1438,7 @@ another and the hold would never end. `demo/packs.html` and
 
 ## Writing a game with an agent
 
-The `clockwork2` guide is an Agent Skill for coding agents. It carries ten rules
+The `clockwork2` guide is an Agent Skill for coding agents. It carries nine rules
 that each name the check enforcing them, a section per error code, four scripts,
 and two starter templates that pass the whole conformance suite before anything
 is changed.
@@ -1297,8 +1460,8 @@ with the vbz kit starts from that kit's own scaffold, and the guide covers its
 simulation with nothing copied in.
 
 Its first line says that where its prose and `scripts/validate.sh` disagree, the
-script is right. That script runs the engine's twelve checks; a platform may run
-more. Everything in the guide that can be checked is checked by its own tests in
+script is right. That script runs the engine's eleven checks every game needs,
+and the ranked set with `--ranked`; a platform may run more. Everything in the guide that can be checked is checked by its own tests in
 `packages/engine/skill/tests/`, which sit beside the guide so the package ships
 the guide without them: the API reference is generated from the type
 declarations, the error-code sections are compared with the kernel's table, and
@@ -1323,18 +1486,34 @@ fires repeatedly inside it.
 **No delta array in the recording.** With a fixed step there is nothing to
 record. Timing is the tick index on each input.
 
+**No step limit.** Format 2 manifests declared `session.maxTicks`, the kernel
+ended every run there, and a conformance check refused a game that did not end
+inside it under every test log. That made one number, chosen by the game's
+author before anyone played, decide how long every run could last, locally and
+on a platform alike. A run now lasts as long as the game and its player make it
+last. What a platform pays to replay a run is a limit the platform sets on the
+replay, and the conformance suite bounds its own cost with a fixed window
+instead of a number every game has to guess.
+
 **An input's tick is stamped when it is queued**, against the tick about to run,
 rather than when a frame drains the queue. Draining is frame-shaped, so stamping
 at drain time makes the same keystroke land on different ticks at different
 frame rates.
 
-**Inputs are the game's own, by name and range, with no device.** Schema 1
+**Inputs are the game's own, by name and range, with no device.** Format 1
 bound device codes to actions and recorded which device each input came from,
 and a platform drew on-screen controls from the manifest. A game now draws its
 own controls, declares what it records, and maps devices onto those names in
 its page. The engine keeps optional helpers for the common devices and a check
 of a log against the declared inputs, and nothing about a device reaches a
 recording.
+
+**A page says whether a script's events count, and has no default.** The
+browser marks an event a script made, and the helpers can read the mark.
+Ignoring such events by default would break a game that drives itself from a
+test page; recording them by default would let any script on a ranked run's
+page press for the player. Each default is wrong for one of the two kinds of
+page, so `scripted` is required and each page names its own.
 
 **A merged input stays where the first one stood, and never crosses a
 press.** A level merged to the last value of a tick overwrites the earlier
@@ -1354,7 +1533,7 @@ needed when the page and the game are the same author's.
 stream began and nothing about how far along it is, and a snapshot is a resume
 point: restoring from the seed alone rewinds the generator to its first draw
 while the rest of the world stays where it was, so the next apple is placed
-from the first two numbers the stream ever produced. Conformance check 6 catches
+from the first two numbers the stream ever produced. The `restore` check catches
 it. A draw count would be one number where alea's state is four, but recovering
 a position from it means calling alea that many times on every restore, because
 there is no jump-ahead: 360 times for the demo's longest frozen recording, and a

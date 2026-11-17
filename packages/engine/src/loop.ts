@@ -27,6 +27,7 @@ import { hashCanonical } from "./hash/canonical.js"
 import type { InputSource } from "./inputs.js"
 import type { AssetDeclaration } from "./manifest/types.js"
 import {
+  checkedPack,
   decodeJsonPack,
   isStartPack,
   logicPacks,
@@ -34,6 +35,7 @@ import {
   type PackReader,
   type PackSet,
   prefetchPaths,
+  type Verified,
   verified,
   verifyPack,
 } from "./packs.js"
@@ -58,8 +60,13 @@ export interface SessionOptions<TView = unknown, TConfig = PlainValue> {
   readonly seed: string
   readonly config: TConfig
   readonly inputs: InputSource
-  /** The tick cap from the manifest. The run ends here whatever the game says. */
-  readonly maxTicks: number
+  /**
+   * Where the session stops, with terminal `timeout`, if the game has not
+   * ended it first. A replay passes `Math.max(endTick, 1)` from the recording
+   * it replays, so it stops where the run it replays stopped. Left out, the
+   * session runs until the game ends it or `abandon` is called.
+   */
+  readonly maxTicks?: number
   /** Ticks between state hashes. 0 turns checkpointing off. */
   readonly checkpointEvery?: number
   /** Declared counters, checked as the run goes. */
@@ -76,9 +83,11 @@ export interface SessionOptions<TView = unknown, TConfig = PlainValue> {
    */
   readonly assets?: readonly AssetDeclaration[]
   /**
-   * Packs the kernel has already checked. Every start pack must be here,
-   * because `init` runs inside the constructor and may read one. Demand packs
-   * may be here too, or arrive later through `deliver`.
+   * Packs in hand before the session, from `PackSet.verify`, which checked
+   * them all, or `PackSet.lazy`, which checks each when a session first
+   * needs it. Every start pack must be here, because `init` runs inside the
+   * constructor and may read one. Demand packs may be here too, or arrive
+   * later through `deliver`.
    */
   readonly packs?: PackSet
   /**
@@ -125,8 +134,12 @@ export class Session<TView = unknown, TConfig = PlainValue> {
   private readonly declared: ReadonlyMap<string, AssetDeclaration> | null
   /** Start packs: readable in init, restore and every tick. */
   private readonly start: ReadonlySet<string>
-  /** Packs checked before the session, possibly shared with other sessions. */
-  private readonly shared: ReadonlyMap<string, Uint8Array>
+  /**
+   * The set given before the session, possibly shared with other sessions,
+   * or null. A pack in it may not have been checked yet; `checkedPack`
+   * checks it the first time any session needs it.
+   */
+  private readonly shared: Verified | null
   /** Demand packs delivered to this session alone. */
   private readonly own = new Map<string, Uint8Array>()
   /** Demand packs `packsNeeded()` has named since they were last released. */
@@ -146,9 +159,12 @@ export class Session<TView = unknown, TConfig = PlainValue> {
   constructor(options: SessionOptions<TView, TConfig>) {
     this.options = options
     this.tracker = new CounterTracker(options.counters ?? [])
-    if (!Number.isInteger(options.maxTicks) || options.maxTicks <= 0) {
+    if (
+      options.maxTicks !== undefined &&
+      (!Number.isInteger(options.maxTicks) || options.maxTicks <= 0)
+    ) {
       fail("E_ARG_INVALID", {
-        detail: `maxTicks must be a positive whole number, got ${options.maxTicks}`,
+        detail: `maxTicks must be a positive whole number when it is given, got ${options.maxTicks}`,
       })
     }
 
@@ -161,13 +177,16 @@ export class Session<TView = unknown, TConfig = PlainValue> {
     }
     this.start = start
     this.readable = start
-    const absent = [...start].filter((path) => !this.shared.has(path))
+    const absent = [...start].filter((path) => !this.inSet(path))
     if (absent.length > 0) {
       fail("E_PACK_NOT_DELIVERED", {
         tick: 0,
         detail: `start pack ${absent.join(", ")} must be given before init`,
       })
     }
+    // Checked now, whether or not the set was checked when it was made,
+    // because `init` may read any of them.
+    for (const path of start) this.checked(path, 0)
     this.packs = {
       open: (path) => this.packBytes(path).slice(),
       json: (path) => decodeJsonPack(this.packBytes(path), path),
@@ -202,14 +221,12 @@ export class Session<TView = unknown, TConfig = PlainValue> {
    * same entries this session declares. A set checked against another version
    * of the manifest would otherwise hand this one bytes it never declared.
    */
-  private sharedPacks(
-    set: PackSet | undefined,
-  ): ReadonlyMap<string, Uint8Array> {
-    if (set === undefined) return new Map()
-    const { declared, bytes } = verified(set)
-    for (const path of bytes.keys()) {
+  private sharedPacks(set: PackSet | undefined): Verified | null {
+    if (set === undefined) return null
+    const given = verified(set)
+    for (const path of given.paths) {
       const mine = this.declared?.get(path)
-      const theirs = declared.get(path) as AssetDeclaration
+      const theirs = given.declared.get(path) as AssetDeclaration
       if (mine === undefined) {
         fail("E_PACK_UNDECLARED", {
           detail: `${path} is in the packs given, and not a pack this session's assets declare`,
@@ -221,7 +238,20 @@ export class Session<TView = unknown, TConfig = PlainValue> {
         })
       }
     }
-    return bytes
+    return given
+  }
+
+  /** Whether the set this session was given holds the pack, checked or not. */
+  private inSet(path: string): boolean {
+    const set = this.shared
+    return set !== null && (set.bytes.has(path) || set.unchecked.has(path))
+  }
+
+  /** A pack from the set, checked first if no session has needed it yet. */
+  private checked(path: string, tick: number): Uint8Array | undefined {
+    return this.shared === null
+      ? undefined
+      : checkedPack(this.shared, path, tick)
   }
 
   /** The bytes behind a read, after every rule about reading has held. */
@@ -254,9 +284,10 @@ export class Session<TView = unknown, TConfig = PlainValue> {
             : `${path} is a demand pack, which ${this.reading}() cannot read`,
       })
     }
-    // A readable pack is always here: start packs are checked before init,
-    // and step() refuses to run a tick whose named packs are missing.
-    return (this.own.get(path) ?? this.shared.get(path)) as Uint8Array
+    // A readable pack is always here, and already checked: start packs are
+    // checked before init, and step() checks the packs a tick needs before
+    // running it, and refuses to run one whose named packs are missing.
+    return (this.own.get(path) ?? this.checked(path, tick)) as Uint8Array
   }
 
   /** Runs one of the game's calls that may read packs. */
@@ -318,13 +349,13 @@ export class Session<TView = unknown, TConfig = PlainValue> {
   packsMissing(): readonly string[] {
     if (this.over) return NO_PACKS
     return this.needed.filter(
-      (path) => !this.own.has(path) && !this.shared.has(path),
+      (path) => !this.own.has(path) && !this.inSet(path),
     )
   }
 
   /** Whether this session has the pack's bytes now, given or delivered. */
   holds(path: string): boolean {
-    return this.own.has(path) || this.shared.has(path)
+    return this.own.has(path) || this.inSet(path)
   }
 
   /**
@@ -342,7 +373,7 @@ export class Session<TView = unknown, TConfig = PlainValue> {
         detail: `${path} is not a pack this manifest declares`,
       })
     }
-    if (this.own.has(path) || this.shared.has(path)) return
+    if (this.own.has(path) || this.inSet(path)) return
     this.own.set(path, verifyPack(asset, bytes))
   }
 
@@ -397,7 +428,7 @@ export class Session<TView = unknown, TConfig = PlainValue> {
         detail: `packsNeeded() named ${missing.join(", ")} for this tick, and it was not delivered`,
       })
     }
-    this.handOver()
+    this.handOver(tick)
 
     const events = inputs.take(tick)
     this.calling("tick", () => {
@@ -439,7 +470,8 @@ export class Session<TView = unknown, TConfig = PlainValue> {
       this.maybeCheckpoint(this.ticksRun, true)
       return false
     }
-    if (this.ticksRun >= this.options.maxTicks) {
+    const stop = this.options.maxTicks
+    if (stop !== undefined && this.ticksRun >= stop) {
       this.over = true
       this.terminal = "timeout"
       this.maybeCheckpoint(this.ticksRun, true)
@@ -458,9 +490,15 @@ export class Session<TView = unknown, TConfig = PlainValue> {
    * hold every one of them. If the game names it again, `packsMissing` says
    * so and the host delivers it again; what the game can read never depends
    * on whether that happened quickly. A pack prefetched and not yet named is
-   * kept, and so is everything in a shared set.
+   * kept, and so is everything in a shared set. A pack from the set that no
+   * session has needed before is checked here, before the tick that may read
+   * it, so wrong bytes fail at that tick, and before anything here changes,
+   * so a pack that fails leaves this session's packs as they were.
    */
-  private handOver(): void {
+  private handOver(tick: number): void {
+    for (const path of this.needed) {
+      if (!this.own.has(path)) this.checked(path, tick)
+    }
     for (const path of this.named) {
       if (!this.needed.includes(path)) {
         this.named.delete(path)
@@ -493,10 +531,33 @@ export class Session<TView = unknown, TConfig = PlainValue> {
   }
 }
 
-/** Drives a session to its end. This is what the validator runs. */
+/**
+ * What `runSession` takes: a session's options with `maxTicks` required. A
+ * loop with nothing to stop it would run for ever on a game that never ends,
+ * and a replay always knows where the run it replays stopped.
+ */
+export type RunSessionOptions<
+  TView = unknown,
+  TConfig = PlainValue,
+> = SessionOptions<TView, TConfig> & { readonly maxTicks: number }
+
+/**
+ * Drives a session to its end, or to `maxTicks`. This is what a validator
+ * runs, with `maxTicks` at `Math.max(endTick, 1)` of the recording it
+ * replays.
+ *
+ * @throws E_ARG_INVALID when `maxTicks` is missing, for a caller the types
+ *   did not reach
+ */
 export function runSession<TView = unknown, TConfig = PlainValue>(
-  options: SessionOptions<TView, TConfig>,
+  options: RunSessionOptions<TView, TConfig>,
 ): SessionResult {
+  if ((options.maxTicks as number | undefined) === undefined) {
+    fail("E_ARG_INVALID", {
+      detail:
+        "runSession needs maxTicks: a replay stops at Math.max(endTick, 1) of the recording it replays",
+    })
+  }
   const session = new Session(options)
   while (session.step()) {
     // The body is the point: one call per tick, exactly as the browser ran it.

@@ -112,7 +112,6 @@ export type AssetDeclaration = {
 }
 
 export type Budgets = {
-  readonly bundleBytes?: number
   readonly assetBytes?: number
   readonly microsecondsPerTick?: number
 }
@@ -136,16 +135,40 @@ export type Capabilities = {
 
 export type Session = {
   readonly tickHz: TickRate
-  /** The hard cap. The kernel ends the run here whatever the game says. */
-  readonly maxTicks: number
-  readonly maxWallSeconds: number
-  /** False for an endless game, which must still be bounded by maxTicks. */
+  /**
+   * Whether the game ends by itself: true for one with a time limit, a life
+   * count or a difficulty that eventually wins, false for one that runs
+   * until the player stops. It describes the game, for a reader of the
+   * manifest, and nothing in the engine reads or checks it: no session has a
+   * step limit, and the conformance checks play each log to its end or to
+   * `CHECK_WINDOW_TICKS` whatever it says.
+   */
   readonly hasEnding: boolean
 }
 
+/**
+ * How a ranked run is ordered, declared together or not at all.
+ *
+ * `rankBy` names declared counters, most significant first, and `tiePolicy`
+ * says what an exact tie is. A platform that ranks runs requires both, and
+ * the conformance suite's ranked set checks for them. A game played only on
+ * its own page needs neither.
+ */
+export type Ranking =
+  | { readonly rankBy: readonly string[]; readonly tiePolicy: TiePolicy }
+  | { readonly rankBy?: never; readonly tiePolicy?: never }
+
+/** The format this kernel reads. A manifest at any other is refused. */
+export const MANIFEST_FORMAT = 3
+
 export type Manifest = {
-  /** 2 since `inputs` declares the game's own inputs rather than binding devices. */
-  readonly schemaVersion: 2
+  /**
+   * The manifest's format. 3 since no run has a step limit: format 3 has no
+   * `session.maxTicks`, `session.maxWallSeconds` or `budgets.bundleBytes`,
+   * and `rankBy` and `tiePolicy` are optional. Format 2 was the first to
+   * declare the game's own inputs rather than binding devices.
+   */
+  readonly schemaVersion: typeof MANIFEST_FORMAT
   /** Immutable across every version of the game. */
   readonly id: string
   /** Strictly increasing. */
@@ -156,14 +179,12 @@ export type Manifest = {
   readonly session: Session
   readonly inputs: Inputs
   readonly counters: readonly CounterDeclaration[]
-  readonly rankBy: readonly string[]
-  readonly tiePolicy: TiePolicy
   readonly params?: ParamSchema
   readonly assets?: readonly AssetDeclaration[]
   readonly budgets?: Budgets
   readonly display?: Display
   readonly capabilities: Capabilities
-}
+} & Ranking
 
 type AssertPlain<T extends PlainValue> = T
 export type ManifestIsPlain = AssertPlain<Manifest>

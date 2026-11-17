@@ -115,6 +115,9 @@ function newSession(
     capture = new InputCapture({
       manifest: MANIFEST,
       queue: live,
+      // Only the player's own keys: a key event a script dispatches on this
+      // page is not a move.
+      scripted: "ignore",
       keys: KEYS,
     })
     capture.attach()
@@ -123,7 +126,9 @@ function newSession(
   }
 
   void audio.unlock()
-  host.start()
+  // Ready means running, or paused if the player paused while PIXI started;
+  // either way the panel shows it.
+  void host.start().then(refresh)
   refresh()
   afterNewSession?.()
 }
@@ -190,7 +195,10 @@ function phase(): Phase {
   const replaying = mode === "replaying"
   if (status === "paused")
     return replaying ? "replay-paused" : "recording-paused"
-  if (status === "running") return replaying ? "replaying" : "recording"
+  // A session whose renderer is still starting reads as the one it is about
+  // to be: the clock starts as soon as PIXI can draw.
+  if (status === "running" || status === "preparing")
+    return replaying ? "replaying" : "recording"
   if (status === "ended") return replaying ? "replayed" : "stopped"
   return "idle"
 }

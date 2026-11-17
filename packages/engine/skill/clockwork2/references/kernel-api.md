@@ -101,6 +101,8 @@ export declare class LiveInputQueue implements InputSource, InputSink {
      * session resumes at, which is not when the player made it.
      */
     pause(): void;
+    /** Whether the queue is paused, taking no input until `resume`. */
+    get paused(): boolean;
     onResume(listener: () => void): () => void;
     resume(): void;
     take(tick: number): readonly InputEvent[];
@@ -150,8 +152,39 @@ export declare class PackSet {
      *   the ones declared.
      */
     static verify(assets: readonly AssetDeclaration[] | undefined, packs: Iterable<readonly [string, PackBytes]>): PackSet;
+    /**
+     * Holds packs to check when a session first needs each one, for a replay
+     * that has every pack in memory and should pay the hash, a pass over every
+     * byte, only for those the run reads.
+     *
+     * A start pack is checked when a session is built, because `init` may read
+     * it. A demand pack is checked before the first tick after `packsNeeded()`
+     * names it, so wrong bytes are `E_PACK_HASH_MISMATCH` at that tick, and a
+     * pack the run never names is never hashed at all. Each is checked once,
+     * however many sessions share the set, and the kernel's copy is kept from
+     * then on. Everything happens inside the session's own synchronous steps,
+     * so `runSession` replays with it as it does with any set.
+     *
+     * A lazy set is for a replay that holds every byte up front, and a
+     * session treats its packs as held from the start, checked or not:
+     * `packsMissing()` never names one, `holds()` is true for it, and
+     * `deliver()` ignores bytes for it. So nothing can replace a pack that
+     * turns out wrong, and a wrong byte ends the session at the first tick
+     * that needs that pack, where a host that fetches its packs would hold the
+     * loop and try again. `GameHost` is given bytes and a loader for that
+     * reason, never a set.
+     *
+     * The set holds the bytes it was given until a session needs them, so the
+     * caller must not change them before then. What is checked is what is
+     * read either way: the check copies the bytes and reads only the copy.
+     *
+     * @throws E_PACK_UNDECLARED for a path the manifest does not declare as a
+     *   pack, now; a wrong size or hash only when a session needs that pack.
+     */
+    static lazy(assets: readonly AssetDeclaration[] | undefined, packs: Iterable<readonly [string, PackBytes]>): PackSet;
     /** The packs in this set, in the order they were given. */
     get paths(): readonly string[];
+    /** Whether the set holds the pack, checked or not yet. */
     has(path: string): boolean;
 }
 ```
@@ -221,7 +254,11 @@ One run of one game.
 export declare class Session<TView = unknown, TConfig = PlainValue> {
     /** The packs this game may read, or null when no assets were given. */
     /** Start packs: readable in init, restore and every tick. */
-    /** Packs checked before the session, possibly shared with other sessions. */
+    /**
+     * The set given before the session, possibly shared with other sessions,
+     * or null. A pack in it may not have been checked yet; `checkedPack`
+     * checks it the first time any session needs it.
+     */
     /** Demand packs delivered to this session alone. */
     /** Demand packs `packsNeeded()` has named since they were last released. */
     /** What `packsNeeded()` said for the next tick. */
@@ -237,6 +274,8 @@ export declare class Session<TView = unknown, TConfig = PlainValue> {
      * same entries this session declares. A set checked against another version
      * of the manifest would otherwise hand this one bytes it never declared.
      */
+    /** Whether the set this session was given holds the pack, checked or not. */
+    /** A pack from the set, checked first if no session has needed it yet. */
     /** The bytes behind a read, after every rule about reading has held. */
     /** Runs one of the game's calls that may read packs. */
     /** Asks the game what the next tick will read, once per tick. */
@@ -274,7 +313,10 @@ export declare class Session<TView = unknown, TConfig = PlainValue> {
      * hold every one of them. If the game names it again, `packsMissing` says
      * so and the host delivers it again; what the game can read never depends
      * on whether that happened quickly. A pack prefetched and not yet named is
-     * kept, and so is everything in a shared set.
+     * kept, and so is everything in a shared set. A pack from the set that no
+     * session has needed before is checked here, before the tick that may read
+     * it, so wrong bytes fail at that tick, and before anything here changes,
+     * so a pack that fails leaves this session's packs as they were.
      */
     /** Ends the session early, for a player who walked away or a host error. */
     abandon(reason?: TerminalReason): void;
@@ -541,10 +583,18 @@ export declare function quantisePoint(value: number, fromSize: number, toUnits: 
 
 ### runSession
 
-Drives a session to its end. This is what the validator runs.
+Drives a session to its end, or to `maxTicks`. This is what a validator runs, with `maxTicks` at `Math.max(endTick, 1)` of the recording it replays.
 
 ```ts
-export declare function runSession<TView = unknown, TConfig = PlainValue>(options: SessionOptions<TView, TConfig>): SessionResult;
+export declare function runSession<TView = unknown, TConfig = PlainValue>(options: RunSessionOptions<TView, TConfig>): SessionResult;
+```
+
+### servedConfig
+
+The config a platform serves a ranked or practice run: every parameter the manifest declares, at its default. A player never supplies one, because a replay plays the recording's config, so a config the player chose would be replayed and agree with itself. The conformance checks play this too, so what they check is what a session plays.
+
+```ts
+export declare function servedConfig(manifest: Manifest): ParamValues;
 ```
 
 ### sha256Hex
@@ -682,14 +732,14 @@ ERROR_CODES: {
     readonly E_INPUT_UNDECLARED: "an input is not one the manifest declares, or is out of its range";
     /** A log holding more inputs than the budget allows (`checkInputs`). */
     readonly E_INPUT_BUDGET: "a log holds more inputs than any player makes";
-    /** The session passed the tick cap its manifest declares. */
-    readonly E_TICK_LIMIT: "session passed maxTicks without ending";
     /** A manifest failed validation. */
     readonly E_MANIFEST_INVALID: "manifest is invalid";
     /** An argument the caller controls was outside the range the API accepts. */
     readonly E_ARG_INVALID: "an argument is outside the range this API accepts";
     /** The host cannot supply something the engine needs to run correctly. */
     readonly E_ENV_UNSUPPORTED: "this environment cannot run the engine correctly";
+    /** A presentation's `prepare()` rejected, so the session never started. */
+    readonly E_PRESENTATION_FAILED: "the presentation could not get ready to draw, so the session never started";
     /** A pack was named that the manifest does not declare as one. */
     readonly E_PACK_UNDECLARED: "a pack was named that the manifest does not declare with requiredForSim";
     /** The game read a pack outside the steps it asked for it. */
@@ -704,8 +754,6 @@ ERROR_CODES: {
     readonly E_DETERMINISM_DIVERGED: "two runs of the same session reached different states";
     /** The module threw when loaded or stepped with no browser present. */
     readonly E_HEADLESS_THREW: "module threw in a headless run";
-    /** isOver() never became true inside maxTicks. */
-    readonly E_BOUND_NOT_OVER: "the run does not end inside maxTicks";
     /** The static scan found a banned API in the simulation's import graph. */
     readonly E_LINT_BANNED: "a banned API appears in the simulation's import graph";
     /** await, async or .then appears in the simulation, or a microtask changed state. */
@@ -728,6 +776,10 @@ ERROR_CODES: {
     readonly E_CHECK_THREW: "a conformance check threw while running";
     /** The subject could not be loaded: no entry file, or no module to run. */
     readonly E_SUBJECT_LOAD: "the subject could not be loaded";
+    /** Two seeds passed through the same states on every log the seed check plays. */
+    readonly E_SEED_IGNORED: "two seeds passed through the same states on every log; the seed decides nothing";
+    /** The manifest says nothing about how a run ranks. */
+    readonly E_RANK_UNDECLARED: "the manifest declares no rankBy and tiePolicy, which a ranked run needs";
 }
 ```
 
@@ -753,6 +805,14 @@ Every `KeyboardEvent.code` value a manifest may bind: the UI Events KeyboardEven
 
 ```ts
 KEY_CODES: readonly string[]
+```
+
+### MANIFEST_FORMAT
+
+The format this kernel reads. A manifest at any other is refused.
+
+```ts
+MANIFEST_FORMAT = 3
 ```
 
 ### MAX_INPUTS_PER_TICK
@@ -978,6 +1038,17 @@ What a renderer implements. It reads and never writes. `TContainer` is generic s
 export interface Presentation<TView = unknown, TContainer = unknown> {
     mount(container: TContainer, context: PresentationContext): void;
     /**
+     * Gets ready to draw, for a renderer that starts asynchronously: workers to
+     * spawn, a WebAssembly core to compile, shaders to build, a device to ask
+     * for. The host calls it once, after `mount` and before the first tick, and
+     * starts the session's clock only when it resolves, so no tick runs and no
+     * input is recorded while nothing can be drawn. A rejection means the
+     * presentation cannot draw on this device: the host reports it as
+     * `E_PRESENTATION_FAILED`, carrying this error's message, and the session
+     * never starts. Leave it out when `mount` leaves the presentation ready.
+     */
+    prepare?(container: TContainer, context: PresentationContext): Promise<void>;
+    /**
      * @param view the current simulation view
      * @param previousView the view one tick earlier, or null on the first frame
      * @param alpha how far between them this frame sits, in [0, 1)
@@ -1015,8 +1086,13 @@ export interface SessionOptions<TView = unknown, TConfig = PlainValue> {
     readonly seed: string;
     readonly config: TConfig;
     readonly inputs: InputSource;
-    /** The tick cap from the manifest. The run ends here whatever the game says. */
-    readonly maxTicks: number;
+    /**
+     * Where the session stops, with terminal `timeout`, if the game has not
+     * ended it first. A replay passes `Math.max(endTick, 1)` from the recording
+     * it replays, so it stops where the run it replays stopped. Left out, the
+     * session runs until the game ends it or `abandon` is called.
+     */
+    readonly maxTicks?: number;
     /** Ticks between state hashes. 0 turns checkpointing off. */
     readonly checkpointEvery?: number;
     /** Declared counters, checked as the run goes. */
@@ -1033,9 +1109,11 @@ export interface SessionOptions<TView = unknown, TConfig = PlainValue> {
      */
     readonly assets?: readonly AssetDeclaration[];
     /**
-     * Packs the kernel has already checked. Every start pack must be here,
-     * because `init` runs inside the constructor and may read one. Demand packs
-     * may be here too, or arrive later through `deliver`.
+     * Packs in hand before the session, from `PackSet.verify`, which checked
+     * them all, or `PackSet.lazy`, which checks each when a session first
+     * needs it. Every start pack must be here, because `init` runs inside the
+     * constructor and may read one. Demand packs may be here too, or arrive
+     * later through `deliver`.
      */
     readonly packs?: PackSet;
     /**
@@ -1195,8 +1273,13 @@ export type Inputs = {
 
 ```ts
 export type Manifest = {
-    /** 2 since `inputs` declares the game's own inputs rather than binding devices. */
-    readonly schemaVersion: 2;
+    /**
+     * The manifest's format. 3 since no run has a step limit: format 3 has no
+     * `session.maxTicks`, `session.maxWallSeconds` or `budgets.bundleBytes`,
+     * and `rankBy` and `tiePolicy` are optional. Format 2 was the first to
+     * declare the game's own inputs rather than binding devices.
+     */
+    readonly schemaVersion: typeof MANIFEST_FORMAT;
     /** Immutable across every version of the game. */
     readonly id: string;
     /** Strictly increasing. */
@@ -1209,14 +1292,12 @@ export type Manifest = {
     readonly session: Session;
     readonly inputs: Inputs;
     readonly counters: readonly CounterDeclaration[];
-    readonly rankBy: readonly string[];
-    readonly tiePolicy: TiePolicy;
     readonly params?: ParamSchema;
     readonly assets?: readonly AssetDeclaration[];
     readonly budgets?: Budgets;
     readonly display?: Display;
     readonly capabilities: Capabilities;
-};
+} & Ranking;
 ```
 
 ### MergeRule
@@ -1295,6 +1376,20 @@ Ranking: earlier entries decide first.
 export type RankBy = readonly string[];
 ```
 
+### Ranking
+
+How a ranked run is ordered, declared together or not at all.
+
+```ts
+export type Ranking = {
+    readonly rankBy: readonly string[];
+    readonly tiePolicy: TiePolicy;
+} | {
+    readonly rankBy?: never;
+    readonly tiePolicy?: never;
+};
+```
+
 ### Recording
 
 ```ts
@@ -1327,6 +1422,16 @@ export type Recording = {
      * "there were no frames".
      */
     readonly hostStats: HostStats | null;
+};
+```
+
+### RunSessionOptions
+
+What `runSession` takes: a session's options with `maxTicks` required. A loop with nothing to stop it would run for ever on a game that never ends, and a replay always knows where the run it replays stopped.
+
+```ts
+export type RunSessionOptions<TView = unknown, TConfig = PlainValue> = SessionOptions<TView, TConfig> & {
+    readonly maxTicks: number;
 };
 ```
 
@@ -1830,7 +1935,7 @@ export declare class ReferenceGame implements GameModule<ReferenceView, Referenc
 
 ### botInputs
 
-Someone working the game's own inputs: a press held for a while and let go, and every other input moved across its range now and then, edges included. Representative rather than good, so "the run ends inside maxTicks" is tested against something that keeps playing.
+Someone working the game's own inputs: a press held for a while and let go, and every other input moved across its range now and then, edges included. Representative rather than good, so a game is checked against something that keeps playing.
 
 ```ts
 export declare function botInputs(manifest: Manifest, seed: string, endTick: number): readonly InputEvent[];
@@ -2011,8 +2116,16 @@ export declare class AudioSink {
 export declare class GameHost<TView = unknown, TContainer = unknown, TConfig = PlainValue> {
     /** Present only for a live session; a replay reads its recorded source. */
     readonly live: LiveInputQueue | null;
+    /** While a presentation's `prepare` runs: what `start` hands every caller. */
+    /** `pause` was called while `prepare` ran: the host is paused when it is ready. */
+    /**
+     * Whether the live queue is paused because this host paused it. The host
+     * resumes only that: a queue the page paused itself stays paused.
+     */
+    /** What the presentation is mounted and prepared with: one object for both. */
     /** Real time that passed while the loop held for a pack. */
     /** Frames that ran no tick because the loop was holding from their start. */
+    /** The config given, or the served one: what the session and its recording carry. */
     constructor(options: GameHostOptions<TView, TContainer, TConfig>);
     get tick(): number;
     /**
@@ -2036,8 +2149,35 @@ export declare class GameHost<TView = unknown, TContainer = unknown, TConfig = P
     /** How far between the last tick and the next, for the renderer. */
     get alpha(): number;
     setSpeed(speed: number): void;
-    start(): void;
+    /**
+     * Starts the session's clock.
+     *
+     * A presentation with `prepare` is mounted, then prepared, and the clock
+     * starts only when `prepare` resolves. Until then `status` is
+     * `"preparing"`, no tick runs and the live queue takes no input, so nothing
+     * the player does before the game can draw is recorded. A `pause` while it
+     * waits is kept: the host is then `"paused"` when `prepare` resolves, and
+     * `resume` starts the clock. A presentation without `prepare`, or no
+     * presentation, starts the clock before `start` returns, as it always has.
+     * On a paused host `start` does what `resume` does.
+     *
+     * @returns whether the host is ready: true once the clock is running, or
+     *   paused because `pause` was called while `prepare` ran; false when it
+     *   never will be, because the session has ended, `prepare` rejected
+     *   (reported through `onError` as `E_PRESENTATION_FAILED`), or the host
+     *   was stopped or destroyed while `prepare` ran. It never rejects, so a
+     *   caller with nothing to wait for may leave it.
+     */
+    start(): Promise<boolean>;
+    /** Pauses the live queue, unless something else already has. */
+    /** Resumes the live queue if this host was the one that paused it. */
+    /** Starts the clock now. */
+    /**
+     * Pauses the clock. While `prepare` runs it is remembered, and the host is
+     * paused rather than running once the presentation is ready.
+     */
     pause(): void;
+    /** Resumes a paused clock; while `prepare` runs, takes back a `pause`. */
     resume(): void;
     /** Ends the session without finishing it, for a player who walked away. */
     stop(reason?: TerminalReason): void;
@@ -2087,6 +2227,10 @@ export declare class InputCapture {
     /** Gamepads by index, with the id last seen there. */
     constructor(options: InputCaptureOptions);
     attach(): void;
+    /**
+     * Listens for one event, and acts on it only while not paused and, under
+     * `scripted: "ignore"`, only when the browser rather than a script made it.
+     */
     /** One notice per request, however many ways the browser says no. */
     /** The lowest free slot, taken only when a pointer goes down. */
     /** Presses and releases each mouse or pen button whose bit changed. */
@@ -2421,6 +2565,13 @@ export interface GameHostOptions<TView = unknown, TContainer = unknown, TConfig 
     readonly module: GameModule<TView, TConfig>;
     readonly manifest: Manifest;
     readonly seed: string;
+    /**
+     * The config the session plays. Left out of a live session, it is
+     * `servedConfig(manifest)`, every declared parameter at its default, which
+     * is what a platform serves a ranked or practice run and what the
+     * conformance checks play. A replay, given `inputs`, must pass the
+     * recording's own config, because that is what the run it replays played.
+     */
     readonly config?: TConfig;
     readonly presentation?: Presentation<TView, TContainer>;
     readonly container?: TContainer;
@@ -2428,11 +2579,13 @@ export interface GameHostOptions<TView = unknown, TContainer = unknown, TConfig 
     /** Ticks between state hashes. Defaults to one second of play. */
     readonly checkpointEvery?: number;
     /**
-     * A cap below the manifest's.
+     * Where the session stops, with terminal `timeout`, if the game has not
+     * ended it by then.
      *
-     * Replaying a recording that was abandoned mid-run needs one: the log ends
-     * where the player stopped, and without a cap the replay carries on past it
-     * and reports a different end tick for a session that did not diverge.
+     * A replay of a recording passes `Math.max(endTick, 1)`: the log ends
+     * where the player stopped, and without a stop the replay carries on past
+     * it and reports a different end tick for a session that did not diverge.
+     * Left out, a session runs until the game ends it or `stop` is called.
      */
     readonly maxTicks?: number;
     /** A multiplier on how fast the session advances. Replay speed lives here. */
@@ -2495,6 +2648,26 @@ export interface InputCaptureOptions extends CaptureMapping {
     readonly manifest: Manifest;
     /** Where inputs go: a session's live queue, or a worker's. */
     readonly queue: InputSink;
+    /**
+     * Whether an event a script made is recorded: one whose `isTrusted` is
+     * false, from `dispatchEvent` or `new KeyboardEvent(...)` rather than from
+     * the player's own hands. Required, so every page says which it is.
+     *
+     * `"ignore"` is what a page playing a ranked or practice run on a platform
+     * sets: there an input has to come from a device, or any script on the page
+     * could play the run. `"record"` treats a scripted event like any other,
+     * which a game played on its own page may want, to drive itself from a test
+     * or a tool.
+     *
+     * It covers every event the helpers listen to: keys, pointers (presses,
+     * positions, buttons, and movement under mouse lock), hover, the wheel, and
+     * the blur, visibility and lock changes that release what is held.
+     * Gamepads are polled through `navigator.getGamepads()`, which reports no
+     * such mark, so a gamepad is read whatever this says. Tilt ignores a
+     * scripted reading whatever this says, as it always has: a reading a script
+     * made would also stand in for the sensor `requestMotion` waits to hear.
+     */
+    readonly scripted: ScriptedEvents;
     /**
      * The element the game is drawn on. A pointer's position is measured
      * across it, on each axis separately, so it must be the element the
@@ -2613,8 +2786,10 @@ export type DeviceNoticeCode = (typeof DEVICE_NOTICES)[keyof typeof DEVICE_NOTIC
 
 ### HostState
 
+Where a host is. `preparing` is the wait between `start` and the clock starting, while a presentation's `prepare` runs.
+
 ```ts
-export type HostState = "idle" | "running" | "paused" | "ended";
+export type HostState = "idle" | "preparing" | "running" | "paused" | "ended";
 ```
 
 ### MotionAccess
@@ -2641,6 +2816,14 @@ Fetches one pack by its manifest path.
 
 ```ts
 export type PackLoader = (path: string) => Promise<PackBytes>;
+```
+
+### ScriptedEvents
+
+What the helpers do with an event a script made rather than the browser: `"ignore"` records nothing from one, `"record"` treats it as the player's.
+
+```ts
+export type ScriptedEvents = "record" | "ignore";
 ```
 
 ### SoundRecipe
@@ -2719,7 +2902,18 @@ export interface WorkerSimulationOptions {
     /** The caller owns the Worker, so the bundler resolves its URL, not us. */
     readonly worker: Worker;
     readonly seed: string;
+    /**
+     * The config the session plays. Left out, the worker plays
+     * `servedConfig(manifest)`, every declared parameter at its default, which
+     * is what a platform serves and what the conformance checks play.
+     */
     readonly config?: PlainValue;
+    /**
+     * Where the session stops, with terminal `timeout`, if the game has not
+     * ended it by then: `Math.max(endTick, 1)` for a replay. Left out, the
+     * session runs until the game ends it or `stop` is called.
+     */
+    readonly maxTicks?: number;
     readonly onFrame?: (frame: {
         tick: number;
         alpha: number;
@@ -2804,7 +2998,10 @@ export type PackTransfer = {
 export type ToWorker = {
     readonly type: "init";
     readonly seed: string;
-    readonly config: PlainValue;
+    /** Left out, the worker plays `servedConfig(manifest)`. */
+    readonly config?: PlainValue;
+    /** Where the session stops. Left out, it runs until the game ends it. */
+    readonly maxTicks?: number;
     /** Every start pack, and any demand pack the page already has. */
     readonly packs?: readonly PackTransfer[];
 } | {
@@ -2850,6 +3047,7 @@ Builds a Subject from a directory or entry file.
 
 ```ts
 export declare function loadSubject(target: string, options?: {
+    /** A config to play instead of the served one. */
     readonly config?: unknown;
     /** The packs' bytes, instead of reading them from the bundle's directory. */
     readonly packs?: ReadonlyMap<string, Uint8Array>;
@@ -2874,8 +3072,10 @@ export declare function scanImportGraph(entry: string, options?: ScanOptions): S
 
 ### validate
 
+Runs a set of checks against a subject and reports every outcome.
+
 ```ts
-export declare function validate(subject: Subject, options?: ValidateOptions): Promise<Report>;
+export declare function validate(subject: Subject, options: ValidateOptions): Promise<Report>;
 ```
 
 ### BANNED_GLOBALS
@@ -2910,16 +3110,42 @@ Property names that are banned however the object was reached.
 BANNED_PROPERTIES: ReadonlyMap<string, string>
 ```
 
-### CHECKS
+### CHECK_SETS
+
+Each set's checks, in the order they run. The ranked set is the every-game set and two more, which hold what a ranked or practice run on a platform needs and a game played only on its own page does not.
 
 ```ts
-CHECKS: readonly Check[]
+CHECK_SETS: Readonly<Record<CheckSet, readonly Check[]>>
+```
+
+### CHECK_WINDOW_TICKS
+
+How far the checks play each log: 36,000 ticks, ten minutes at 60 Hz. A run the game has not ended by then stops there, with terminal `timeout`, and the report says where every run ended. Nothing is refused for running the whole window, because no run has a step limit; the window bounds what the suite costs and nothing else.
+
+```ts
+CHECK_WINDOW_TICKS = 36000
 ```
 
 ### DEFAULT_SEEDS
 
 ```ts
 DEFAULT_SEEDS: string[]
+```
+
+### SENSITIVITY_SEEDS
+
+The two seeds the seed check plays, which no other check uses. They are the seeds vbz's platform played when this check was its own. That check compared only where each run ended, and this one compares every checkpoint as well, so a game it passed passes here too.
+
+```ts
+SENSITIVITY_SEEDS: readonly ["vbz-seed-a", "vbz-seed-b"]
+```
+
+### SENSITIVITY_TICKS
+
+How far the seed check plays each log: 3,600 ticks, a minute at 60 Hz, as the platform's own check did. It runs six sessions, two seeds over three logs, and stops at the first log whose two runs differ.
+
+```ts
+SENSITIVITY_TICKS = 3600
 ```
 
 ### ScanOptions
@@ -2942,9 +3168,15 @@ export interface ScanOptions {
 
 ```ts
 export interface ValidateOptions {
+    /**
+     * Which checks run: `every-game`, what any game on the engine needs, or
+     * `ranked`, those and the checks a ranked or practice run on a platform
+     * needs. Required, so every caller says which question it is asking.
+     */
+    readonly set: CheckSet;
     /** Seeds every check runs against. More seeds, more confidence, more time. */
     readonly seeds?: readonly string[];
-    /** Run only these checks, by name. */
+    /** Run only these checks of the set, by name. A name the set lacks throws. */
     readonly only?: readonly string[];
     /** Set false to leave the runtime traps off, for measuring their cost. */
     readonly shims?: boolean;
@@ -2992,8 +3224,22 @@ export type CheckOutcome = {
      * and the engine that measured them, `memoryEngine`.
      */
     readonly measurements?: Readonly<Record<string, number | string>>;
+    /**
+     * Where each seed's run of each log ended. The determinism check reports
+     * it, because it plays every log on every seed to its end or to the check
+     * window. A game that runs the whole window is not refused for it.
+     */
+    readonly ends?: readonly RunEnd[];
     readonly ms: number;
 };
+```
+
+### CheckSet
+
+Which checks a caller runs. `every-game` is what any game on the engine needs. `ranked` adds what a ranked or practice run on a platform needs: that the seed changes the game, and that the manifest says how a run ranks. There is no default; every caller names its set.
+
+```ts
+export type CheckSet = "every-game" | "ranked";
 ```
 
 ### Finding
@@ -3015,9 +3261,29 @@ export type Finding = {
 
 ```ts
 export type Report = {
+    /** The set that ran. */
+    readonly set: CheckSet;
     readonly ok: boolean;
     readonly outcomes: readonly CheckOutcome[];
     readonly ms: number;
+};
+```
+
+### RunEnd
+
+Where one seed's run of one of the three logs ended, as the determinism check played it.
+
+```ts
+export type RunEnd = {
+    readonly seed: string;
+    /** `idle`, `chaos` or `bot`. */
+    readonly log: string;
+    readonly endTick: number;
+    /**
+     * How it ended: `completed` when the game ended it, `timeout` when it was
+     * still running when the check window closed at `CHECK_WINDOW_TICKS`.
+     */
+    readonly terminal: TerminalReason;
 };
 ```
 
@@ -3079,7 +3345,12 @@ export type Subject = {
     readonly entry?: string;
     /** The directory holding the bundle and its assets, for the budget check. */
     readonly root?: string;
-    /** A default config, when the game takes one. */
+    /**
+     * The config every check plays. `loadSubject` sets it to
+     * `servedConfig(manifest)`, every declared parameter at its default, unless
+     * it is given another. A subject built by hand without one plays the served
+     * config too, never an empty one.
+     */
     readonly config?: unknown;
     /**
      * The bytes of the game's data packs, by manifest path, unchecked. The

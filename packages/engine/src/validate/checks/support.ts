@@ -16,10 +16,12 @@ import {
   logicPacks,
   type Manifest,
   PackSet,
+  type PlainValue,
   RecordedInputSource,
   runSession,
   Session,
   type SessionResult,
+  servedConfig,
   withShims,
 } from "../../index.js"
 import { botInputs, chaosInputs, idleLog } from "../../testing/index.js"
@@ -27,23 +29,41 @@ import type { Subject } from "../types.js"
 
 export const CHECKPOINT_EVERY = 60
 
+/**
+ * How far the checks play each log: 36,000 ticks, ten minutes at 60 Hz. A
+ * run the game has not ended by then stops there, with terminal `timeout`,
+ * and the report says where every run ended. Nothing is refused for running
+ * the whole window, because no run has a step limit; the window bounds what
+ * the suite costs and nothing else.
+ */
+export const CHECK_WINDOW_TICKS = 36_000
+
 export function countersOf(manifest: Manifest): readonly CounterDeclaration[] {
   return manifest.counters
 }
 
 /**
- * The three logs every game is run against, pressing what the game's own
- * manifest binds.
+ * The config every session the suite runs is given: the subject's, which
+ * `loadSubject` sets to the served config, or the served config for a subject
+ * built without one. Never an empty one, which a game with declared defaults
+ * would play differently from every session a platform serves.
+ */
+export function configOf(subject: Subject): PlainValue {
+  return (subject.config ?? servedConfig(subject.manifest)) as PlainValue
+}
+
+/**
+ * The three logs every game is run against, pressing the inputs the game's
+ * own manifest declares, as far as the check window.
  */
 export function logsFor(
   manifest: Manifest,
   seed: string,
 ): ReadonlyMap<string, readonly InputEvent[]> {
-  const span = Math.min(manifest.session.maxTicks, 60 * 60 * 10)
   return new Map([
     ["idle", idleLog()],
-    ["chaos", chaosInputs(manifest, seed, span)],
-    ["bot", botInputs(manifest, seed, span)],
+    ["chaos", chaosInputs(manifest, seed, CHECK_WINDOW_TICKS)],
+    ["bot", botInputs(manifest, seed, CHECK_WINDOW_TICKS)],
   ])
 }
 
@@ -97,9 +117,9 @@ export async function runOnce(
   return runSession({
     module,
     seed: options.seed,
-    config: subject.config ?? {},
+    config: configOf(subject),
     inputs: new RecordedInputSource(options.inputs),
-    maxTicks: options.maxTicks ?? subject.manifest.session.maxTicks,
+    maxTicks: options.maxTicks ?? CHECK_WINDOW_TICKS,
     checkpointEvery: CHECKPOINT_EVERY,
     counters: countersOf(subject.manifest),
     ...sessionPacks(subject),
@@ -136,9 +156,9 @@ export async function runOnDemand(
   const session = new Session({
     module,
     seed: options.seed,
-    config: subject.config ?? {},
+    config: configOf(subject),
     inputs: new RecordedInputSource(options.inputs),
-    maxTicks: options.maxTicks ?? subject.manifest.session.maxTicks,
+    maxTicks: options.maxTicks ?? CHECK_WINDOW_TICKS,
     checkpointEvery: CHECKPOINT_EVERY,
     counters: countersOf(subject.manifest),
     assets: subject.manifest.assets ?? [],

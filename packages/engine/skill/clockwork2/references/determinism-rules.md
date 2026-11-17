@@ -11,7 +11,10 @@ is a preference and is marked as one.
 The platform pays and ranks on results, so a score has to be something it can
 verify rather than trust. The browser records inputs, the server replays them,
 and both sides must reach the same state - on V8, JavaScriptCore and
-SpiderMonkey alike. Every rule below follows from that one sentence.
+SpiderMonkey alike. Every rule below follows from that one sentence, and binds
+every session, a game played only on its own page included. The few rules
+that bind only a ranked or practice run on a platform are in `SKILL.md`, under
+"Ranked and practice runs".
 
 ## Arithmetic
 
@@ -56,7 +59,12 @@ silently changes every recorded session. With sub-streams it does not.
 `Math.random` is banned. So is seeding from the clock, the URL, or anything
 else the server replaying the session will not have.
 
-*Checked by:* `banned-apis`, `determinism`, `replay`.
+A ranked or practice run is served its seed by the platform, so for those the
+seed also has to change the game: two seeds over the same inputs must pass
+through different states at some checkpoint, though they may end alike.
+
+*Checked by:* `banned-apis`, `determinism`, `replay`; and `seed-sensitivity`
+in the ranked set.
 
 ## Time
 
@@ -112,7 +120,7 @@ class instances, no `Map` or `Set` or `Date`.
 
 It has to hold *everything*. The test is not "does it look complete" but
 "does restoring at tick N and continuing reach the same state as never having
-stopped", which is what check 6 runs at several offsets. The fields people
+stopped", which is what the `restore` check runs at several offsets. The fields people
 forget, in order: the PRNG state, the timer state, an id counter, a cooldown,
 and the config.
 
@@ -122,12 +130,18 @@ and the config.
 
 ## Ending
 
-The run must end inside `maxTicks`, under an idle player, under chaos input,
-and under the platform's bot. The platform bounds what it pays to replay.
+No run has a step limit, and nothing requires a game to end by itself. A run
+ends when `isOver()` turns true or when its host stops it, and a replay stops
+where the run it replays stopped. The manifest's `session.hasEnding` says
+which kind of game this is; nothing reads or checks it.
 
-"The player can quit" is not an ending. The idle log is a player who does not.
+The checks play the idle, chaos and bot logs to the end of the run or to
+`CHECK_WINDOW_TICKS`, 36,000 ticks, whichever comes first, and the report says
+where each one stopped. A game that should end by itself and is still running
+when the window closes has a bug the report shows: the idle log is a player who
+never quits.
 
-*Checked by:* `bound`.
+*Reported by:* `determinism`, which gives each run's end tick and terminal.
 
 ## Counters
 

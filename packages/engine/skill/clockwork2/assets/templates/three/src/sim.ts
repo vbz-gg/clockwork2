@@ -159,12 +159,8 @@ export class LaneRunner implements GameModule<View, Config> {
   }
 
   /**
-   * Rocks arrive faster as the run goes on.
-   *
-   * Some form of this is not optional: check 3 replays the game with an idle
-   * player, a chaos log and the platform's bot, and every one of them has to
-   * reach an ending. A game that a good player can hold forever is a game the
-   * platform cannot bound what it pays to replay.
+   * Rocks arrive faster as the run goes on, so a run gets harder the longer
+   * it lasts, and `TIME_LIMIT_TICKS` ends it if a rock has not.
    */
   private spawnInterval(): number {
     return Math.max(

@@ -13,15 +13,17 @@ export type {
   ParamDefinition,
   ParamSchema,
   ParamValues,
+  Ranking,
   Session as ManifestSession,
   StringParam,
   TickRate,
 } from "./types.js"
-export { TICK_RATES } from "./types.js"
+export { MANIFEST_FORMAT, TICK_RATES } from "./types.js"
 export {
   assertManifest,
   type Issue,
   mergeParamDefaults,
+  servedConfig,
   validateManifest,
   validateParams,
 } from "./validate.js"

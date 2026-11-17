@@ -16,6 +16,28 @@ import {
   REFERENCE_COUNTERS,
 } from "../../src/testing/reference-game"
 
+/** A game that ends at tick `at`, or never when `at` is null. */
+function endsAt(at: number | null): GameModule {
+  let ticks = 0
+  return {
+    manifest: {},
+    init() {
+      ticks = 0
+    },
+    tick() {
+      ticks++
+    },
+    view: () => ({ ticks }),
+    snapshot: () => ({ ticks }),
+    restore: (snapshot: Snapshot) => {
+      ticks = snapshot.ticks as number
+    },
+    score: (): Counters => ({ ticks }),
+    isOver: () => at !== null && ticks >= at,
+    effects: (): readonly Effect[] => [],
+  }
+}
+
 const options = (extra: Record<string, unknown> = {}) => ({
   module: createReferenceGame(),
   seed: "seed-1",
@@ -49,7 +71,7 @@ describe("Session", () => {
     }
   })
 
-  test("the run ends inside maxTicks even when nobody plays", () => {
+  test("the reference game ends by itself when nobody plays", () => {
     const result = runSession(
       options({ inputs: new RecordedInputSource(idleLog()) }),
     )
@@ -97,11 +119,76 @@ describe("Session", () => {
     expect(result.endTick).toBeGreaterThan(0)
   })
 
-  test("maxTicks must be a positive whole number", () => {
+  test("maxTicks, when given, must be a positive whole number", () => {
     expect(() => new Session(options({ maxTicks: 0 }))).toThrow(/E_ARG_INVALID/)
     expect(() => new Session(options({ maxTicks: 1.5 }))).toThrow(
       /E_ARG_INVALID/,
     )
+  })
+})
+
+describe("a session with no maxTicks", () => {
+  const unbounded = (module: GameModule) =>
+    new Session({
+      module,
+      seed: "no-limit",
+      config: {},
+      inputs: new RecordedInputSource([]),
+      checkpointEvery: 60,
+    })
+
+  test("runs until the game ends it, however long that takes", () => {
+    // Past the 36,000 ticks the conformance checks play, which is ten
+    // minutes at 60 Hz.
+    const session = unbounded(endsAt(40_000))
+    while (session.step()) {
+      // to the end
+    }
+    expect(session.result().endTick).toBe(40_000)
+    expect(session.result().terminal).toBe("completed")
+  })
+
+  test("runs a game that never ends until it is abandoned", () => {
+    const session = unbounded(endsAt(null))
+    let running = 0
+    for (let i = 0; i < 40_000; i++) if (session.step()) running++
+    expect(running).toBe(40_000)
+    expect(session.running).toBe(true)
+    session.abandon()
+    expect(session.result().endTick).toBe(40_000)
+    expect(session.result().terminal).toBe("abandoned")
+    expect(session.result().checkpoints.at(-1)?.tick).toBe(40_000)
+  })
+})
+
+describe("runSession", () => {
+  test("refuses to run without maxTicks, before the game is set up", () => {
+    // The type requires it; this is a caller the type did not reach, whose
+    // loop would otherwise never return on a game that never ends.
+    let initialised = false
+    const game = endsAt(null)
+    const module: GameModule = {
+      ...game,
+      init(seed, config, packs) {
+        initialised = true
+        game.init(seed, config, packs)
+      },
+    }
+    const { maxTicks: _, ...withoutStop } = options({ module })
+    expect(() => runSession(withoutStop as never)).toThrow(/E_ARG_INVALID/)
+    expect(initialised).toBe(false)
+  })
+
+  test("stops at maxTicks with timeout when the game has not ended", () => {
+    const result = runSession({
+      module: endsAt(null),
+      seed: "stop",
+      config: {},
+      inputs: new RecordedInputSource([]),
+      maxTicks: 1234,
+    })
+    expect(result.endTick).toBe(1234)
+    expect(result.terminal).toBe("timeout")
   })
 })
 

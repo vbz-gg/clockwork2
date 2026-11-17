@@ -1,13 +1,11 @@
 /**
- * The twelve conformance checks.
+ * The conformance checks.
  *
  * Each one is written against a failure that actually happened, not against a
- * principle. Check 1 exists because a game shipped with `Math.random()` in a
- * timer and a run nobody played was paid and ranked. Check 3 exists because
- * the platform used its validator's ten-second timeout as the real bound on a
- * session. Check 6 exists because without it there is no way to know whether a
- * snapshot is complete. Check 10 exists because a claimed score was never
- * compared against the replayed one.
+ * principle. Determinism exists because a game shipped with `Math.random()` in
+ * a timer and a run nobody played was paid and ranked. Restore exists because
+ * without it there is no way to know whether a snapshot is complete. Replay
+ * exists because a claimed score was never compared against the replayed one.
  */
 
 import { createHash } from "node:crypto"
@@ -18,7 +16,6 @@ import {
   decodeRecording,
   encodeRecording,
   hashCanonical,
-  type PlainValue,
   RECORDING_FORMAT,
   RECORDING_VERSION,
   RecordedInputSource,
@@ -31,10 +28,13 @@ import {
 } from "../../index.js"
 import { compareCounters } from "../../testing/index.js"
 import { scanImportGraph } from "../scan/import-graph.js"
-import type { Check, Finding } from "../types.js"
+import type { Check, CheckSet, Finding, RunEnd } from "../types.js"
+import { ranking, seedSensitivity } from "./ranked.js"
 import {
+  CHECK_WINDOW_TICKS,
   CHECKPOINT_EVERY,
   codeFromError,
+  configOf,
   countersOf,
   firstDivergence,
   logsFor,
@@ -49,6 +49,7 @@ const determinism: Check = {
   title: "The same seed, config and inputs reach the same state",
   async run({ subject, seeds }) {
     const findings: Finding[] = []
+    const ends: RunEnd[] = []
     let runs = 0
     let baseline: SessionResult | null = null
     for (const seed of seeds) {
@@ -76,6 +77,12 @@ const determinism: Check = {
         const first = results[0] as SessionResult
         const second = results[1] as SessionResult
         const fresh = results[2] as SessionResult
+        ends.push({
+          seed,
+          log: logName,
+          endTick: first.endTick,
+          terminal: first.terminal,
+        })
         if (seed === seeds[0] && logName === "bot") baseline = first
         for (const [label, other] of [
           ["a second run in the same process", second],
@@ -153,6 +160,7 @@ const determinism: Check = {
       ok: findings.length === 0,
       findings,
       note: `${runs} runs compared`,
+      ends,
     }
   },
 }
@@ -181,7 +189,7 @@ const headless: Check = {
       const session = new Session({
         module,
         seed: "headless",
-        config: subject.config ?? {},
+        config: configOf(subject),
         inputs: new RecordedInputSource([]),
         maxTicks: Math.max(600, 1),
         checkpointEvery: 0,
@@ -200,48 +208,6 @@ const headless: Check = {
       })
     }
     return { ok: findings.length === 0, findings, note: "init and 600 ticks" }
-  },
-}
-
-const bound: Check = {
-  name: "bound",
-  title: "The run ends inside maxTicks",
-  async run({ subject, seeds }) {
-    const findings: Finding[] = []
-    const { maxTicks, hasEnding } = subject.manifest.session
-    const notes: string[] = []
-    for (const seed of seeds) {
-      for (const [logName, inputs] of logsFor(subject.manifest, seed)) {
-        const attempt = await tryRun(subject, { seed, inputs })
-        if ("error" in attempt) {
-          findings.push({
-            code: codeFromError(attempt.error, "E_BOUND_NOT_OVER"),
-            check: "bound",
-            detail: `seed ${seed}, ${logName} log: the run threw: ${String(attempt.error)}`,
-          })
-          continue
-        }
-        const result = attempt.result
-        notes.push(`${logName}:${result.endTick}`)
-        if (result.terminal === "timeout") {
-          findings.push({
-            code: "E_BOUND_NOT_OVER",
-            check: "bound",
-            tick: result.endTick,
-            detail: `seed ${seed}, ${logName} log: isOver() never became true inside ${maxTicks} ticks${
-              hasEnding
-                ? ""
-                : ". The manifest says hasEnding is false, which still requires the difficulty to rise until the run ends"
-            }`,
-          })
-        }
-      }
-    }
-    return {
-      ok: findings.length === 0,
-      findings,
-      note: `end ticks ${notes.join(", ")}`,
-    }
   },
 }
 
@@ -306,7 +272,7 @@ const noAsync: Check = {
       const session = new Session({
         module,
         seed: "async-probe",
-        config: subject.config ?? {},
+        config: configOf(subject),
         inputs: new RecordedInputSource([]),
         maxTicks: 120,
         checkpointEvery: 0,
@@ -367,9 +333,9 @@ const restore: Check = {
       const partial = new Session({
         module: await subject.load({ fresh: true }),
         seed,
-        config: subject.config ?? {},
+        config: configOf(subject),
         inputs: new RecordedInputSource(log),
-        maxTicks: subject.manifest.session.maxTicks,
+        maxTicks: CHECK_WINDOW_TICKS,
         checkpointEvery: CHECKPOINT_EVERY,
         counters: countersOf(subject.manifest),
         ...sessionPacks(subject),
@@ -383,9 +349,9 @@ const restore: Check = {
       const resumed = runSession({
         module: await subject.load({ fresh: true }),
         seed,
-        config: subject.config ?? {},
+        config: configOf(subject),
         inputs: new RecordedInputSource(log),
-        maxTicks: subject.manifest.session.maxTicks,
+        maxTicks: CHECK_WINDOW_TICKS,
         checkpointEvery: CHECKPOINT_EVERY,
         counters: countersOf(subject.manifest),
         ...sessionPacks(subject),
@@ -528,9 +494,9 @@ const performance_: Check = {
       new Session({
         module: await subject.load({ fresh: true }),
         seed,
-        config: (subject.config ?? {}) as PlainValue,
+        config: configOf(subject),
         inputs: new RecordedInputSource(log),
-        maxTicks: subject.manifest.session.maxTicks,
+        maxTicks: CHECK_WINDOW_TICKS,
         checkpointEvery: CHECKPOINT_EVERY,
         counters: countersOf(subject.manifest),
         ...sessionPacks(subject),
@@ -648,7 +614,7 @@ const replayRoundTrip: Check = {
         manifestHash: hashCanonical(subject.manifest as never),
         tickHz: subject.manifest.session.tickHz,
         seed,
-        config: (subject.config ?? {}) as never,
+        config: configOf(subject),
         inputs: log.filter((event) => event.tick <= recorded.endTick),
         checkpoints: recorded.checkpoints,
         endTick: recorded.endTick,
@@ -670,7 +636,12 @@ const replayRoundTrip: Check = {
         continue
       }
 
-      const replayed = await runOnce(subject, { seed, inputs: decoded.inputs })
+      // Replayed as a server replays one: to the recording's own end tick.
+      const replayed = await runOnce(subject, {
+        seed,
+        inputs: decoded.inputs,
+        maxTicks: Math.max(decoded.endTick, 1),
+      })
       const comparison = compareToRecording(decoded, replayed)
       if (!comparison.matches) {
         findings.push({
@@ -747,10 +718,10 @@ const renderSmoke: Check = {
   },
 }
 
-export const CHECKS: readonly Check[] = [
+/** The checks every game needs, in the order they run. */
+const EVERY_GAME: readonly Check[] = [
   determinism,
   headless,
-  bound,
   bannedApis,
   noAsync,
   restore,
@@ -761,3 +732,13 @@ export const CHECKS: readonly Check[] = [
   manifestAndGlobals,
   renderSmoke,
 ]
+
+/**
+ * Each set's checks, in the order they run. The ranked set is the every-game
+ * set and two more, which hold what a ranked or practice run on a platform
+ * needs and a game played only on its own page does not.
+ */
+export const CHECK_SETS: Readonly<Record<CheckSet, readonly Check[]>> = {
+  "every-game": EVERY_GAME,
+  ranked: [...EVERY_GAME, seedSensitivity, ranking],
+}

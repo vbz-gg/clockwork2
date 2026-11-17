@@ -25,6 +25,7 @@ import {
   instantiate,
   logicPacks,
   type Manifest,
+  servedConfig,
 } from "../index.js"
 import type { Subject } from "./types.js"
 
@@ -112,11 +113,15 @@ export function readPacks(
  * Builds a Subject from a directory or entry file.
  *
  * Given a file, the root is the file's directory, so its packs and the files
- * the budgets check walks are found beside it.
+ * the budgets check walks are found beside it. Its config is the one given,
+ * or else `servedConfig(manifest)`, every declared parameter at its default,
+ * which is what a platform serves a session: the checks play what a session
+ * plays.
  */
 export async function loadSubject(
   target: string,
   options: {
+    /** A config to play instead of the served one. */
     readonly config?: unknown
     /** The packs' bytes, instead of reading them from the bundle's directory. */
     readonly packs?: ReadonlyMap<string, Uint8Array>
@@ -154,6 +159,6 @@ export async function loadSubject(
     entry,
     root,
     packs: options.packs ?? readPacks(root, manifest),
-    ...(options.config === undefined ? {} : { config: options.config }),
+    config: options.config ?? servedConfig(manifest),
   }
 }

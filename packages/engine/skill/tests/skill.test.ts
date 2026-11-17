@@ -101,10 +101,10 @@ describe("SKILL.md", () => {
 
   test("it says its validate script is the engine's checks, not a platform's", () => {
     // A platform built on the engine may run checks of its own beside the
-    // twelve - vbz runs fifteen outcomes - so a guide that called the script
-    // what the platform runs would tell an author a local pass is a listing.
-    expect(source).toContain(
-      "the engine's twelve checks; a platform may run more",
+    // engine's, so a guide that called the script what the platform runs
+    // would tell an author a local pass is a listing.
+    expect(source.replace(/\s+/g, " ")).toContain(
+      "the engine's eleven checks every game needs, and with `--ranked` the two a ranked or practice run needs; a platform may run more",
     )
   })
 
@@ -206,6 +206,54 @@ describe("every file the guide ships", () => {
     )
     expect(stale).toEqual([])
   })
+})
+
+describe("scripts/validate.sh", () => {
+  const script = join(SKILL, "scripts/validate.sh")
+
+  test("refuses an argument the checks do not take, and runs nothing", () => {
+    // The script runs the game's own clockwork2-validate, found in the
+    // node_modules/.bin of the directory it is run from. This repository's
+    // root cannot stand in for a game: on a fresh install dist is built after
+    // `bun install`, so bun has not linked the bin or marked the built CLI
+    // runnable, and bunx then asks the registry for it. So the test stands up
+    // a game root with a runnable bin that loads the built CLI, as a game's
+    // install of the package gives it.
+    const game = mkdtempSync(join(tmpdir(), "cw2-validate-"))
+    try {
+      writeFileSync(join(game, "package.json"), '{ "private": true }\n')
+      const bin = join(game, "node_modules", ".bin")
+      mkdirSync(bin, { recursive: true })
+      writeFileSync(
+        join(bin, "clockwork2-validate"),
+        `#!/usr/bin/env bun\nimport ${JSON.stringify(join(ENGINE, "dist/validate/cli.js"))}\n`,
+        { mode: 0o755 },
+      )
+      const run = (args: readonly string[]) =>
+        spawnSync("bash", [script, ...args], { cwd: game, encoding: "utf8" })
+
+      // A call the CLI takes must reach it and pass, or a refusal below could
+      // be a CLI that was never found.
+      const found = run([
+        join(ENGINE, "fixtures/conforming"),
+        "--only=manifest",
+      ])
+      expect(found.status, found.stderr).toBe(0)
+      expect(found.stdout).toContain("manifest")
+
+      for (const [args, said] of [
+        [[join(ENGINE, "fixtures/conforming"), "--rank"], "'--rank'"],
+        [["--ranked=true"], "'--ranked' does not take an argument"],
+      ] as const) {
+        const result = run(args)
+        expect(result.status, said).toBe(2)
+        expect(result.stderr, said).toContain(said)
+        expect(result.stdout, said).not.toContain("pass ")
+      }
+    } finally {
+      rmSync(game, { recursive: true, force: true })
+    }
+  }, 60_000)
 })
 
 describe("the scripts, on a game with data packs", () => {
@@ -311,11 +359,11 @@ describe("the templates", () => {
   })
 
   for (const name of ["canvas2d", "three"]) {
-    test(`${name} passes the conformance suite unmodified`, async () => {
+    test(`${name} passes the conformance suite unmodified, the ranked set included`, async () => {
       // The guide tells the reader the template conforms before they change
-      // anything. This is that claim, run.
+      // anything. This is that claim, run, with every check there is.
       const subject = await loadSubject(join(TEMPLATES, name, "src"))
-      const report = await validate(subject)
+      const report = await validate(subject, { set: "ranked" })
       const failed = report.outcomes
         .filter((outcome) => !outcome.ok)
         .map(

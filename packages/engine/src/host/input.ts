@@ -4,9 +4,12 @@
  *
  * A game declares its inputs in its manifest, by name and range, and decides
  * what to record. These helpers are one way to do it, for the common devices,
- * and a game may use them, use part of them, or record its inputs itself.
- * The mapping from a device to an input name lives in the game's code, not
- * the manifest: the manifest says what is recorded, the game says from what.
+ * and a game played on its own page may use them, use part of them, or record
+ * its inputs itself. A ranked or practice run on a platform takes its inputs
+ * from these helpers only, with `scripted: "ignore"`, so that an event a
+ * script made is never recorded as the player's. The mapping from a device to
+ * an input name lives in the game's code, not the manifest: the manifest says
+ * what is recorded, the game says from what.
  *
  * Two things they do that a game would otherwise have to remember.
  *
@@ -141,10 +144,36 @@ export interface CaptureEnvironment {
   readonly screenAngle: () => number | undefined
 }
 
+/**
+ * What the helpers do with an event a script made rather than the browser:
+ * `"ignore"` records nothing from one, `"record"` treats it as the player's.
+ */
+export type ScriptedEvents = "record" | "ignore"
+
 export interface InputCaptureOptions extends CaptureMapping {
   readonly manifest: Manifest
   /** Where inputs go: a session's live queue, or a worker's. */
   readonly queue: InputSink
+  /**
+   * Whether an event a script made is recorded: one whose `isTrusted` is
+   * false, from `dispatchEvent` or `new KeyboardEvent(...)` rather than from
+   * the player's own hands. Required, so every page says which it is.
+   *
+   * `"ignore"` is what a page playing a ranked or practice run on a platform
+   * sets: there an input has to come from a device, or any script on the page
+   * could play the run. `"record"` treats a scripted event like any other,
+   * which a game played on its own page may want, to drive itself from a test
+   * or a tool.
+   *
+   * It covers every event the helpers listen to: keys, pointers (presses,
+   * positions, buttons, and movement under mouse lock), hover, the wheel, and
+   * the blur, visibility and lock changes that release what is held.
+   * Gamepads are polled through `navigator.getGamepads()`, which reports no
+   * such mark, so a gamepad is read whatever this says. Tilt ignores a
+   * scripted reading whatever this says, as it always has: a reading a script
+   * made would also stand in for the sensor `requestMotion` waits to hear.
+   */
+  readonly scripted: ScriptedEvents
   /**
    * The element the game is drawn on. A pointer's position is measured
    * across it, on each axis separately, so it must be the element the
@@ -416,6 +445,13 @@ export class InputCapture {
   private enabled = false
 
   constructor(private readonly options: InputCaptureOptions) {
+    // Required by the type, and checked for a caller the type did not reach:
+    // a page that said nothing would otherwise record every scripted event.
+    if (options.scripted !== "record" && options.scripted !== "ignore") {
+      fail("E_ARG_INVALID", {
+        detail: `scripted must be "record" or "ignore", got ${JSON.stringify(options.scripted)}: say whether an event a script made is recorded`,
+      })
+    }
     const problems = checkCapture(options, options.manifest)
     if (problems.length > 0) {
       fail("E_ARG_INVALID", { detail: problems.join("; ") })
@@ -511,14 +547,21 @@ export class InputCapture {
     }
   }
 
+  /**
+   * Listens for one event, and acts on it only while not paused and, under
+   * `scripted: "ignore"`, only when the browser rather than a script made it.
+   */
   private listen(
     target: EventTarget,
     name: string,
     listener: (event: Event) => void,
     options?: AddEventListenerOptions,
   ): void {
+    const ignoreScripted = this.options.scripted === "ignore"
     const heard = (event: Event): void => {
-      if (!this.paused) listener(event)
+      if (this.paused) return
+      if (ignoreScripted && event.isTrusted !== true) return
+      listener(event)
     }
     target.addEventListener(name, heard, options)
     this.listeners.push(() => {

@@ -96,14 +96,6 @@ scored, because there is no moment the score is final.
 Keep a boolean field that is only ever set, never cleared - and make sure
 `restore()` restores it.
 
-### E_TICK_LIMIT
-
-The session passed the `maxTicks` its manifest declares without `isOver()`
-becoming true. The kernel ends the run; this is the code it ends it with.
-
-If that is legitimate - an endless game - the manifest says `hasEnding: false`
-and `maxTicks` is the intended length. If it is not, see `E_BOUND_NOT_OVER`.
-
 ### E_INPUT_UNSORTED
 
 An input log was not sorted by tick. Recordings come out sorted; a log built by
@@ -134,7 +126,9 @@ what the page records, or the page rounds it the wrong way.
 A log holds more inputs than `checkInputs` allows: more than
 `MAX_INPUTS_PER_TICK` in one tick, or more than `INPUT_BUDGET_PER_TICK` for
 each tick of the run on average. A recording of a real player stays far under
-both.
+both. The budget is a rule of ranked and practice runs: a platform holds every
+log it replays to it, and the live queue in a page does not count, so a run
+played only on the game's own page is never refused for it.
 
 The usual cause is a page recording a stream: every pointer move, every tilt
 reading, every frame of a stick. Record what changed, in the coarsest range the
@@ -159,13 +153,27 @@ file or a truncated upload.
 
 The manifest failed `assertManifest`. The detail names the field. Common ones:
 a `tickHz` that is not 30, 60 or 120; `rankBy` naming a counter that is not
-declared; `capabilities.deterministic` not `true`.
+declared, or `rankBy` without `tiePolicy`; `capabilities.deterministic` not
+`true`.
+
+`servedConfig`, and `loadSubject` given no config, report it too for a
+parameter that is required and has no default, which no platform can serve,
+or a default its own definition refuses. Give the parameter a default, or
+make it optional.
+
+A manifest written for an older format is refused at `schemaVersion`, and the
+message says what changed. Format 3 removed `session.maxTicks`,
+`session.maxWallSeconds` and `budgets.bundleBytes`, because no run has a step
+limit, so a format 3 manifest that still carries one of them is refused at
+that field: delete it.
 
 ### E_ARG_INVALID
 
 An argument the caller controls was outside the range the API accepts, and the
 detail names the value and the range. The APIs that report it are `maxTicks`
-and `tickHz` on a session, the tick counts `Timer.every()` and `Timer.after()`
+and `tickHz` on a session, `runSession` called without `maxTicks`, an
+`InputCapture` whose `scripted` is not `"record"` or `"ignore"`, the tick
+counts `Timer.every()` and `Timer.after()`
 take, the replay speed on a host, `fixed.div()` by zero, `fixed.sqrt()` of a
 negative, `randomChoice()` on an empty array, and `dmath.copysign()` with a NaN
 in either argument.
@@ -192,6 +200,20 @@ bytes directly. The canvas2d adapter reports it for a canvas that returns no
 Neither is something a game can fix. A platform that fails the first is not one
 this engine runs on. The second is a browser without canvas support, or a
 canvas already holding a context of another kind.
+
+### E_PRESENTATION_FAILED
+
+The presentation's `prepare()` rejected or threw, so the host never started the
+session's clock: no tick ran and nothing was recorded. The detail is the
+presentation's own error message, and the error it threw is the `cause`.
+`GameHost` reports it through `onError`, and `start()` resolves `false`.
+
+A renderer with `prepare` is one that starts asynchronously, such as one that
+spawns workers, compiles WebAssembly or asks for a GPU, and a rejection
+usually means this device cannot draw it: no WebGL, no WebGPU, a worker the
+page's policy refuses. Show the player the message rather than a run that
+plays with no picture, and check the page's policy if the same device draws
+other pages.
 
 ### E_PACK_UNDECLARED
 
@@ -282,16 +304,6 @@ import that looked harmless.
 The simulation's entry must not import the renderer. That one rule prevents
 most of this.
 
-### E_BOUND_NOT_OVER
-
-`isOver()` never became true inside `maxTicks`, under the idle, chaos or bot
-log. The platform has to bound what it pays to replay, so an unbounded game
-cannot be accepted.
-
-Add the ending: a time limit, a difficulty ramp that eventually beats any
-player, a life count. "The player can always quit" is not an ending - an idle
-player never quits, and the idle log is exactly that player.
-
 ### E_LINT_BANNED
 
 The static scan found a banned API in the simulation's import graph. The tag
@@ -335,8 +347,7 @@ state over the top.
 A declared asset is missing from the bundle, its bytes do not hash to the
 declared `sha256`, its length is not the declared `bytes`, or the declared
 assets together are over `budgets.assetBytes`. The check reads only declared
-files: a file the manifest does not mention is not reported, and
-`budgets.bundleBytes` is not checked.
+files: a file the manifest does not mention is not reported.
 
 `scripts/package.ts` prints the `assets` array to paste into the manifest.
 
@@ -392,3 +403,33 @@ and had no default export.
 A bundle exports its `GameModule`, or a factory that returns one, as its
 default export. Check that the build wrote where you pointed the validator, and
 that the entry exports the module itself rather than only its parts.
+
+## The ranked set
+
+Two checks run only when a caller asks for the ranked set, `validate.sh
+--ranked` or `validate(subject, { set: "ranked" })`, because they hold what a
+ranked or practice run on a platform needs and a game played only on its own
+page does not.
+
+### E_SEED_IGNORED
+
+Two seeds passed through the same states on every log the `seed-sensitivity`
+check plays: idle, chaos and the bot, each for 3,600 ticks under `vbz-seed-a`
+and `vbz-seed-b`, comparing every checkpoint, a hash of the whole state taken
+once a second, then the end tick, the terminal and the counters. Every other
+check passes such a game, because `determinism` compares runs of one seed. A platform serves a ranked run its seed, and a game
+that ignores it plays the same game on every seed: a daily seed serves the
+same puzzle every day.
+
+Take randomness from `new Prng(seed)` in `init`. A game whose opening is fixed
+and whose play is seeded passes, since one log that differs at one checkpoint
+is enough, and so does one whose seed shapes play while every run ends alike.
+One that consults its seed only after its first 3,600 ticks does not, and
+should draw from it sooner.
+
+### E_RANK_UNDECLARED
+
+The manifest declares no `rankBy` and `tiePolicy`. Both are optional, and a
+game played only on its own page may leave them out, but a platform orders a
+ranked run by them. Declare both: `rankBy` names declared counters, most
+significant first, and `tiePolicy` is `"shared"`, `"earliest"` or `"none"`.

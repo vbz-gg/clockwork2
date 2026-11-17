@@ -36,6 +36,7 @@ import {
   LiveInputQueue,
   PackSet,
   Session,
+  servedConfig,
 } from "../../index.js"
 import { ownedBuffer, PackRequests, type PackSupply } from "../packs.js"
 
@@ -52,7 +53,10 @@ export type ToWorker =
   | {
       readonly type: "init"
       readonly seed: string
-      readonly config: PlainValue
+      /** Left out, the worker plays `servedConfig(manifest)`. */
+      readonly config?: PlainValue
+      /** Where the session stops. Left out, it runs until the game ends it. */
+      readonly maxTicks?: number
       /** Every start pack, and any demand pack the page already has. */
       readonly packs?: readonly PackTransfer[]
     }
@@ -166,9 +170,11 @@ export function runSimulationWorker(
           session = new Session({
             module,
             seed: message.seed,
-            config: message.config,
+            config: message.config ?? servedConfig(manifest),
             inputs: queue,
-            maxTicks: manifest.session.maxTicks,
+            ...(message.maxTicks === undefined
+              ? {}
+              : { maxTicks: message.maxTicks }),
             checkpointEvery: manifest.session.tickHz,
             counters: manifest.counters,
             assets: manifest.assets ?? [],
@@ -282,7 +288,18 @@ export interface WorkerSimulationOptions {
   /** The caller owns the Worker, so the bundler resolves its URL, not us. */
   readonly worker: Worker
   readonly seed: string
+  /**
+   * The config the session plays. Left out, the worker plays
+   * `servedConfig(manifest)`, every declared parameter at its default, which
+   * is what a platform serves and what the conformance checks play.
+   */
   readonly config?: PlainValue
+  /**
+   * Where the session stops, with terminal `timeout`, if the game has not
+   * ended it by then: `Math.max(endTick, 1)` for a replay. Left out, the
+   * session runs until the game ends it or `stop` is called.
+   */
+  readonly maxTicks?: number
   readonly onFrame?: (frame: {
     tick: number
     alpha: number
@@ -394,7 +411,10 @@ export class WorkerSimulation {
       {
         type: "init",
         seed: options.seed,
-        config: options.config ?? {},
+        ...(options.config === undefined ? {} : { config: options.config }),
+        ...(options.maxTicks === undefined
+          ? {}
+          : { maxTicks: options.maxTicks }),
         packs,
       } satisfies ToWorker,
       packs.map((pack) => pack.bytes),
