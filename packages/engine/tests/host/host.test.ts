@@ -15,6 +15,7 @@ import {
   decodeRecording,
   encodeRecording,
   type InputEvent,
+  type Presentation,
   RecordedInputSource,
   runSession,
 } from "../../src"
@@ -514,5 +515,179 @@ describe("what a renderer and a host UI read", () => {
     for (let i = 0; i < 40; i++) host.stepOnce()
     expect(host.snapshot()).not.toEqual(atStart)
     expect(host.counters()).toEqual(host.result().counters)
+  })
+})
+
+describe("a presentation that has to get ready to draw", () => {
+  /** A presentation whose prepare settles when the test says, and a log of calls. */
+  function slowPresentation() {
+    const calls: string[] = []
+    let settle: { resolve: () => void; reject: (error: unknown) => void } = {
+      resolve: () => {},
+      reject: () => {},
+    }
+    const presentation = {
+      mount: (container: unknown) => {
+        calls.push(`mount ${String(container)}`)
+      },
+      prepare: (container: unknown) => {
+        calls.push(`prepare ${String(container)}`)
+        return new Promise<void>((resolve, reject) => {
+          settle = { resolve, reject }
+        })
+      },
+      render: () => {
+        calls.push("render")
+      },
+      unmount: () => {
+        calls.push("unmount")
+      },
+    }
+    return {
+      calls,
+      presentation,
+      resolve: () => settle.resolve(),
+      reject: (error: unknown) => settle.reject(error),
+    }
+  }
+
+  function liveHost(
+    presentation: Presentation<unknown, string> | null,
+    extra: { onError?: (error: unknown) => void; onEnded?: () => void } = {},
+  ) {
+    const scheduler = new ManualScheduler()
+    const host = new GameHost({
+      module: createReferenceGame(),
+      manifest: REFERENCE_MANIFEST,
+      seed: "prepare",
+      config: REFERENCE_CONFIG,
+      scheduler,
+      ...(presentation === null ? {} : { presentation, container: "stage" }),
+      ...extra,
+    })
+    return { host, scheduler }
+  }
+
+  test("tick 0 waits for prepare, and nothing pressed while it runs is recorded", async () => {
+    const slow = slowPresentation()
+    const { host, scheduler } = liveHost(slow.presentation)
+    const started = host.start()
+    expect(slow.calls).toEqual(["mount stage", "prepare stage"])
+    expect(host.status).toBe("preparing")
+    // A press before anything can be drawn is not the player's yet.
+    host.live?.push({ code: "left", value: 1 })
+    scheduler.run(120, 1000 / 60)
+    expect(host.tick).toBe(0)
+    expect(scheduler.pendingCount).toBe(0)
+    expect(slow.calls).not.toContain("render")
+    // Asked again while it waits, start hands back the same answer.
+    expect(host.start()).toBe(started)
+
+    slow.resolve()
+    expect(await started).toBe(true)
+    expect(host.status).toBe("running")
+    scheduler.run(60, 1000 / 60)
+    expect(host.tick).toBeGreaterThan(50)
+    expect(slow.calls).toContain("render")
+    host.live?.push({ code: "right", value: 1 })
+    scheduler.advance(1000 / 60)
+    // Only the press made once the clock ran, on the tick it ran at.
+    expect(host.recording().inputs.map((input) => input.code)).toEqual([
+      "right",
+    ])
+  })
+
+  test("a prepare that rejects is E_PRESENTATION_FAILED before tick 0, with nothing recorded", async () => {
+    const slow = slowPresentation()
+    const errors: unknown[] = []
+    const { host, scheduler } = liveHost(slow.presentation, {
+      onError: (error) => errors.push(error),
+    })
+    const started = host.start()
+    host.live?.push({ code: "left", value: 1 })
+    slow.reject(new Error("EngineError: E1301: no usable GPU path"))
+    expect(await started).toBe(false)
+    expect(host.status).toBe("ended")
+    expect(errors.length).toBe(1)
+    const error = errors[0] as { code?: unknown; message?: unknown }
+    expect(error.code).toBe("E_PRESENTATION_FAILED")
+    expect(String(error.message)).toContain(
+      "EngineError: E1301: no usable GPU path",
+    )
+    scheduler.run(60, 1000 / 60)
+    expect(host.tick).toBe(0)
+    expect(host.recording().endTick).toBe(0)
+    expect(host.recording().inputs).toEqual([])
+    // A finished host does not start again.
+    expect(await host.start()).toBe(false)
+  })
+
+  test("a prepare that throws before returning is reported the same way", async () => {
+    const errors: unknown[] = []
+    const { host } = liveHost(
+      {
+        ...slowPresentation().presentation,
+        prepare: () => {
+          throw new Error("no canvas")
+        },
+      },
+      { onError: (error) => errors.push(error) },
+    )
+    expect(await host.start()).toBe(false)
+    expect((errors[0] as { code?: unknown }).code).toBe("E_PRESENTATION_FAILED")
+  })
+
+  test("destroyed while prepare runs, the host starts nothing when it resolves", async () => {
+    const slow = slowPresentation()
+    const errors: unknown[] = []
+    const { host, scheduler } = liveHost(slow.presentation, {
+      onError: (error) => errors.push(error),
+    })
+    const started = host.start()
+    host.destroy()
+    expect(slow.calls).toContain("unmount")
+    slow.resolve()
+    expect(await started).toBe(false)
+    scheduler.run(60, 1000 / 60)
+    expect(host.tick).toBe(0)
+    expect(scheduler.pendingCount).toBe(0)
+    expect(host.status).toBe("ended")
+    expect(errors).toEqual([])
+  })
+
+  test("stopped while prepare runs, it ends once at tick 0 and a rejection after says nothing", async () => {
+    const slow = slowPresentation()
+    const errors: unknown[] = []
+    let ended = 0
+    const { host, scheduler } = liveHost(slow.presentation, {
+      onError: (error) => errors.push(error),
+      onEnded: () => {
+        ended++
+      },
+    })
+    const started = host.start()
+    host.stop()
+    expect(ended).toBe(1)
+    expect(host.result().endTick).toBe(0)
+    expect(host.result().terminal).toBe("abandoned")
+    slow.reject(new Error("too late"))
+    expect(await started).toBe(false)
+    scheduler.run(60, 1000 / 60)
+    expect(host.tick).toBe(0)
+    expect(errors).toEqual([])
+    expect(ended).toBe(1)
+  })
+
+  test("a presentation without prepare starts the clock before start returns, as before", async () => {
+    const { prepare: _prepare, ...ready } = slowPresentation().presentation
+    for (const presentation of [ready, null]) {
+      const { host, scheduler } = liveHost(presentation)
+      const started = host.start()
+      expect(host.status).toBe("running")
+      expect(scheduler.pendingCount).toBe(1)
+      scheduler.run(30, 1000 / 60)
+      expect(host.tick).toBeGreaterThan(20)
+      expect(await started).toBe(true)
+    }
   })
 })

@@ -16,6 +16,7 @@
 import {
   Accumulator,
   type Checkpoint,
+  ClockworkError,
   type Counters,
   type Effect,
   fail,
@@ -29,6 +30,7 @@ import {
   PackSet,
   type PlainValue,
   type Presentation,
+  type PresentationContext,
   RECORDING_FORMAT,
   RECORDING_VERSION,
   type Recording,
@@ -41,7 +43,11 @@ import {
 import { browserScheduler, type Scheduler } from "./clock.js"
 import { PackRequests, type PackSupply } from "./packs.js"
 
-export type HostState = "idle" | "running" | "paused" | "ended"
+/**
+ * Where a host is. `preparing` is the wait between `start` and the clock
+ * starting, while a presentation's `prepare` runs.
+ */
+export type HostState = "idle" | "preparing" | "running" | "paused" | "ended"
 
 export interface GameHostOptions<
   TView = unknown,
@@ -137,6 +143,8 @@ export class GameHost<
   private lastNow = 0
   private previousView: TView | null = null
   private mounted = false
+  /** While a presentation's `prepare` runs: what `start` hands every caller. */
+  private preparing: Promise<boolean> | null = null
   private ticksRun = 0
   private speed: number
   /** Real time that passed while the loop held for a pack. */
@@ -270,31 +278,98 @@ export class GameHost<
     this.speed = speed
   }
 
-  private mount(): void {
-    const { presentation, container } = this.options
-    if (presentation === undefined || container === undefined || this.mounted)
-      return
-    presentation.mount(
-      container,
+  private get context(): PresentationContext {
+    return (
       this.options.presentationContext ?? {
         random: () => 0.5,
         assets: new Map(),
         devicePixelRatio: 1,
         theme: "light",
-      },
+      }
     )
+  }
+
+  private mount(): void {
+    const { presentation, container } = this.options
+    if (presentation === undefined || container === undefined || this.mounted)
+      return
+    presentation.mount(container, this.context)
     this.mounted = true
   }
 
-  start(): void {
-    if (this.state === "running") return
+  /**
+   * Starts the session's clock.
+   *
+   * A presentation with `prepare` is mounted, then prepared, and the clock
+   * starts only when `prepare` resolves. Until then `status` is
+   * `"preparing"`, no tick runs and the live queue takes no input, so nothing
+   * the player does before the game can draw is recorded. A presentation
+   * without `prepare`, or no presentation, starts the clock before `start`
+   * returns, as it always has.
+   *
+   * @returns whether the clock is running: true once it is, false when it
+   *   never will, because the session has ended, `prepare` rejected (reported
+   *   through `onError` as `E_PRESENTATION_FAILED`), or the host was stopped
+   *   or destroyed while `prepare` ran. It never rejects, so a caller with
+   *   nothing to wait for may leave it.
+   */
+  start(): Promise<boolean> {
+    if (this.state === "running") return Promise.resolve(true)
     // A finished session does not restart. Without this, start() on an ended
     // host schedules a frame, session.step() returns false immediately, and
     // finish() fires onEnded a second time - so a host bridge sends a second
     // `ended` and a second recording for one run. A shell that starts twice,
     // which a re-rendering effect does by itself, is enough to trigger it.
-    if (this.state === "ended") return
+    if (this.state === "ended") return Promise.resolve(false)
+    if (this.preparing !== null) return this.preparing
     this.mount()
+    const { presentation, container } = this.options
+    // Prepared once, from idle: a paused host that is started again goes on
+    // as it did before prepare existed.
+    if (
+      this.state !== "idle" ||
+      !this.mounted ||
+      presentation?.prepare === undefined ||
+      container === undefined
+    ) {
+      this.run()
+      return Promise.resolve(true)
+    }
+    this.state = "preparing"
+    this.live?.pause()
+    let ready: Promise<void>
+    try {
+      ready = Promise.resolve(presentation.prepare(container, this.context))
+    } catch (error) {
+      ready = Promise.reject(error)
+    }
+    const preparing = ready.then(
+      () => {
+        this.preparing = null
+        // Stopped or destroyed while it waited: nothing starts.
+        if (this.state !== "preparing") return false
+        this.live?.resume()
+        this.run()
+        return true
+      },
+      (error: unknown) => {
+        this.preparing = null
+        if (this.state !== "preparing") return false
+        this.fail(
+          new ClockworkError("E_PRESENTATION_FAILED", {
+            detail: error instanceof Error ? error.message : String(error),
+            cause: error,
+          }),
+        )
+        return false
+      },
+    )
+    this.preparing = preparing
+    return preparing
+  }
+
+  /** Starts the clock now. */
+  private run(): void {
     this.state = "running"
     this.lastNow = this.scheduler.now()
     this.schedule()

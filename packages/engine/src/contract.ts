@@ -176,6 +176,18 @@ export interface Presentation<TView = unknown, TContainer = unknown> {
   mount(container: TContainer, context: PresentationContext): void
 
   /**
+   * Gets ready to draw, for a renderer that starts asynchronously: workers to
+   * spawn, a WebAssembly core to compile, shaders to build, a device to ask
+   * for. The host calls it once, after `mount` and before the first tick, and
+   * starts the session's clock only when it resolves, so no tick runs and no
+   * input is recorded while nothing can be drawn. A rejection means the
+   * presentation cannot draw on this device: the host reports it as
+   * `E_PRESENTATION_FAILED`, carrying this error's message, and the session
+   * never starts. Leave it out when `mount` leaves the presentation ready.
+   */
+  prepare?(container: TContainer, context: PresentationContext): Promise<void>
+
+  /**
    * @param view the current simulation view
    * @param previousView the view one tick earlier, or null on the first frame
    * @param alpha how far between them this frame sits, in [0, 1)

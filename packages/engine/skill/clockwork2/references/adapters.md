@@ -1,13 +1,31 @@
 # Renderers
 
 A renderer implements `Presentation<TView, TContainer>`: `mount`, `render`,
-`unmount`. The host calls `render(view, previousView, alpha, dtMs)` once per
-frame, whatever number of ticks that frame ran.
+`unmount`, and `prepare` when it starts asynchronously. The host calls
+`render(view, previousView, alpha, dtMs)` once per frame, whatever number of
+ticks that frame ran.
 
 It reads. It does not write. Not to the view, not to the simulation, not
 anywhere the simulation can read back. That is the entire contract, and it is
 what makes it safe for a renderer to use `Math.random`, `performance.now`,
 Three's `Quaternion` and anything else that is off-limits on the other side.
+
+## A renderer that has to get ready
+
+A renderer that cannot draw as soon as `mount` returns, because it spawns
+workers, compiles a WebAssembly core, builds shaders or asks for a GPU,
+implements `prepare(container, context): Promise<void>` and resolves it once
+it can draw. `GameHost.start()` mounts it, calls `prepare`, and starts the
+session's clock only when `prepare` resolves: no tick runs before that, and the
+live queue takes no input, so a player is never playing a game they cannot
+see. `start()` returns a promise of `true` once the clock runs.
+
+A rejection means this device cannot draw the game. The host reports it
+through `onError` as `E_PRESENTATION_FAILED`, carrying the presentation's own
+message, `start()` resolves `false`, and the session never starts. A host
+stopped or destroyed while `prepare` runs starts nothing when it settles. The
+three adapters here draw from `mount` and have no `prepare`, so for them
+`start()` starts the clock before it returns, as it always has.
 
 ## The four arguments
 

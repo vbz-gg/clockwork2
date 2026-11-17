@@ -787,6 +787,7 @@ interface Presentation<TView, TContainer> {
   mount(container: TContainer, context: PresentationContext): void
   render(view: TView, previousView: TView | null, alpha: number, dtMs: number): void
   unmount(): void
+  prepare?(container: TContainer, context: PresentationContext): Promise<void>
 }
 ```
 
@@ -803,6 +804,18 @@ simulation judder on a 144 Hz screen.
 
 `dtMs` is real milliseconds since the previous frame, which is legitimate here
 precisely because nothing reads it back.
+
+`prepare` is for a renderer that starts asynchronously: one that spawns
+workers, compiles a WebAssembly core, builds shaders or asks the browser for a
+GPU before it can draw. Without it the session's clock starts as soon as the
+host does, and such a renderer leaves a run playing with no picture, or fails
+only after ticks have run and inputs have been recorded. With it, the host
+mounts the presentation, calls `prepare`, and starts the clock only once it
+resolves: no tick runs and the live queue takes no input before then. A
+rejection is reported as `E_PRESENTATION_FAILED`, carrying the presentation's
+own message, and the session never starts. A presentation that draws from
+`mount`, as the three adapters below do, leaves `prepare` out and nothing about
+it changes.
 
 Three adapters ship, each read-only and driven the same way:
 
@@ -1320,7 +1333,16 @@ host.start()
 ```
 
 The host owns the accumulator, the checkpoints and the recording. The game
-knows about none of them. A game runs in its own page, on its own site; there is
+knows about none of them.
+
+`start()` returns a promise of whether the clock is running. With a
+presentation that has no `prepare`, the clock is running before `start()`
+returns and the promise resolves `true`, so a page can ignore it. With one,
+`status` reads `"preparing"` until `prepare` settles; the promise resolves
+`true` when the clock starts, and `false` when it never will: `prepare`
+rejected, which `onError` reports as `E_PRESENTATION_FAILED`, or the host was
+stopped or destroyed in the meantime, after which nothing starts. It never
+rejects. A game runs in its own page, on its own site; there is
 no frame between the page and the game.
 
 A game with data packs gives the host its start packs and a loader for the

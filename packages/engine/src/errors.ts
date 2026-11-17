@@ -47,6 +47,9 @@ export const ERROR_CODES = {
   E_ARG_INVALID: "an argument is outside the range this API accepts",
   /** The host cannot supply something the engine needs to run correctly. */
   E_ENV_UNSUPPORTED: "this environment cannot run the engine correctly",
+  /** A presentation's `prepare()` rejected, so the session never started. */
+  E_PRESENTATION_FAILED:
+    "the presentation could not get ready to draw, so the session never started",
 
   // --- data packs ---------------------------------------------------------
   /** A pack was named that the manifest does not declare as one. */

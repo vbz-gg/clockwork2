@@ -201,6 +201,20 @@ Neither is something a game can fix. A platform that fails the first is not one
 this engine runs on. The second is a browser without canvas support, or a
 canvas already holding a context of another kind.
 
+### E_PRESENTATION_FAILED
+
+The presentation's `prepare()` rejected or threw, so the host never started the
+session's clock: no tick ran and nothing was recorded. The detail is the
+presentation's own error message, and the error it threw is the `cause`.
+`GameHost` reports it through `onError`, and `start()` resolves `false`.
+
+A renderer with `prepare` is one that starts asynchronously, such as one that
+spawns workers, compiles WebAssembly or asks for a GPU, and a rejection
+usually means this device cannot draw it: no WebGL, no WebGPU, a worker the
+page's policy refuses. Show the player the message rather than a run that
+plays with no picture, and check the page's policy if the same device draws
+other pages.
+
 ### E_PACK_UNDECLARED
 
 The game named a pack the manifest does not declare with

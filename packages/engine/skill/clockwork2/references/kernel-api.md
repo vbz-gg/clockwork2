@@ -736,6 +736,8 @@ ERROR_CODES: {
     readonly E_ARG_INVALID: "an argument is outside the range this API accepts";
     /** The host cannot supply something the engine needs to run correctly. */
     readonly E_ENV_UNSUPPORTED: "this environment cannot run the engine correctly";
+    /** A presentation's `prepare()` rejected, so the session never started. */
+    readonly E_PRESENTATION_FAILED: "the presentation could not get ready to draw, so the session never started";
     /** A pack was named that the manifest does not declare as one. */
     readonly E_PACK_UNDECLARED: "a pack was named that the manifest does not declare with requiredForSim";
     /** The game read a pack outside the steps it asked for it. */
@@ -1033,6 +1035,17 @@ What a renderer implements. It reads and never writes. `TContainer` is generic s
 ```ts
 export interface Presentation<TView = unknown, TContainer = unknown> {
     mount(container: TContainer, context: PresentationContext): void;
+    /**
+     * Gets ready to draw, for a renderer that starts asynchronously: workers to
+     * spawn, a WebAssembly core to compile, shaders to build, a device to ask
+     * for. The host calls it once, after `mount` and before the first tick, and
+     * starts the session's clock only when it resolves, so no tick runs and no
+     * input is recorded while nothing can be drawn. A rejection means the
+     * presentation cannot draw on this device: the host reports it as
+     * `E_PRESENTATION_FAILED`, carrying this error's message, and the session
+     * never starts. Leave it out when `mount` leaves the presentation ready.
+     */
+    prepare?(container: TContainer, context: PresentationContext): Promise<void>;
     /**
      * @param view the current simulation view
      * @param previousView the view one tick earlier, or null on the first frame
@@ -2101,6 +2114,7 @@ export declare class AudioSink {
 export declare class GameHost<TView = unknown, TContainer = unknown, TConfig = PlainValue> {
     /** Present only for a live session; a replay reads its recorded source. */
     readonly live: LiveInputQueue | null;
+    /** While a presentation's `prepare` runs: what `start` hands every caller. */
     /** Real time that passed while the loop held for a pack. */
     /** Frames that ran no tick because the loop was holding from their start. */
     /** The config given, or the served one: what the session and its recording carry. */
@@ -2127,7 +2141,24 @@ export declare class GameHost<TView = unknown, TContainer = unknown, TConfig = P
     /** How far between the last tick and the next, for the renderer. */
     get alpha(): number;
     setSpeed(speed: number): void;
-    start(): void;
+    /**
+     * Starts the session's clock.
+     *
+     * A presentation with `prepare` is mounted, then prepared, and the clock
+     * starts only when `prepare` resolves. Until then `status` is
+     * `"preparing"`, no tick runs and the live queue takes no input, so nothing
+     * the player does before the game can draw is recorded. A presentation
+     * without `prepare`, or no presentation, starts the clock before `start`
+     * returns, as it always has.
+     *
+     * @returns whether the clock is running: true once it is, false when it
+     *   never will, because the session has ended, `prepare` rejected (reported
+     *   through `onError` as `E_PRESENTATION_FAILED`), or the host was stopped
+     *   or destroyed while `prepare` ran. It never rejects, so a caller with
+     *   nothing to wait for may leave it.
+     */
+    start(): Promise<boolean>;
+    /** Starts the clock now. */
     pause(): void;
     resume(): void;
     /** Ends the session without finishing it, for a player who walked away. */
@@ -2735,8 +2766,10 @@ export type DeviceNoticeCode = (typeof DEVICE_NOTICES)[keyof typeof DEVICE_NOTIC
 
 ### HostState
 
+Where a host is. `preparing` is the wait between `start` and the clock starting, while a presentation's `prepare` runs.
+
 ```ts
-export type HostState = "idle" | "running" | "paused" | "ended";
+export type HostState = "idle" | "preparing" | "running" | "paused" | "ended";
 ```
 
 ### MotionAccess
