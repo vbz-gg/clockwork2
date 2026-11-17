@@ -212,19 +212,46 @@ describe("scripts/validate.sh", () => {
   const script = join(SKILL, "scripts/validate.sh")
 
   test("refuses an argument the checks do not take, and runs nothing", () => {
-    // It runs the game's own clockwork2-validate, found from where it is run,
-    // which here is this repository's root.
-    for (const [args, said] of [
-      [[join(ENGINE, "fixtures/conforming"), "--rank"], "'--rank'"],
-      [["--ranked=true"], "'--ranked' does not take an argument"],
-    ] as const) {
-      const result = spawnSync("bash", [script, ...args], {
-        cwd: REPOSITORY,
-        encoding: "utf8",
-      })
-      expect(result.status, said).toBe(2)
-      expect(result.stderr, said).toContain(said)
-      expect(result.stdout, said).not.toContain("pass ")
+    // The script runs the game's own clockwork2-validate, found in the
+    // node_modules/.bin of the directory it is run from. This repository's
+    // root cannot stand in for a game: on a fresh install dist is built after
+    // `bun install`, so bun has not linked the bin or marked the built CLI
+    // runnable, and bunx then asks the registry for it. So the test stands up
+    // a game root with a runnable bin that loads the built CLI, as a game's
+    // install of the package gives it.
+    const game = mkdtempSync(join(tmpdir(), "cw2-validate-"))
+    try {
+      writeFileSync(join(game, "package.json"), '{ "private": true }\n')
+      const bin = join(game, "node_modules", ".bin")
+      mkdirSync(bin, { recursive: true })
+      writeFileSync(
+        join(bin, "clockwork2-validate"),
+        `#!/usr/bin/env bun\nimport ${JSON.stringify(join(ENGINE, "dist/validate/cli.js"))}\n`,
+        { mode: 0o755 },
+      )
+      const run = (args: readonly string[]) =>
+        spawnSync("bash", [script, ...args], { cwd: game, encoding: "utf8" })
+
+      // A call the CLI takes must reach it and pass, or a refusal below could
+      // be a CLI that was never found.
+      const found = run([
+        join(ENGINE, "fixtures/conforming"),
+        "--only=manifest",
+      ])
+      expect(found.status, found.stderr).toBe(0)
+      expect(found.stdout).toContain("manifest")
+
+      for (const [args, said] of [
+        [[join(ENGINE, "fixtures/conforming"), "--rank"], "'--rank'"],
+        [["--ranked=true"], "'--ranked' does not take an argument"],
+      ] as const) {
+        const result = run(args)
+        expect(result.status, said).toBe(2)
+        expect(result.stderr, said).toContain(said)
+        expect(result.stdout, said).not.toContain("pass ")
+      }
+    } finally {
+      rmSync(game, { recursive: true, force: true })
     }
   }, 60_000)
 })
