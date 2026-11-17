@@ -214,18 +214,17 @@ describe("scripts/validate.sh", () => {
   test("refuses an argument the checks do not take, and runs nothing", () => {
     // It runs the game's own clockwork2-validate, found from where it is run,
     // which here is this repository's root.
-    for (const args of [
-      [join(ENGINE, "fixtures/conforming"), "--rank"],
-      ["--ranked=true"],
-    ]) {
+    for (const [args, said] of [
+      [[join(ENGINE, "fixtures/conforming"), "--rank"], "'--rank'"],
+      [["--ranked=true"], "'--ranked' does not take an argument"],
+    ] as const) {
       const result = spawnSync("bash", [script, ...args], {
         cwd: REPOSITORY,
         encoding: "utf8",
       })
-      const wrong = args.at(-1) as string
-      expect(result.status, wrong).toBe(2)
-      expect(result.stderr, wrong).toContain(`run does not take ${wrong}`)
-      expect(result.stdout, wrong).not.toContain("pass ")
+      expect(result.status, said).toBe(2)
+      expect(result.stderr, said).toContain(said)
+      expect(result.stdout, said).not.toContain("pass ")
     }
   }, 60_000)
 })

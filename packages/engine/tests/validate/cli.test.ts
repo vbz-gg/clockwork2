@@ -51,7 +51,13 @@ describe("usage", () => {
   test("an argument run does not take exits 2, names it and runs nothing", async () => {
     // Ignored, a mistyped --rank or a --ranked=true ran the every-game set
     // and exited 0, which read as a pass of the ranked set.
-    for (const wrong of ["--rank", "--ranked=true", "--only", "extra"]) {
+    for (const [wrong, said] of [
+      ["--rank", "Unknown option '--rank'"],
+      ["--ranked=true", "Option '--ranked' does not take an argument"],
+      ["--only", "Option '--only <value>' argument missing"],
+      ["-r", "Unknown option '-r'"],
+      ["extra", "run takes one path, and was also given extra"],
+    ] as const) {
       const { code, out, err } = await run(
         "run",
         join(FIXTURES, "conforming"),
@@ -59,25 +65,40 @@ describe("usage", () => {
         wrong,
       )
       expect(code, wrong).toBe(2)
-      expect(err, wrong).toContain(`run does not take ${wrong}`)
+      expect(err, wrong).toContain(said)
       expect(out, wrong).not.toContain("pass ")
     }
   }, 60_000)
 
-  test("a flag where the path goes exits 2", async () => {
-    const { code, err } = await run("run", "--ranked")
-    expect(code).toBe(2)
-    expect(err).toContain("run needs a path before --ranked")
+  test("the path may come after the flags, but not be missing", async () => {
+    const after = await run(
+      "run",
+      "--only=manifest",
+      "--seeds=t1",
+      join(FIXTURES, "conforming"),
+    )
+    expect(after.code).toBe(0)
+    const missing = await run("run", "--ranked")
+    expect(missing.code).toBe(2)
+    expect(missing.err).toContain("run needs a path")
+    expect(missing.out).toContain("clockwork2-validate")
   }, 30_000)
 
-  test("scan takes nothing after its path", async () => {
-    const { code, err } = await run(
-      "scan",
-      join(FIXTURES, "conforming/index.ts"),
-      "--json",
-    )
-    expect(code).toBe(2)
-    expect(err).toContain("scan does not take --json")
+  test("scan takes nothing but its path", async () => {
+    for (const [wrong, said] of [
+      ["--json", "Unknown option '--json'"],
+      ["--ranked", "Unknown option '--ranked'"],
+      ["another.ts", "scan takes one path, and was also given another.ts"],
+    ] as const) {
+      const { code, out, err } = await run(
+        "scan",
+        join(FIXTURES, "conforming/index.ts"),
+        wrong,
+      )
+      expect(code, wrong).toBe(2)
+      expect(err, wrong).toContain(said)
+      expect(out, wrong).not.toContain("finding(s)")
+    }
   }, 30_000)
 
   test("an unknown command exits 2 and names it", async () => {
