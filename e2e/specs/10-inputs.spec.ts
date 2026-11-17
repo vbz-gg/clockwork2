@@ -91,6 +91,36 @@ test.describe("the device helpers in a browser", () => {
     ])
   })
 
+  test("a key event a script dispatches is not the player's, unless the page records scripted events", async ({
+    page,
+  }) => {
+    // The browser marks an event a script made with isTrusted false, and the
+    // helpers ignore one unless the page asks for scripted events: a ranked
+    // run's page ignores them, so no script on it can press for the player.
+    const scripted = () =>
+      page.evaluate(() => {
+        for (const type of ["keydown", "keyup"]) {
+          window.dispatchEvent(new KeyboardEvent(type, { code: "ArrowLeft" }))
+        }
+      })
+    await open(page)
+    await scripted()
+    await page.keyboard.press("KeyD")
+    const ignored = await until(page, "right", 0)
+    expect(pairs(ignored)).toEqual([
+      ["right", 1],
+      ["right", 0],
+    ])
+
+    await open(page, "?scripted=record")
+    await scripted()
+    const kept = await until(page, "left", 0)
+    expect(pairs(kept)).toEqual([
+      ["left", 1],
+      ["left", 0],
+    ])
+  })
+
   // The pointer tests leave mouse lock out of the mapping: Chromium and
   // Firefox grant the lock headless, and a locked mouse reports movement,
   // not a position, and cannot leave the stage.

@@ -115,6 +115,9 @@ function newSession(
     capture = new InputCapture({
       manifest: MANIFEST,
       queue: live,
+      // Only the player's own keys: a key event a script dispatches on this
+      // page is not a move.
+      scripted: "ignore",
       keys: KEYS,
     })
     capture.attach()

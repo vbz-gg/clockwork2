@@ -685,13 +685,16 @@ was produced: the busiest, two thumbs on a pointer declared 0 to 1000, records
 ### The device helpers
 
 `InputCapture` in `@clockwork2/engine/host` is one way to record the common
-devices, and a game may use it, use part of it, or record its inputs itself by
-pushing to `host.live`. It takes a mapping in the game's code:
+devices. A game played on its own page may use it, use part of it, or record
+its inputs itself by pushing to `host.live`. A ranked or practice run on a
+platform takes its inputs from these helpers only, with `scripted: "ignore"`,
+below. It takes a mapping in the game's code:
 
 ```ts
 new InputCapture({
   manifest: MANIFEST,
   queue: live,                           // host.live, null only in a replay
+  scripted: "ignore",                    // what a script's events do; required
   element: canvas,                       // pointers and the wheel are heard here
   keys: { ArrowLeft: "left", KeyA: "left" },
   pointers: [{ down: "tap", x: "aimX", y: "aimY" }, { down: "tap" }],
@@ -701,6 +704,21 @@ new InputCapture({
   onNotice: (notice) => showTo(player, notice),
 }).attach()
 ```
+
+`scripted` decides what happens to an event a script made rather than the
+player, which the browser marks `isTrusted: false`: one from `dispatchEvent`,
+or a `new KeyboardEvent(...)`. `"ignore"` records nothing from one, and
+`"record"` treats it like any other. It has no default, so every page says. A
+page playing a ranked or practice run sets `"ignore"`: a recording is a claim
+about what the player pressed, and any script on the page, the game's own
+drawing code included, could otherwise dispatch presses that read as the
+player's. A game played only on its own page may set `"record"` to drive
+itself from a test or a tool. It covers every event the helpers listen to:
+keys, pointers, hover, the wheel, movement under mouse lock, and the blur,
+visibility and lock changes that release what is held. Gamepads are polled
+through `navigator.getGamepads()`, which carries no such mark, so a gamepad is
+read under either setting. Tilt ignores a scripted reading under either
+setting, as it did before the option existed.
 
 `checkCapture(mapping, manifest)` checks a mapping without attaching it: every
 name declared, a press's range holding 0 and 1, one source for a position or an
@@ -1257,6 +1275,7 @@ if (live === null) throw new Error("a live session has a live input queue")
 new InputCapture({
   manifest: MANIFEST,
   queue: live,
+  scripted: "ignore",
   element: container,
   keys: { ArrowLeft: "left", ArrowRight: "right" },
   pointers: [{ down: "tap", x: "aimX" }],
@@ -1408,6 +1427,13 @@ own controls, declares what it records, and maps devices onto those names in
 its page. The engine keeps optional helpers for the common devices and a check
 of a log against the declared inputs, and nothing about a device reaches a
 recording.
+
+**A page says whether a script's events count, and has no default.** The
+browser marks an event a script made, and the helpers can read the mark.
+Ignoring such events by default would break a game that drives itself from a
+test page; recording them by default would let any script on a ranked run's
+page press for the player. Each default is wrong for one of the two kinds of
+page, so `scripted` is required and each page names its own.
 
 **A merged input stays where the first one stood, and never crosses a
 press.** A level merged to the last value of a tick overwrites the earlier

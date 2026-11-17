@@ -8,6 +8,7 @@ import {
   type DeviceNotice,
   InputCapture,
   POINTER_SLOTS,
+  type ScriptedEvents,
   screenRotation,
 } from "../../src/host/input"
 import type { Inputs } from "../../src/manifest/types"
@@ -137,10 +138,19 @@ function manifestOf(
   return { inputs, capabilities } as unknown as Manifest
 }
 
+/**
+ * A capture on a fake browser. The fake's events carry no `isTrusted` unless
+ * a test gives one, as if a script made them, so the helpers record them
+ * only under `scripted: "record"`, which is the default here.
+ */
 function capture(
   inputs: Inputs,
   mapping: CaptureMapping,
-  extra: { pointerLock?: boolean; element?: boolean } = {},
+  extra: {
+    pointerLock?: boolean
+    element?: boolean
+    scripted?: ScriptedEvents
+  } = {},
 ) {
   const queue = new LiveInputQueue(inputs)
   const browser = fakeBrowser()
@@ -149,6 +159,7 @@ function capture(
   const helper = new InputCapture({
     manifest: manifestOf(inputs, { pointerLock: extra.pointerLock === true }),
     queue,
+    scripted: extra.scripted ?? "record",
     ...mapping,
     ...(extra.element === false ? {} : { element: element.html }),
     onNotice: (notice) => notices.push(notice),
@@ -269,6 +280,7 @@ describe("checking a mapping before anything starts", () => {
         new InputCapture({
           manifest: manifestOf(INPUTS),
           queue,
+          scripted: "record",
           keys: { Space: "fly" },
         }),
     ).toThrow(/E_ARG_INVALID/)
@@ -282,6 +294,7 @@ describe("checking a mapping before anything starts", () => {
         new InputCapture({
           manifest: manifestOf(INPUTS),
           queue,
+          scripted: "record",
           pointers: [{ down: "jump" }],
         }),
     ).toThrow(/element is required/)
@@ -294,6 +307,7 @@ describe("checking a mapping before anything starts", () => {
         new InputCapture({
           manifest: manifestOf(INPUTS),
           queue,
+          scripted: "record",
           gamepads: { 0: { buttons: { 0: "jump" } } },
         }),
     ).toThrow(/onNotice is required/)
@@ -1277,5 +1291,182 @@ describe("tilt", () => {
     expect(screenRotation(450)).toBe(90)
     expect(screenRotation(45)).toBeUndefined()
     expect(screenRotation(undefined)).toBeUndefined()
+  })
+})
+
+describe("events a script made", () => {
+  const INPUTS: Inputs = {
+    left: PRESS,
+    touch: PRESS,
+    alt: PRESS,
+    aimX: { min: 0, max: 32 },
+    hoverX: { min: 0, max: 8 },
+    lookX: { min: -50, max: 50 },
+    zoom: { min: -10, max: 10 },
+    jump: PRESS,
+    lean: { min: -100, max: 100 },
+  }
+  const MAPPING: CaptureMapping = {
+    keys: { ArrowLeft: "left" },
+    pointers: [{ down: "touch", x: "aimX", buttons: { 2: "alt" } }],
+    hover: { x: "hoverX" },
+    mouseLock: { dx: "lookX" },
+    wheel: { y: "zoom" },
+    gamepads: { 0: { buttons: { 0: "jump" } } },
+    tilt: { x: "lean" },
+  }
+  const PRESSED_PAD = {
+    index: 0,
+    id: "pad",
+    mapping: "standard",
+    connected: true,
+    buttons: [{ pressed: true, value: 1, touched: true }],
+    axes: [],
+  } as unknown as Gamepad
+
+  /**
+   * Every device the helpers hear, each driven once by `send`, in an order
+   * that records something from each: a key, hover, a press with its
+   * position, a second button, a release, the wheel, movement under lock and
+   * a blur that lets go of a held key.
+   */
+  function play(
+    made: ReturnType<typeof capture>,
+    isTrusted: boolean | undefined,
+  ): void {
+    const { browser, element } = made
+    const by = isTrusted === undefined ? {} : { isTrusted }
+    browser.window.send("keydown", { code: "ArrowLeft", ...by })
+    browser.window.send("keyup", { code: "ArrowLeft", ...by })
+    element.target.send("pointermove", {
+      pointerId: 1,
+      pointerType: "mouse",
+      buttons: 0,
+      ...at(0.5, 0.5),
+      ...by,
+    })
+    element.target.send("pointerdown", {
+      pointerId: 1,
+      buttons: 1,
+      ...at(0.25, 0.5),
+      ...by,
+    })
+    element.target.send("pointermove", {
+      pointerId: 1,
+      buttons: 3,
+      ...at(0.25, 0.5),
+      ...by,
+    })
+    element.target.send("pointerup", {
+      pointerId: 1,
+      buttons: 0,
+      ...at(0.25, 0.5),
+      ...by,
+    })
+    element.target.send("wheel", {
+      deltaMode: 1,
+      deltaX: 0,
+      deltaY: 6,
+      ...by,
+    })
+    browser.document.pointerLockElement = element.element
+    element.target.send("pointermove", {
+      pointerId: 1,
+      buttons: 0,
+      ...at(0.5, 0.5),
+      movementX: 4,
+      ...by,
+    })
+    browser.document.pointerLockElement = null
+    browser.window.send("keydown", { code: "ArrowLeft", ...by })
+    browser.window.send("blur", by)
+  }
+
+  const everything = (scripted: ScriptedEvents) =>
+    capture(INPUTS, MAPPING, { pointerLock: true, scripted })
+
+  /** What a run of `play` records, inputs only, across every tick. */
+  const recorded = (made: ReturnType<typeof capture>) =>
+    made.queue.take(0).map((e) => [e.code, e.value])
+
+  const ALL = [
+    ["left", 1],
+    ["left", 0],
+    ["hoverX", 4],
+    ["aimX", 8],
+    ["touch", 1],
+    ["alt", 1],
+    ["alt", 0],
+    ["touch", 0],
+    ["zoom", 2],
+    ["lookX", 4],
+    ["left", 1],
+    ["left", 0],
+  ]
+
+  test("under ignore, none is recorded from any device the helpers listen to", () => {
+    const made = everything("ignore")
+    play(made, false)
+    expect(recorded(made)).toEqual([])
+    // A fake event with no mark at all is not the browser's either.
+    play(made, undefined)
+    expect(recorded(made)).toEqual([])
+  })
+
+  test("under ignore, the same events the browser made are all recorded", () => {
+    // The non-triviality guard for the test above: what it refused is what a
+    // person's hands produce.
+    const made = everything("ignore")
+    play(made, true)
+    expect(recorded(made)).toEqual(ALL)
+  })
+
+  test("under record, a script's events are recorded as the player's", () => {
+    const made = everything("record")
+    play(made, false)
+    expect(recorded(made)).toEqual(ALL)
+  })
+
+  test("gamepads are polled, carry no such mark, and are read under either setting", () => {
+    for (const scripted of ["ignore", "record"] as const) {
+      const made = everything(scripted)
+      made.browser.setPads([PRESSED_PAD])
+      made.queue.poll()
+      expect(recorded(made), scripted).toEqual([["jump", 1]])
+    }
+  })
+
+  test("tilt ignores a scripted reading under either setting, as it always has", () => {
+    for (const scripted of ["ignore", "record"] as const) {
+      const made = everything(scripted)
+      made.browser.window.send("deviceorientation", {
+        beta: 0,
+        gamma: 30,
+        isTrusted: false,
+      })
+      expect(recorded(made), scripted).toEqual([])
+      made.browser.window.send("deviceorientation", {
+        beta: 0,
+        gamma: 30,
+        isTrusted: true,
+      })
+      expect(recorded(made), scripted).toEqual([["lean", 50]])
+    }
+  })
+
+  test("a page has to say which it wants", () => {
+    // Required by the type; a caller the type did not reach is refused rather
+    // than left recording every scripted event.
+    for (const scripted of [undefined, "sometimes"]) {
+      expect(
+        () =>
+          new InputCapture({
+            manifest: manifestOf(INPUTS),
+            queue: new LiveInputQueue(INPUTS),
+            keys: { ArrowLeft: "left" },
+            scripted: scripted as never,
+          }),
+      ).toThrow(/scripted must be "record" or "ignore"/)
+    }
   })
 })

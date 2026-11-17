@@ -2135,6 +2135,10 @@ export declare class InputCapture {
     /** Gamepads by index, with the id last seen there. */
     constructor(options: InputCaptureOptions);
     attach(): void;
+    /**
+     * Listens for one event, and acts on it only while not paused and, under
+     * `scripted: "ignore"`, only when the browser rather than a script made it.
+     */
     /** One notice per request, however many ways the browser says no. */
     /** The lowest free slot, taken only when a pointer goes down. */
     /** Presses and releases each mouse or pen button whose bit changed. */
@@ -2546,6 +2550,26 @@ export interface InputCaptureOptions extends CaptureMapping {
     /** Where inputs go: a session's live queue, or a worker's. */
     readonly queue: InputSink;
     /**
+     * Whether an event a script made is recorded: one whose `isTrusted` is
+     * false, from `dispatchEvent` or `new KeyboardEvent(...)` rather than from
+     * the player's own hands. Required, so every page says which it is.
+     *
+     * `"ignore"` is what a page playing a ranked or practice run on a platform
+     * sets: there an input has to come from a device, or any script on the page
+     * could play the run. `"record"` treats a scripted event like any other,
+     * which a game played on its own page may want, to drive itself from a test
+     * or a tool.
+     *
+     * It covers every event the helpers listen to: keys, pointers (presses,
+     * positions, buttons, and movement under mouse lock), hover, the wheel, and
+     * the blur, visibility and lock changes that release what is held.
+     * Gamepads are polled through `navigator.getGamepads()`, which reports no
+     * such mark, so a gamepad is read whatever this says. Tilt ignores a
+     * scripted reading whatever this says, as it always has: a reading a script
+     * made would also stand in for the sensor `requestMotion` waits to hear.
+     */
+    readonly scripted: ScriptedEvents;
+    /**
      * The element the game is drawn on. A pointer's position is measured
      * across it, on each axis separately, so it must be the element the
      * playfield fills, stretched the same way. The wheel is heard on it.
@@ -2691,6 +2715,14 @@ Fetches one pack by its manifest path.
 
 ```ts
 export type PackLoader = (path: string) => Promise<PackBytes>;
+```
+
+### ScriptedEvents
+
+What the helpers do with an event a script made rather than the browser: `"ignore"` records nothing from one, `"record"` treats it as the player's.
+
+```ts
+export type ScriptedEvents = "record" | "ignore";
 ```
 
 ### SoundRecipe

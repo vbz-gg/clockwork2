@@ -33,6 +33,7 @@ export {
   POINTER_BUTTONS,
   POINTER_SLOTS,
   type PointerSlot,
+  type ScriptedEvents,
   screenRotation,
 } from "./input.js"
 export {

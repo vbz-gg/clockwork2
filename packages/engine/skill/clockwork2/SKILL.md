@@ -178,6 +178,11 @@ them: the nine rules above bind every session, wherever it runs.
   that records only changes, in the coarsest range the game needs, stays far
   under it. `references/inputs.md` has the measurements.
   *Held by the platform, with `checkInputs`.*
+- **Inputs come only from the device helpers**, with `InputCapture`'s
+  `scripted: "ignore"`, so an event a script dispatches on the page is never
+  recorded as the player's. A game played on its own page may record its
+  inputs itself, or set `scripted: "record"`.
+  *Held by the page a platform's kit builds, which sets it.*
 
 ## What the renderer may do
 

@@ -17,6 +17,9 @@
  * capture needs that: where a browser grants the lock, a press takes the
  * mouse into it, and a locked mouse cannot leave the stage to show that a
  * release outside it still arrives.
+ *
+ * Events a script made are ignored, as on a page playing a ranked run, and
+ * `?scripted=record` records them instead, so a spec can show both.
  */
 
 import { assertManifest, type InputEvent } from "@clockwork2/engine"
@@ -103,6 +106,7 @@ function start(): void {
   const capture = new InputCapture({
     manifest: MANIFEST,
     queue,
+    scripted: params.get("scripted") === "record" ? "record" : "ignore",
     element: stage,
     ...mapping,
     onNotice: (notice) => {

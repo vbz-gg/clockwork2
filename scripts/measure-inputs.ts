@@ -301,6 +301,9 @@ export function measure(
   const capture = new InputCapture({
     manifest,
     queue,
+    // The model player's events are made by this script, so they are recorded
+    // as a browser records a person's.
+    scripted: "record",
     element: html as unknown as HTMLElement,
     ...variant.mapping,
     onNotice: (notice) => {

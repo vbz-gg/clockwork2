@@ -166,7 +166,8 @@ that field: delete it.
 
 An argument the caller controls was outside the range the API accepts, and the
 detail names the value and the range. The APIs that report it are `maxTicks`
-and `tickHz` on a session, `runSession` called without `maxTicks`, the tick
+and `tickHz` on a session, `runSession` called without `maxTicks`, an
+`InputCapture` whose `scripted` is not `"record"` or `"ignore"`, the tick
 counts `Timer.every()` and `Timer.after()`
 take, the replay speed on a host, `fixed.div()` by zero, `fixed.sqrt()` of a
 negative, `randomChoice()` on an empty array, and `dmath.copysign()` with a NaN
