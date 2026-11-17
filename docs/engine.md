@@ -375,8 +375,9 @@ throws `E_SEED_REQUIRED`.
 
 A platform serving a ranked or practice run hands the game its seed, so for
 those runs the seed has to matter: a game that ignores it plays the same game
-on every seed. The conformance suite's ranked set checks that two seeds reach
-different states (`seed-sensitivity`). A game played only on its own page is
+on every seed. The conformance suite's ranked set checks that two seeds pass
+through different states (`seed-sensitivity`), comparing every checkpoint, so
+a game whose seed shapes play and whose runs all end alike passes. A game played only on its own page is
 free to use one seed for ever.
 
 ### Sub-streams
@@ -1223,7 +1224,7 @@ refused with `E_ARG_INVALID` before anything runs.
 | 9 | replay | Record through the real recorder, serialise, deserialise, replay to the recording's end, compare |
 | 10 | manifest | Schema validation, and the bundle touches no embedder global |
 | 11 | render-smoke | The render bundle draws a canned state without leaving the frame |
-| 12 | seed-sensitivity | Ranked set only. Two seeds, `vbz-seed-a` and `vbz-seed-b`, play the idle, chaos and bot logs for 3,600 ticks; at least one log must reach a different last checkpoint, end tick, terminal or counters (`E_SEED_IGNORED`) |
+| 12 | seed-sensitivity | Ranked set only. Two seeds, `vbz-seed-a` and `vbz-seed-b`, play the idle, chaos and bot logs for 3,600 ticks; at least one log must differ in some checkpoint, its end tick, its terminal or its counters, so a game whose seed shapes play and whose runs all end alike passes (`E_SEED_IGNORED`) |
 | 13 | ranking | Ranked set only. The manifest declares `rankBy` and `tiePolicy` (`E_RANK_UNDECLARED`) |
 
 Every check plays the config a platform serves: `loadSubject` gives the

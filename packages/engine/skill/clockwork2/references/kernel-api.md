@@ -304,7 +304,8 @@ export declare class Session<TView = unknown, TConfig = PlainValue> {
      * on whether that happened quickly. A pack prefetched and not yet named is
      * kept, and so is everything in a shared set. A pack from the set that no
      * session has needed before is checked here, before the tick that may read
-     * it, so wrong bytes fail at that tick.
+     * it, so wrong bytes fail at that tick, and before anything here changes,
+     * so a pack that fails leaves this session's packs as they were.
      */
     /** Ends the session early, for a player who walked away or a host error. */
     abandon(reason?: TerminalReason): void;
@@ -762,8 +763,8 @@ ERROR_CODES: {
     readonly E_CHECK_THREW: "a conformance check threw while running";
     /** The subject could not be loaded: no entry file, or no module to run. */
     readonly E_SUBJECT_LOAD: "the subject could not be loaded";
-    /** Two seeds reached the same state on every log the seed check plays. */
-    readonly E_SEED_IGNORED: "two seeds reached the same state on every log; the seed decides nothing";
+    /** Two seeds passed through the same states on every log the seed check plays. */
+    readonly E_SEED_IGNORED: "two seeds passed through the same states on every log; the seed decides nothing";
     /** The manifest says nothing about how a run ranks. */
     readonly E_RANK_UNDECLARED: "the manifest declares no rankBy and tiePolicy, which a ranked run needs";
 }
@@ -3071,7 +3072,7 @@ DEFAULT_SEEDS: string[]
 
 ### SENSITIVITY_SEEDS
 
-The two seeds the seed check plays, which no other check uses. They are the seeds vbz's platform played when this check was its own, so a game it checked then gets the same answer here.
+The two seeds the seed check plays, which no other check uses. They are the seeds vbz's platform played when this check was its own. That check compared only where each run ended, and this one compares every checkpoint as well, so a game it passed passes here too.
 
 ```ts
 SENSITIVITY_SEEDS: readonly ["vbz-seed-a", "vbz-seed-b"]

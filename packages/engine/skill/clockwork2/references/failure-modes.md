@@ -399,18 +399,19 @@ page does not.
 
 ### E_SEED_IGNORED
 
-Two seeds reached the same state on every log the `seed-sensitivity` check
-plays: idle, chaos and the bot, each for 3,600 ticks under `vbz-seed-a` and
-`vbz-seed-b`, comparing the last checkpoint, the end tick, the terminal and the
-counters. Every other check passes such a game, because `determinism`
-compares runs of one seed. A platform serves a ranked run its seed, and a game
+Two seeds passed through the same states on every log the `seed-sensitivity`
+check plays: idle, chaos and the bot, each for 3,600 ticks under `vbz-seed-a`
+and `vbz-seed-b`, comparing every checkpoint, a hash of the whole state taken
+once a second, then the end tick, the terminal and the counters. Every other
+check passes such a game, because `determinism` compares runs of one seed. A platform serves a ranked run its seed, and a game
 that ignores it plays the same game on every seed: a daily seed serves the
 same puzzle every day.
 
 Take randomness from `new Prng(seed)` in `init`. A game whose opening is fixed
-and whose play is seeded passes, since one log that differs is enough; one
-that consults its seed only after its first 3,600 ticks does not, and should
-draw from it sooner.
+and whose play is seeded passes, since one log that differs at one checkpoint
+is enough, and so does one whose seed shapes play while every run ends alike.
+One that consults its seed only after its first 3,600 ticks does not, and
+should draw from it sooner.
 
 ### E_RANK_UNDECLARED
 

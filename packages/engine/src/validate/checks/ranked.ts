@@ -20,8 +20,9 @@ import { configOf, countersOf, sessionPacks } from "./support.js"
 
 /**
  * The two seeds the seed check plays, which no other check uses. They are
- * the seeds vbz's platform played when this check was its own, so a game it
- * checked then gets the same answer here.
+ * the seeds vbz's platform played when this check was its own. That check
+ * compared only where each run ended, and this one compares every
+ * checkpoint as well, so a game it passed passes here too.
  */
 export const SENSITIVITY_SEEDS = ["vbz-seed-a", "vbz-seed-b"] as const
 
@@ -35,7 +36,12 @@ const SENSITIVITY_LOG_SEED = "vbz-sensitivity"
  */
 export const SENSITIVITY_TICKS = 3_600
 
-/** What a run reached, as one string two runs can be compared by. */
+/**
+ * What a run went through and reached, as one string two runs can be compared
+ * by: every checkpoint, then the end tick, the terminal and the counters. A
+ * checkpoint is a hash of the whole state, so two runs whose strings differ
+ * were in different states at some tick, even when they end the same.
+ */
 function outcomeOf(
   subject: Subject,
   module: GameModule,
@@ -56,22 +62,27 @@ function outcomeOf(
     .sort()
     .map((name) => `${name}=${String(result.counters[name])}`)
     .join(",")
-  const last = result.checkpoints.at(-1)?.hash ?? "none"
-  return `${last}|${result.endTick}|${result.terminal}|${counters}`
+  const checkpoints = result.checkpoints
+    .map((checkpoint) => `${checkpoint.tick}:${checkpoint.hash}`)
+    .join(",")
+  return `${checkpoints}|${result.endTick}|${result.terminal}|${counters}`
 }
 
 /**
- * Two seeds must reach different states on the same input log.
+ * Two seeds must pass through different states on the same input log: some
+ * checkpoint, the end tick, the terminal or the counters must differ.
  *
  * A game that ignores its seed passes every other check: determinism
  * compares runs of the same seed, so a seed-blind game is perfectly
  * deterministic, restorable and stable across engines. What it is not is a
  * game a platform can serve a seed to. A daily seed would serve the same
- * puzzle every day, and a run's own seed would change nothing.
+ * puzzle every day, and a run's own seed would change nothing. A game whose
+ * seed shapes play and whose runs all end alike is not that game, which is
+ * why every checkpoint is compared and not only where the run ended.
  */
 export const seedSensitivity: Check = {
   name: "seed-sensitivity",
-  title: "Two seeds reach different states on the same input log",
+  title: "Two seeds pass through different states on the same input log",
   async run({ subject }) {
     const [a, b] = SENSITIVITY_SEEDS
     // Three shapes of play over the game's own inputs, because a game may
@@ -118,7 +129,7 @@ export const seedSensitivity: Check = {
         {
           code: "E_SEED_IGNORED",
           check: "seed-sensitivity",
-          detail: `the ${same.join(", ")} logs reached the same state under ${a} and ${b}: the seed decides nothing, so every seed a platform serves plays the same game`,
+          detail: `the ${same.join(", ")} logs passed through the same states under ${a} and ${b}, checkpoint for checkpoint: the seed decides nothing, so every seed a platform serves plays the same game`,
         },
       ],
     }

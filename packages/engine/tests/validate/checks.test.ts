@@ -393,7 +393,7 @@ describe("seed-sensitivity", () => {
     expect(outcome.ok).toBe(false)
     expect(outcome.findings[0]?.code).toBe("E_SEED_IGNORED")
     expect(outcome.findings[0]?.detail).toContain(
-      "the idle, chaos, bot logs reached the same state under vbz-seed-a and vbz-seed-b",
+      "the idle, chaos, bot logs passed through the same states under vbz-seed-a and vbz-seed-b, checkpoint for checkpoint",
     )
   })
 })

@@ -60,8 +60,8 @@ silently changes every recorded session. With sub-streams it does not.
 else the server replaying the session will not have.
 
 A ranked or practice run is served its seed by the platform, so for those the
-seed also has to change the game: two seeds over the same inputs must reach
-different states.
+seed also has to change the game: two seeds over the same inputs must pass
+through different states at some checkpoint, though they may end alike.
 
 *Checked by:* `banned-apis`, `determinism`, `replay`; and `seed-sensitivity`
 in the ranked set.

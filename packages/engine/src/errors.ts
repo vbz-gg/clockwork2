@@ -94,9 +94,9 @@ export const ERROR_CODES = {
   E_SUBJECT_LOAD: "the subject could not be loaded",
 
   // --- conformance suite, ranked set ---------------------------------------
-  /** Two seeds reached the same state on every log the seed check plays. */
+  /** Two seeds passed through the same states on every log the seed check plays. */
   E_SEED_IGNORED:
-    "two seeds reached the same state on every log; the seed decides nothing",
+    "two seeds passed through the same states on every log; the seed decides nothing",
   /** The manifest says nothing about how a run ranks. */
   E_RANK_UNDECLARED:
     "the manifest declares no rankBy and tiePolicy, which a ranked run needs",

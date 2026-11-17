@@ -164,9 +164,10 @@ game played only on its own page does not need. Determinism is not one of
 them: the nine rules above bind every session, wherever it runs.
 `<guide>/scripts/validate.sh ./src --ranked` adds the two checks below.
 
-- **The seed changes the game.** Two seeds played over the same inputs reach
-  different states on at least one of the idle, chaos and bot logs, or every
-  seed the platform serves plays the same game.
+- **The seed changes the game.** Two seeds played over the same inputs pass
+  through different states, at some checkpoint, on at least one of the idle,
+  chaos and bot logs, or every seed the platform serves plays the same game.
+  Runs that all end alike are fine.
   *Checked by `seed-sensitivity`, in the ranked set.*
 - **The manifest says how a run ranks**, with both `rankBy` and `tiePolicy`.
   *Checked by `ranking`, in the ranked set.*

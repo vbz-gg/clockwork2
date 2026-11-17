@@ -9,12 +9,22 @@
 
 import { describe, expect, test } from "bun:test"
 import { join } from "node:path"
-import type { ErrorCode } from "../../src"
+import createSeedConverges, {
+  ENDS_AT as SEED_CONVERGES_ENDS_AT,
+} from "../../fixtures/seed-converges/index"
+import {
+  type ErrorCode,
+  RecordedInputSource,
+  runSession,
+  type SessionResult,
+} from "../../src"
 import { packReaderFor } from "../../src/testing"
 import {
   CHECK_SETS,
   CHECK_WINDOW_TICKS,
   type CheckSet,
+  SENSITIVITY_SEEDS,
+  SENSITIVITY_TICKS,
 } from "../../src/validate"
 import { loadSubject } from "../../src/validate/load"
 import { formatReport, validate } from "../../src/validate/runner"
@@ -175,6 +185,40 @@ describe("a game whose play comes from its parameters' defaults", () => {
     expect(report.outcomes[0]?.ends?.map((end) => end.endTick)).toEqual([
       120, 120, 120,
     ])
+  }, 30_000)
+})
+
+describe("a game whose seed shapes play and whose end does not show it", () => {
+  test("passes the seed check, which compares every checkpoint", async () => {
+    // The guard that the fixture is the case it claims: under the check's two
+    // seeds, every run ends in the same state with the same counters, and
+    // some checkpoint before that differs.
+    const runs = SENSITIVITY_SEEDS.map((seed) =>
+      runSession({
+        module: createSeedConverges(),
+        seed,
+        config: {},
+        inputs: new RecordedInputSource([]),
+        maxTicks: SENSITIVITY_TICKS,
+        checkpointEvery: 60,
+      }),
+    )
+    const [a, b] = runs as [SessionResult, SessionResult]
+    expect(a.endTick).toBe(SEED_CONVERGES_ENDS_AT)
+    expect(b.checkpoints.at(-1)).toEqual(a.checkpoints.at(-1))
+    expect(b.counters).toEqual(a.counters)
+    expect(b.checkpoints.length).toBe(a.checkpoints.length)
+    expect(
+      b.checkpoints.some((c, i) => c.hash !== a.checkpoints[i]?.hash),
+    ).toBe(true)
+
+    const subject = await loadSubject(join(FIXTURES, "seed-converges"))
+    const report = await validate(subject, { set: "ranked", seeds: ["t1"] })
+    expect(report.outcomes.filter((o) => !o.ok).map((o) => o.check)).toEqual([])
+    const seedCheck = report.outcomes.find(
+      (o) => o.check === "seed-sensitivity",
+    )
+    expect(seedCheck?.note).toBe("idle differs between seeds")
   }, 30_000)
 })
 
