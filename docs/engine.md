@@ -58,6 +58,14 @@ testable. Three things break it in practice:
 
 Each has a section below.
 
+The same game also plays on its own page with nobody checking it, and it is
+one build either way. Determinism binds every session wherever it runs. A few
+rules bind only the runs a platform serves and replays, its ranked and
+practice runs: the seed has to change the game, inputs come only from the
+device helpers, a log stays inside an input budget, and the run, like every
+conformance check, plays the config the platform serves. Each is marked as
+such where it comes up.
+
 ## Ticks
 
 A tick is one step of the simulation. Everything in the game advances in whole
@@ -1230,7 +1238,7 @@ the window bounds what the suite costs, not what a game may do. The
 tick and terminal, and the printed report gives them a line per seed:
 
 ```
-pass  determinism       2210ms  The same seed, config and inputs reach the same state
+pass  determinism      2210ms  The same seed, config and inputs reach the same state
       27 runs compared
       conformance-1: idle ended at 1500, chaos ran the whole window (36000), bot ended at 2210
 ```

@@ -330,7 +330,7 @@ const INPUT_BOUND = 0x7fffffff
 const INPUT_FIELDS = new Set(["min", "max", "label"])
 
 /**
- * The inputs a game records, by name and range. A schema 1 binding table is
+ * The inputs a game records, by name and range. A format 1 binding table is
  * refused by name, so a manifest written for the old schema says what to
  * change rather than failing on a field it never heard of.
  */

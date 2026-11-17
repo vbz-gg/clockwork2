@@ -14,7 +14,9 @@ A platform ranks on results, so a score has to be something it can verify
 rather than trust. The browser records the player's inputs,
 the server replays them, and both sides must reach the same state - on V8,
 JavaScriptCore and SpiderMonkey alike. Everything below follows from that one
-sentence.
+sentence. The rules bind every session, including a game played only on its
+own page, except the few under "Ranked and practice runs", which bind only the
+runs a platform serves.
 
 ## Where the commands run
 

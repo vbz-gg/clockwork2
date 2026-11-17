@@ -204,7 +204,7 @@ describe("comparing whole results", () => {
   function result(over: Partial<SessionResult> = {}): SessionResult {
     return {
       endTick: 600,
-      terminal: "ended",
+      terminal: "completed",
       counters: { score: 10 },
       snapshot: { x: 1 },
       checkpoints: [{ tick: 60, hash: "a" }],
@@ -226,13 +226,10 @@ describe("comparing whole results", () => {
 
   test("a terminal reason that differs", () => {
     // Two runs that both ended at tick 600, one because the game ended and one
-    // because the tick cap fired, are not the same run.
-    const divergence = compareResults(
-      result(),
-      result({ terminal: "max-ticks" as SessionResult["terminal"] }),
-    )
+    // because its caller's maxTicks stopped it, are not the same run.
+    const divergence = compareResults(result(), result({ terminal: "timeout" }))
     expect(divergence.differences).toContain(
-      "terminal: expected ended, got max-ticks",
+      "terminal: expected completed, got timeout",
     )
   })
 

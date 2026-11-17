@@ -11,7 +11,10 @@ is a preference and is marked as one.
 The platform pays and ranks on results, so a score has to be something it can
 verify rather than trust. The browser records inputs, the server replays them,
 and both sides must reach the same state - on V8, JavaScriptCore and
-SpiderMonkey alike. Every rule below follows from that one sentence.
+SpiderMonkey alike. Every rule below follows from that one sentence, and binds
+every session, a game played only on its own page included. The few rules
+that bind only a ranked or practice run on a platform are in `SKILL.md`, under
+"Ranked and practice runs".
 
 ## Arithmetic
 
@@ -56,7 +59,12 @@ silently changes every recorded session. With sub-streams it does not.
 `Math.random` is banned. So is seeding from the clock, the URL, or anything
 else the server replaying the session will not have.
 
-*Checked by:* `banned-apis`, `determinism`, `replay`.
+A ranked or practice run is served its seed by the platform, so for those the
+seed also has to change the game: two seeds over the same inputs must reach
+different states.
+
+*Checked by:* `banned-apis`, `determinism`, `replay`; and `seed-sensitivity`
+in the ranked set.
 
 ## Time
 
