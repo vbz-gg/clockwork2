@@ -365,6 +365,12 @@ There is no unseeded constructor. Upstream alea seeds from the clock when called
 with no argument, which produces a stream nobody can reproduce, so `new Prng()`
 throws `E_SEED_REQUIRED`.
 
+A platform serving a ranked or practice run hands the game its seed, so for
+those runs the seed has to matter: a game that ignores it plays the same game
+on every seed. The conformance suite's ranked set checks that two seeds reach
+different states (`seed-sensitivity`). A game played only on its own page is
+free to use one seed for ever.
+
 ### Sub-streams
 
 Draw everything from one generator and the systems become coupled: add a single
@@ -636,11 +642,14 @@ The live queue checks every input where it is pushed: a name the manifest does
 not declare, or a value outside its range, throws `E_INPUT_UNDECLARED`, so a
 misspelt name in a page is found while its author plays. A server holds a
 submitted log to the same rules with `checkInputs`, against the manifest it
-stored for the version, and to a budget of `INPUT_BUDGET_PER_TICK` inputs per
-tick on average (`E_INPUT_BUDGET`). A browser following the manifest never
-records anything else, but the code in a game's page is the game's own, and a
-log reaches a server from anywhere; the replay and `checkInputs` are what a
-score rests on.
+stored for the version. For a ranked or practice run, one a platform serves
+and replays, it also holds the log to a budget of `INPUT_BUDGET_PER_TICK`
+inputs per tick on average (`E_INPUT_BUDGET`). The budget is a rule of those
+runs: the live queue does not count, and a session played only on the game's
+own page is never held to it. A browser following the manifest never records
+anything else, but the code in a game's page is the game's own, and a log
+reaches a server from anywhere; the replay and `checkInputs` are what a score
+rests on.
 
 One thing to decide in `tick` rather than in the page: what a tap hit. A game
 that worked out in its drawing code that a tap landed on a target and recorded
@@ -1111,7 +1120,8 @@ declared `monotonic` may never move the wrong way, and the suite checks every
 tick. `counters` is required, with at least one, because the kernel reads them
 every tick. `rankBy` and `tiePolicy` say how a ranked run is ordered and are
 declared together or not at all: a game played only on its own page needs
-neither, and a platform that ranks runs requires both.
+neither, and a platform that ranks runs requires both, as the ranked set's
+`ranking` check does.
 
 `inputs` is everything the game records, each a name and the whole numbers it
 carries. Which key, finger or stick drives an input is the game's page's
@@ -1122,7 +1132,10 @@ refused and told what changed.
 
 `params` are typed, validated against their ranges before the game sees them,
 and arrive as the `config` argument to `init`. They travel in the recording, so
-a replay applies the same values.
+a replay applies the same values. A platform serving a ranked or practice run
+chooses them, never the player: every declared parameter at its default, which
+`servedConfig(manifest)` builds. The conformance checks play the same config,
+so a game is checked as it is played.
 
 `assets` lists every file the game ships, art and [data packs](#data-packs)
 alike. A path is relative and made of ASCII letters, digits, `.`, `_`, `-` and
@@ -1138,14 +1151,23 @@ total.
 
 ## Conformance
 
-`@clockwork2/engine/validate` runs eleven checks. The same code runs locally and in the
-submission pipeline, and the platform's own run is the one that decides.
+`@clockwork2/engine/validate` runs the conformance checks, in two sets. The
+`every-game` set is the eleven every game needs, wherever it is played. The
+`ranked` set is those and two more, which hold what a ranked or practice run
+on a platform needs and a game played only on its own page does not. The same
+code runs locally and in the submission pipeline, and the platform's own run
+is the one that decides.
 
 ```bash
-bunx clockwork2-validate run ./src
+bunx clockwork2-validate run ./src                  # every-game
+bunx clockwork2-validate run ./src --ranked         # ranked
 bunx clockwork2-validate run ./src --only=determinism,restore
 bunx clockwork2-validate run ./src --json
 ```
+
+`validate(subject, { set })` has no default set: every caller names the
+question it is asking, and an `only` naming a check its set does not run is
+refused with `E_ARG_INVALID` before anything runs.
 
 | # | Check | What it does |
 | --- | --- | --- |
@@ -1160,6 +1182,14 @@ bunx clockwork2-validate run ./src --json
 | 9 | replay | Record through the real recorder, serialise, deserialise, replay to the recording's end, compare |
 | 10 | manifest | Schema validation, and the bundle touches no embedder global |
 | 11 | render-smoke | The render bundle draws a canned state without leaving the frame |
+| 12 | seed-sensitivity | Ranked set only. Two seeds, `vbz-seed-a` and `vbz-seed-b`, play the idle, chaos and bot logs for 3,600 ticks; at least one log must reach a different last checkpoint, end tick, terminal or counters (`E_SEED_IGNORED`) |
+| 13 | ranking | Ranked set only. The manifest declares `rankBy` and `tiePolicy` (`E_RANK_UNDECLARED`) |
+
+Every check plays the config a platform serves: `loadSubject` gives the
+subject `servedConfig(manifest)`, every declared parameter at its default,
+unless it is handed another, and a subject built without one plays that too.
+An empty config, which the checks played before, differs from what a session
+plays for any game that declares a parameter with a default.
 
 Every check plays a log to the end of the run or to `CHECK_WINDOW_TICKS`,
 36,000 ticks, ten minutes at 60 Hz, whichever comes first, and reads nothing
@@ -1331,8 +1361,8 @@ with the vbz kit starts from that kit's own scaffold, and the guide covers its
 simulation with nothing copied in.
 
 Its first line says that where its prose and `scripts/validate.sh` disagree, the
-script is right. That script runs the engine's eleven checks; a platform may run
-more. Everything in the guide that can be checked is checked by its own tests in
+script is right. That script runs the engine's eleven checks every game needs,
+and the ranked set with `--ranked`; a platform may run more. Everything in the guide that can be checked is checked by its own tests in
 `packages/engine/skill/tests/`, which sit beside the guide so the package ships
 the guide without them: the API reference is generated from the type
 declarations, the error-code sections are compared with the kernel's table, and

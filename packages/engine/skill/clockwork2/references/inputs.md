@@ -26,9 +26,12 @@ page, in code, and the game may draw whatever on-screen controls it likes.
 
 The live queue throws `E_INPUT_UNDECLARED` the moment a page pushes a name the
 manifest does not declare or a value outside its range. A server holds a
-submitted log to the same rules with `checkInputs`, and refuses a log holding
-more than `INPUT_BUDGET_PER_TICK` inputs per tick on average with
-`E_INPUT_BUDGET`. Both mean the page recorded something it should not have.
+submitted log to the same rules with `checkInputs`. For a ranked or practice
+run it also refuses a log holding more than `INPUT_BUDGET_PER_TICK` inputs per
+tick on average, with `E_INPUT_BUDGET`; that budget is a rule of the runs a
+platform replays, and the live queue does not count, so a run played only on
+the game's own page is never held to it. Both codes mean the page recorded
+something it should not have.
 
 ## Choosing what to record
 

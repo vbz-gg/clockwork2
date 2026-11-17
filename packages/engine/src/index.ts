@@ -108,6 +108,7 @@ export {
   assertManifest,
   MANIFEST_FORMAT,
   mergeParamDefaults,
+  servedConfig,
   validateManifest,
   validateParams,
 } from "./manifest/index.js"

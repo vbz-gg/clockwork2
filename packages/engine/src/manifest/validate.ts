@@ -308,6 +308,19 @@ export function mergeParamDefaults(
   return merged
 }
 
+/**
+ * The config a platform serves a ranked or practice run: every parameter the
+ * manifest declares, at its default. A player never supplies one, because a
+ * replay plays the recording's config, so a config the player chose would be
+ * replayed and agree with itself. The conformance checks play this too, so
+ * what they check is what a session plays.
+ *
+ * A parameter with no default is left out, as `mergeParamDefaults` leaves it.
+ */
+export function servedConfig(manifest: Manifest): ParamValues {
+  return mergeParamDefaults(manifest.params ?? {}, null)
+}
+
 /** A declared input's name: what a recorded input carries as its `code`. */
 const INPUT_NAME = /^[a-z][a-zA-Z0-9]*$/
 /** Enough for any game; a manifest with more is declaring a stream, not inputs. */

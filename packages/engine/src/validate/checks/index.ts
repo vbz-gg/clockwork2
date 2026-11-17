@@ -16,7 +16,6 @@ import {
   decodeRecording,
   encodeRecording,
   hashCanonical,
-  type PlainValue,
   RECORDING_FORMAT,
   RECORDING_VERSION,
   RecordedInputSource,
@@ -29,11 +28,13 @@ import {
 } from "../../index.js"
 import { compareCounters } from "../../testing/index.js"
 import { scanImportGraph } from "../scan/import-graph.js"
-import type { Check, Finding, RunEnd } from "../types.js"
+import type { Check, CheckSet, Finding, RunEnd } from "../types.js"
+import { ranking, seedSensitivity } from "./ranked.js"
 import {
   CHECK_WINDOW_TICKS,
   CHECKPOINT_EVERY,
   codeFromError,
+  configOf,
   countersOf,
   firstDivergence,
   logsFor,
@@ -188,7 +189,7 @@ const headless: Check = {
       const session = new Session({
         module,
         seed: "headless",
-        config: subject.config ?? {},
+        config: configOf(subject),
         inputs: new RecordedInputSource([]),
         maxTicks: Math.max(600, 1),
         checkpointEvery: 0,
@@ -271,7 +272,7 @@ const noAsync: Check = {
       const session = new Session({
         module,
         seed: "async-probe",
-        config: subject.config ?? {},
+        config: configOf(subject),
         inputs: new RecordedInputSource([]),
         maxTicks: 120,
         checkpointEvery: 0,
@@ -332,7 +333,7 @@ const restore: Check = {
       const partial = new Session({
         module: await subject.load({ fresh: true }),
         seed,
-        config: subject.config ?? {},
+        config: configOf(subject),
         inputs: new RecordedInputSource(log),
         maxTicks: CHECK_WINDOW_TICKS,
         checkpointEvery: CHECKPOINT_EVERY,
@@ -348,7 +349,7 @@ const restore: Check = {
       const resumed = runSession({
         module: await subject.load({ fresh: true }),
         seed,
-        config: subject.config ?? {},
+        config: configOf(subject),
         inputs: new RecordedInputSource(log),
         maxTicks: CHECK_WINDOW_TICKS,
         checkpointEvery: CHECKPOINT_EVERY,
@@ -493,7 +494,7 @@ const performance_: Check = {
       new Session({
         module: await subject.load({ fresh: true }),
         seed,
-        config: (subject.config ?? {}) as PlainValue,
+        config: configOf(subject),
         inputs: new RecordedInputSource(log),
         maxTicks: CHECK_WINDOW_TICKS,
         checkpointEvery: CHECKPOINT_EVERY,
@@ -613,7 +614,7 @@ const replayRoundTrip: Check = {
         manifestHash: hashCanonical(subject.manifest as never),
         tickHz: subject.manifest.session.tickHz,
         seed,
-        config: (subject.config ?? {}) as never,
+        config: configOf(subject),
         inputs: log.filter((event) => event.tick <= recorded.endTick),
         checkpoints: recorded.checkpoints,
         endTick: recorded.endTick,
@@ -717,7 +718,8 @@ const renderSmoke: Check = {
   },
 }
 
-export const CHECKS: readonly Check[] = [
+/** The checks every game needs, in the order they run. */
+const EVERY_GAME: readonly Check[] = [
   determinism,
   headless,
   bannedApis,
@@ -730,3 +732,13 @@ export const CHECKS: readonly Check[] = [
   manifestAndGlobals,
   renderSmoke,
 ]
+
+/**
+ * Each set's checks, in the order they run. The ranked set is the every-game
+ * set and two more, which hold what a ranked or practice run on a platform
+ * needs and a game played only on its own page does not.
+ */
+export const CHECK_SETS: Readonly<Record<CheckSet, readonly Check[]>> = {
+  "every-game": EVERY_GAME,
+  ranked: [...EVERY_GAME, seedSensitivity, ranking],
+}

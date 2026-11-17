@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
-# Runs the engine's eleven conformance checks against a game.
+# Runs the engine's conformance checks against a game: the eleven every game
+# needs, and with --ranked the two more that a ranked or practice run on a
+# platform needs.
 #
-# This is the authority on those eleven. Where SKILL.md and this script
+# This is the authority on those checks. Where SKILL.md and this script
 # disagree, the script is right: prose cannot fail a build. A platform built on
-# the engine runs the same eleven and may run more of its own.
+# the engine runs the same checks and may run more of its own.
 #
 # Run it from the game's own root, with <guide> the directory SKILL.md is in:
 #
 #   <guide>/scripts/validate.sh ./src
+#   <guide>/scripts/validate.sh ./src --ranked        a game a platform ranks
 #   <guide>/scripts/validate.sh ./src --only=determinism,restore
 #   <guide>/scripts/validate.sh ./src --json          machine-readable, for a CI job
 #

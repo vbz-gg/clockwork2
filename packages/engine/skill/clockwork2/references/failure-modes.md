@@ -126,7 +126,9 @@ what the page records, or the page rounds it the wrong way.
 A log holds more inputs than `checkInputs` allows: more than
 `MAX_INPUTS_PER_TICK` in one tick, or more than `INPUT_BUDGET_PER_TICK` for
 each tick of the run on average. A recording of a real player stays far under
-both.
+both. The budget is a rule of ranked and practice runs: a platform holds every
+log it replays to it, and the live queue in a page does not count, so a run
+played only on the game's own page is never refused for it.
 
 The usual cause is a page recording a stream: every pointer move, every tilt
 reading, every frame of a stick. Record what changed, in the coarsest range the
@@ -381,3 +383,32 @@ and had no default export.
 A bundle exports its `GameModule`, or a factory that returns one, as its
 default export. Check that the build wrote where you pointed the validator, and
 that the entry exports the module itself rather than only its parts.
+
+## The ranked set
+
+Two checks run only when a caller asks for the ranked set, `validate.sh
+--ranked` or `validate(subject, { set: "ranked" })`, because they hold what a
+ranked or practice run on a platform needs and a game played only on its own
+page does not.
+
+### E_SEED_IGNORED
+
+Two seeds reached the same state on every log the `seed-sensitivity` check
+plays: idle, chaos and the bot, each for 3,600 ticks under `vbz-seed-a` and
+`vbz-seed-b`, comparing the last checkpoint, the end tick, the terminal and the
+counters. Every other check passes such a game, because `determinism`
+compares runs of one seed. A platform serves a ranked run its seed, and a game
+that ignores it plays the same game on every seed: a daily seed serves the
+same puzzle every day.
+
+Take randomness from `new Prng(seed)` in `init`. A game whose opening is fixed
+and whose play is seeded passes, since one log that differs is enough; one
+that consults its seed only after its first 3,600 ticks does not, and should
+draw from it sooner.
+
+### E_RANK_UNDECLARED
+
+The manifest declares no `rankBy` and `tiePolicy`. Both are optional, and a
+game played only on its own page may leave them out, but a platform orders a
+ranked run by them. Declare both: `rankBy` names declared counters, most
+significant first, and `tiePolicy` is `"shared"`, `"earliest"` or `"none"`.

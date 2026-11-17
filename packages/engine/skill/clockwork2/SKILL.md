@@ -6,7 +6,8 @@ description: Build a browser game on Clockwork 2 that a platform can verify - fi
 # Building a verifiable game
 
 **Where this file and `scripts/validate.sh` disagree, the script is right.** It
-runs the engine's eleven checks; a platform may run more. Prose cannot fail a
+runs the engine's eleven checks every game needs, and with `--ranked` the two
+a ranked or practice run needs; a platform may run more. Prose cannot fail a
 build.
 
 A platform ranks on results, so a score has to be something it can verify
@@ -152,6 +153,32 @@ its end or to 36,000 ticks (`CHECK_WINDOW_TICKS`), and the `determinism` line
 of the report says where every run stopped, which is how to see that a game
 meant to end by itself does.
 
+## Ranked and practice runs
+
+A platform built on the engine serves some runs itself. It hands the page a
+seed and a config, replays the recording on its server, and for a ranked run
+ranks what the replay computed. Those runs carry rules of their own that a
+game played only on its own page does not need. Determinism is not one of
+them: the nine rules above bind every session, wherever it runs.
+`<guide>/scripts/validate.sh ./src --ranked` adds the two checks below.
+
+- **The seed changes the game.** Two seeds played over the same inputs reach
+  different states on at least one of the idle, chaos and bot logs, or every
+  seed the platform serves plays the same game.
+  *Checked by `seed-sensitivity`, in the ranked set.*
+- **The manifest says how a run ranks**, with both `rankBy` and `tiePolicy`.
+  *Checked by `ranking`, in the ranked set.*
+- **The run plays the config the platform serves**: every parameter the
+  manifest declares, at its default, which `servedConfig(manifest)` builds. A
+  player never picks it. Every check plays the same config, so what passed the
+  checks is what a run plays.
+  *Every check plays it: `loadSubject` gives it to the suite.*
+- **At most `INPUT_BUDGET_PER_TICK`, 16, inputs a tick on average.** A
+  platform holds every log it replays to the budget with `checkInputs`; a page
+  that records only changes, in the coarsest range the game needs, stays far
+  under it. `references/inputs.md` has the measurements.
+  *Held by the platform, with `checkInputs`.*
+
 ## What the renderer may do
 
 Everything rules 2 to 5 forbid. `Math.random`, `Math.sin`, `performance.now`,
@@ -178,7 +205,8 @@ Each command runs from the game's own root.
    `references/inputs.md` says how to keep what they record small.
 3. `<guide>/scripts/validate.sh ./src` after each meaningful change, not once
    at the end. A determinism bug found three edits after it was written is a
-   different job from one found three weeks after.
+   different job from one found three weeks after. Add `--ranked` for a game a
+   platform will rank.
 4. `<guide>/scripts/run-headless.ts ./src` to see what a session actually
    looks like - how long it runs, what the checkpoints are, whether it ends on
    its own.
@@ -241,8 +269,9 @@ The two that account for most failures:
 
 Each runs from the game's own root, as `<guide>/scripts/...`.
 
-- `<guide>/scripts/validate.sh <path>` - the engine's eleven checks; a platform
-  may run more. The authority on those eleven.
+- `<guide>/scripts/validate.sh <path> [--ranked]` - the engine's eleven checks
+  every game needs, and with `--ranked` the two a ranked or practice run needs;
+  a platform may run more. The authority on those checks.
 - `<guide>/scripts/run-headless.ts <path>` - run a session with no browser and
   print its checkpoints.
 - `<guide>/scripts/package.ts <dir> [--manifest=]` - hash assets and check the

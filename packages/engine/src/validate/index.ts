@@ -5,7 +5,11 @@
  * script is right.
  */
 
-export { CHECKS } from "./checks/index.js"
+export { CHECK_SETS } from "./checks/index.js"
+export {
+  SENSITIVITY_SEEDS,
+  SENSITIVITY_TICKS,
+} from "./checks/ranked.js"
 export { CHECK_WINDOW_TICKS } from "./checks/support.js"
 export { findEntry, loadSubject, readPacks } from "./load.js"
 export {
@@ -31,6 +35,7 @@ export type {
   Check,
   CheckContext,
   CheckOutcome,
+  CheckSet,
   Finding,
   Report,
   RunEnd,

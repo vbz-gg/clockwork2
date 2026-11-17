@@ -23,6 +23,7 @@ export {
   assertManifest,
   type Issue,
   mergeParamDefaults,
+  servedConfig,
   validateManifest,
   validateParams,
 } from "./validate.js"

@@ -10,7 +10,7 @@
 
 import { describe, expect, test } from "bun:test"
 import { ClockworkError } from "../../src"
-import { CHECKS } from "../../src/validate/checks/index"
+import { CHECK_SETS } from "../../src/validate/checks/index"
 import { codeFromError } from "../../src/validate/checks/support"
 import {
   DEFAULT_SEEDS,
@@ -49,9 +49,10 @@ function exploding(error: unknown): Subject {
 describe("a check that throws", () => {
   test("is a failed check, and the rest of the suite still runs", async () => {
     const report = await validate(exploding(new Error("the wheels came off")), {
+      set: "every-game",
       seeds: ["s1"],
     })
-    expect(report.outcomes.length).toBe(CHECKS.length)
+    expect(report.outcomes.length).toBe(CHECK_SETS["every-game"].length)
     expect(report.ok).toBe(false)
   }, 30_000)
 
@@ -62,6 +63,7 @@ describe("a check that throws", () => {
    */
   test("with no code of its own is reported as E_CHECK_THREW", async () => {
     const report = await validate(exploding(new Error("the wheels came off")), {
+      set: "every-game",
       seeds: ["s1"],
       // The replay check is the one that lets a load error escape to the
       // runner. Most checks catch and report their own; this is the path that
@@ -82,7 +84,7 @@ describe("a check that throws", () => {
   test("carrying a code reports that code instead", async () => {
     const report = await validate(
       exploding(new ClockworkError("E_BANNED_API", { detail: "Math.random" })),
-      { seeds: ["s1"], only: ["replay"] },
+      { set: "every-game", seeds: ["s1"], only: ["replay"] },
     )
     expect(report.outcomes[0]?.findings[0]?.code).toBe("E_BANNED_API")
   }, 30_000)
@@ -124,9 +126,58 @@ describe("codeFromError", () => {
   })
 })
 
+describe("the set", () => {
+  async function refusal(options: unknown): Promise<unknown> {
+    let progress = 0
+    try {
+      await validate(exploding(new Error("x")), {
+        ...(options as object),
+        onProgress: () => progress++,
+      } as never)
+    } catch (error) {
+      expect(progress).toBe(0)
+      return error
+    }
+    throw new Error("validate ran")
+  }
+
+  test("has no default: a caller that names none is refused before any check runs", async () => {
+    const error = await refusal({ seeds: ["s1"] })
+    expect((error as { code?: unknown }).code).toBe("E_ARG_INVALID")
+    expect(String(error)).toContain("every-game, ranked")
+  })
+
+  test("must be one that exists", async () => {
+    const error = await refusal({ set: "everything", seeds: ["s1"] })
+    expect((error as { code?: unknown }).code).toBe("E_ARG_INVALID")
+  })
+
+  test("decides which checks only may name", async () => {
+    // seed-sensitivity is a ranked check; asked of the every-game set it
+    // would run nothing and pass, which reads as a pass of a check that never
+    // ran.
+    const error = await refusal({
+      set: "every-game",
+      seeds: ["s1"],
+      only: ["seed-sensitivity"],
+    })
+    expect((error as { code?: unknown }).code).toBe("E_ARG_INVALID")
+    expect(String(error)).toContain(
+      "only names seed-sensitivity, which the every-game set does not run",
+    )
+    const report = await validate(exploding(new Error("x")), {
+      set: "ranked",
+      seeds: ["s1"],
+      only: ["seed-sensitivity"],
+    })
+    expect(report.outcomes.map((o) => o.check)).toEqual(["seed-sensitivity"])
+  })
+})
+
 describe("only", () => {
   test("runs just the checks named", async () => {
     const report = await validate(exploding(new Error("x")), {
+      set: "every-game",
       seeds: ["s1"],
       only: ["headless", "restore"],
     })
@@ -138,6 +189,7 @@ describe("only", () => {
     // a hang.
     const seen: string[] = []
     await validate(exploding(new Error("x")), {
+      set: "every-game",
       seeds: ["s1"],
       only: ["headless", "restore"],
       onProgress: (name) => seen.push(name),
@@ -151,6 +203,7 @@ describe("formatReport", () => {
     findings: Report["outcomes"][number]["findings"],
   ): Report {
     return {
+      set: "every-game",
       ok: false,
       ms: 12,
       outcomes: [
@@ -201,6 +254,7 @@ describe("formatReport", () => {
 
   test("names every failed check in the summary line", () => {
     const text = formatReport({
+      set: "ranked",
       ok: false,
       ms: 1000,
       outcomes: [
@@ -209,12 +263,15 @@ describe("formatReport", () => {
         { check: "manifest", title: "t", ok: true, findings: [], ms: 1 },
       ],
     })
-    expect(text).toContain("2 check(s) failed: headless, restore")
+    expect(text).toContain(
+      "2 check(s) in the ranked set failed: headless, restore",
+    )
   })
 
   test("a skipped check reads as skipped, not as a pass", () => {
     // A skip printed as a pass is how a check quietly stops running.
     const text = formatReport({
+      set: "every-game",
       ok: true,
       ms: 5,
       outcomes: [

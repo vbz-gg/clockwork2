@@ -57,10 +57,11 @@ manifest pins each one by its SHA-256, the host fetches it, and the kernel hands
 it to the simulation at a tick the game names, so a slow download changes how
 long the loop waits and never what it computes.
 
-The conformance suite is eleven checks with stable error codes, run the same way
-on your machine and by whatever platform accepts the game. No run has a step
-limit: the checks play each test log to its end or to a fixed window of 36,000
-ticks, and report where every run stopped.
+The conformance suite is eleven checks every game needs and two more for a
+game a platform ranks, with stable error codes, run the same way on your
+machine and by whatever platform accepts the game. No run has a step limit:
+the checks play each test log to its end or to a fixed window of 36,000 ticks,
+under the config a platform would serve, and report where every run stopped.
 
 A presentation reads the view and writes nothing, which is what lets it use
 everything the simulation may not: `Math.random`, `performance.now`, WebGL,

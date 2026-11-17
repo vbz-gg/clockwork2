@@ -268,16 +268,31 @@ describe("the Subject that comes back", () => {
     expect(subject.root).toBe(dir)
   })
 
-  test("carries a config only when one was given", async () => {
+  test("carries the served config unless it was given another", async () => {
+    // What a platform serves a session is every declared parameter at its
+    // default, and the checks have to play that, not an empty config.
+    const dir = bundle({
+      "index.ts": gameSource({
+        manifest: `{ ...${MANIFEST_LITERAL}, params: {
+          speed: { type: "int", label: "Speed", min: 1, max: 3, default: 1 },
+          name: { type: "string", label: "Name", optional: true },
+        } }`,
+        exportAs: "default",
+      }),
+    })
+    expect((await loadSubject(dir)).config).toEqual({ speed: 1 })
+    const withConfig = await loadSubject(dir, { config: { speed: 2 } })
+    expect(withConfig.config).toEqual({ speed: 2 })
+  })
+
+  test("a game with no parameters is served an empty config", async () => {
     const dir = bundle({
       "index.ts": gameSource({
         manifest: MANIFEST_LITERAL,
         exportAs: "default",
       }),
     })
-    expect("config" in (await loadSubject(dir))).toBe(false)
-    const withConfig = await loadSubject(dir, { config: { speed: 2 } })
-    expect(withConfig.config).toEqual({ speed: 2 })
+    expect((await loadSubject(dir)).config).toEqual({})
   })
 
   /**

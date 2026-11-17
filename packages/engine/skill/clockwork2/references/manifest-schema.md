@@ -77,7 +77,8 @@ one, because the kernel reads them every tick.
 
 `rankBy` and `tiePolicy` say how a ranked run is ordered, and they come as a
 pair: a manifest with one and not the other is refused. A game played only on
-its own page may leave both out. A platform that ranks runs requires both.
+its own page may leave both out. A platform that ranks runs requires both, and
+the ranked set's `ranking` check, `validate.sh --ranked`, says so.
 
 `monotonic` is a promise the suite checks every tick. A score that can go
 down is not monotonic, and saying it is will fail rather than round.
@@ -89,10 +90,14 @@ play each log to its end or to `CHECK_WINDOW_TICKS`, 36,000 ticks, and report
 where each run stopped; a game is not refused for running the whole window.
 
 `params` are typed (`color`, `string`, `enum`, `int`, `bool`) with ranges
-and defaults, and the platform validates a supplied value against them before
-the game sees it. `mergeParamDefaults` fills the rest. The values arrive as
-the `config` argument to `init`, so they are part of what a recording carries
-and what a replay restores.
+and defaults, and `validateParams` checks a supplied value against them before
+the game sees it. The values arrive as the `config` argument to `init`, so
+they are part of what a recording carries and what a replay restores. A
+ranked or practice run plays the config the platform serves, which is every
+declared parameter at its default, `servedConfig(manifest)`; the player never
+chooses one. The conformance checks play that config too, so a parameter
+without a default is left out of what the checks play and what the platform
+serves, and the game has to cope with its absence.
 
 `inputs` is everything the game records. Each entry is a name and the whole
 numbers it carries, `min` to `max` inclusive, with an optional `label` a page

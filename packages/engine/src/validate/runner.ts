@@ -5,14 +5,27 @@
  * fixing a submission wants the whole list rather than one item at a time.
  */
 
-import { CHECKS } from "./checks/index.js"
+import { fail } from "../index.js"
+import { CHECK_SETS } from "./checks/index.js"
 import { codeFromError } from "./checks/support.js"
-import type { CheckOutcome, Report, RunEnd, Subject } from "./types.js"
+import type {
+  CheckOutcome,
+  CheckSet,
+  Report,
+  RunEnd,
+  Subject,
+} from "./types.js"
 
 export interface ValidateOptions {
+  /**
+   * Which checks run: `every-game`, what any game on the engine needs, or
+   * `ranked`, those and the checks a ranked or practice run on a platform
+   * needs. Required, so every caller says which question it is asking.
+   */
+  readonly set: CheckSet
   /** Seeds every check runs against. More seeds, more confidence, more time. */
   readonly seeds?: readonly string[]
-  /** Run only these checks, by name. */
+  /** Run only these checks of the set, by name. A name the set lacks throws. */
   readonly only?: readonly string[]
   /** Set false to leave the runtime traps off, for measuring their cost. */
   readonly shims?: boolean
@@ -21,16 +34,37 @@ export interface ValidateOptions {
 
 export const DEFAULT_SEEDS = ["conformance-1", "conformance-2", "conformance-3"]
 
+/**
+ * Runs a set of checks against a subject and reports every outcome.
+ *
+ * @throws E_ARG_INVALID for a set that does not exist, or an `only` naming a
+ *   check the set does not run, before any check runs
+ */
 export async function validate(
   subject: Subject,
-  options: ValidateOptions = {},
+  options: ValidateOptions,
 ): Promise<Report> {
+  const checks = Object.hasOwn(CHECK_SETS, options.set)
+    ? CHECK_SETS[options.set]
+    : fail("E_ARG_INVALID", {
+        detail: `set must be one of ${Object.keys(CHECK_SETS).join(", ")}, got ${JSON.stringify(options.set)}`,
+      })
   const seeds = options.seeds ?? DEFAULT_SEEDS
   const only = options.only === undefined ? null : new Set(options.only)
+  if (only !== null) {
+    const unknown = [...only].filter(
+      (name) => !checks.some((check) => check.name === name),
+    )
+    if (unknown.length > 0) {
+      fail("E_ARG_INVALID", {
+        detail: `only names ${unknown.join(", ")}, which the ${options.set} set does not run`,
+      })
+    }
+  }
   const outcomes: CheckOutcome[] = []
   const startedAll = Date.now()
 
-  for (const check of CHECKS) {
+  for (const check of checks) {
     if (only !== null && !only.has(check.name)) continue
     options.onProgress?.(check.name)
     const started = Date.now()
@@ -66,6 +100,7 @@ export async function validate(
   }
 
   return {
+    set: options.set,
     ok: outcomes.every((outcome) => outcome.ok),
     outcomes,
     ms: Date.now() - startedAll,
@@ -116,8 +151,8 @@ export function formatReport(report: Report): string {
   const failed = report.outcomes.filter((o) => !o.ok)
   lines.push(
     report.ok
-      ? `all checks passed in ${(report.ms / 1000).toFixed(1)}s`
-      : `${failed.length} check(s) failed: ${failed.map((o) => o.check).join(", ")}`,
+      ? `all checks in the ${report.set} set passed in ${(report.ms / 1000).toFixed(1)}s`
+      : `${failed.length} check(s) in the ${report.set} set failed: ${failed.map((o) => o.check).join(", ")}`,
   )
   return lines.join("\n")
 }

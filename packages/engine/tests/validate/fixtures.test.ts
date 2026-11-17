@@ -11,15 +11,23 @@ import { describe, expect, test } from "bun:test"
 import { join } from "node:path"
 import type { ErrorCode } from "../../src"
 import { packReaderFor } from "../../src/testing"
-import { CHECK_WINDOW_TICKS } from "../../src/validate"
+import {
+  CHECK_SETS,
+  CHECK_WINDOW_TICKS,
+  type CheckSet,
+} from "../../src/validate"
 import { loadSubject } from "../../src/validate/load"
 import { formatReport, validate } from "../../src/validate/runner"
 
 const FIXTURES = join(import.meta.dir, "../../fixtures")
 
-async function codesFor(fixture: string): Promise<Set<ErrorCode>> {
+/** Every code a set of checks reports for a fixture. */
+async function codesFor(
+  fixture: string,
+  set: CheckSet,
+): Promise<Set<ErrorCode>> {
   const subject = await loadSubject(join(FIXTURES, fixture))
-  const report = await validate(subject, { seeds: ["t1"] })
+  const report = await validate(subject, { set, seeds: ["t1"] })
   const codes = new Set<ErrorCode>()
   for (const outcome of report.outcomes) {
     for (const finding of outcome.findings) codes.add(finding.code)
@@ -28,9 +36,12 @@ async function codesFor(fixture: string): Promise<Set<ErrorCode>> {
 }
 
 describe("the conforming fixture", () => {
-  test("passes every check", async () => {
+  test("passes every check, the ranked set's included", async () => {
     const subject = await loadSubject(join(FIXTURES, "conforming"))
-    const report = await validate(subject, { seeds: ["t1", "t2"] })
+    const report = await validate(subject, {
+      set: "ranked",
+      seeds: ["t1", "t2"],
+    })
     const failures = report.outcomes.filter((o) => !o.ok)
     expect(
       failures.map(
@@ -40,14 +51,23 @@ describe("the conforming fixture", () => {
     expect(report.ok).toBe(true)
   }, 30_000)
 
-  test("every check ran or said why it did not", async () => {
+  test("every check in each set ran or said why it did not", async () => {
     const subject = await loadSubject(join(FIXTURES, "conforming"))
-    const report = await validate(subject, { seeds: ["t1"] })
-    expect(report.outcomes.length).toBe(11)
-    for (const outcome of report.outcomes) {
-      expect(outcome.ok || outcome.skipped !== undefined, outcome.check).toBe(
-        true,
+    for (const [set, count] of [
+      ["every-game", 11],
+      ["ranked", 13],
+    ] as const) {
+      const report = await validate(subject, { set, seeds: ["t1"] })
+      expect(report.set).toBe(set)
+      expect(report.outcomes.map((o) => o.check)).toEqual(
+        CHECK_SETS[set].map((check) => check.name),
       )
+      expect(report.outcomes.length).toBe(count)
+      for (const outcome of report.outcomes) {
+        expect(outcome.ok || outcome.skipped !== undefined, outcome.check).toBe(
+          true,
+        )
+      }
     }
   }, 30_000)
 })
@@ -59,14 +79,17 @@ describe("the conforming fixture with data packs", () => {
       "data/rules.json",
       "data/level-2.json",
     ])
-    const report = await validate(subject, { seeds: ["t1", "t2"] })
+    const report = await validate(subject, {
+      set: "ranked",
+      seeds: ["t1", "t2"],
+    })
     const failures = report.outcomes.filter((o) => !o.ok)
     expect(
       failures.map(
         (o) => `${o.check}: ${o.findings.map((f) => f.detail).join("; ")}`,
       ),
     ).toEqual([])
-    expect(report.outcomes.length).toBe(11)
+    expect(report.outcomes.length).toBe(13)
     // Two seeds, three logs, three runs each, and the on-demand run.
     const determinism = report.outcomes.find((o) => o.check === "determinism")
     expect(determinism?.note).toBe("19 runs compared")
@@ -106,10 +129,53 @@ describe("each non-conformant fixture reports its own code", () => {
 
   for (const [fixture, expected] of CASES) {
     test(`${fixture} reports ${expected.join(" and ")}`, async () => {
-      const codes = await codesFor(fixture)
+      const codes = await codesFor(fixture, "every-game")
       expect([...codes].sort()).toEqual([...expected].sort())
     }, 30_000)
   }
+
+  // The ranked set's two, which every check a game needs passes.
+  const RANKED: Array<[fixture: string, expected: ErrorCode]> = [
+    ["seed-ignored", "E_SEED_IGNORED"],
+    ["unranked", "E_RANK_UNDECLARED"],
+  ]
+
+  for (const [fixture, expected] of RANKED) {
+    test(`${fixture} reports ${expected} in the ranked set`, async () => {
+      expect([...(await codesFor(fixture, "ranked"))]).toEqual([expected])
+    }, 30_000)
+  }
+})
+
+describe("a game whose play comes from its parameters' defaults", () => {
+  test("is checked under the config a platform serves it", async () => {
+    // It ends at its endAt parameter's default, 900. Under an empty config it
+    // would never end, and every run would reach the window instead.
+    const subject = await loadSubject(join(FIXTURES, "served-config"))
+    expect(subject.config).toEqual({ endAt: 900 })
+    const report = await validate(subject, { set: "ranked", seeds: ["t1"] })
+    expect(report.outcomes.filter((o) => !o.ok).map((o) => o.check)).toEqual([])
+    const ends = report.outcomes.find((o) => o.check === "determinism")?.ends
+    expect(ends?.map((end) => [end.log, end.endTick, end.terminal])).toEqual([
+      ["idle", 900, "completed"],
+      ["chaos", 900, "completed"],
+      ["bot", 900, "completed"],
+    ])
+  }, 30_000)
+
+  test("played under another config, it plays that one", async () => {
+    const subject = await loadSubject(join(FIXTURES, "served-config"), {
+      config: { endAt: 120 },
+    })
+    const report = await validate(subject, {
+      set: "every-game",
+      seeds: ["t1"],
+      only: ["determinism"],
+    })
+    expect(report.outcomes[0]?.ends?.map((end) => end.endTick)).toEqual([
+      120, 120, 120,
+    ])
+  }, 30_000)
 })
 
 describe("a game that never ends", () => {
@@ -117,7 +183,7 @@ describe("a game that never ends", () => {
     // No run has a step limit, so a game that never ends is not refused for
     // it. What the suite owes its reader is where every run stopped.
     const subject = await loadSubject(join(FIXTURES, "endless"))
-    const report = await validate(subject, { seeds: ["t1"] })
+    const report = await validate(subject, { set: "every-game", seeds: ["t1"] })
     expect(report.outcomes.filter((o) => !o.ok).map((o) => o.check)).toEqual([])
     const ends = report.outcomes.find((o) => o.check === "determinism")?.ends
     expect(ends).toEqual(
@@ -139,7 +205,7 @@ describe("isolation", () => {
     // The game conforms. Only the manifest's account of the bundle does not,
     // and no check that runs a session can see that.
     const subject = await loadSubject(join(FIXTURES, "budget-overrun"))
-    const report = await validate(subject, { seeds: ["t1"] })
+    const report = await validate(subject, { set: "every-game", seeds: ["t1"] })
     expect(report.outcomes.filter((o) => !o.ok).map((o) => o.check)).toEqual([
       "budgets",
     ])
@@ -149,7 +215,11 @@ describe("isolation", () => {
     // A check that stopped at the first bad asset would send someone round the
     // loop once per file.
     const subject = await loadSubject(join(FIXTURES, "budget-overrun"))
-    const report = await validate(subject, { seeds: ["t1"], only: ["budgets"] })
+    const report = await validate(subject, {
+      set: "every-game",
+      seeds: ["t1"],
+      only: ["budgets"],
+    })
     const details = (report.outcomes[0]?.findings ?? []).map((f) => f.detail)
     expect(details).toEqual([
       "data/layout.txt is 38 bytes, the manifest says 99",
@@ -159,11 +229,29 @@ describe("isolation", () => {
     ])
   }, 30_000)
 
+  for (const [fixture, check] of [
+    ["seed-ignored", "seed-sensitivity"],
+    ["unranked", "ranking"],
+  ] as const) {
+    test(`${fixture} passes every check a game needs, and fails only ${check} when ranked`, async () => {
+      const subject = await loadSubject(join(FIXTURES, fixture))
+      const local = await validate(subject, {
+        set: "every-game",
+        seeds: ["t1"],
+      })
+      expect(local.ok).toBe(true)
+      const ranked = await validate(subject, { set: "ranked", seeds: ["t1"] })
+      expect(ranked.outcomes.filter((o) => !o.ok).map((o) => o.check)).toEqual([
+        check,
+      ])
+    }, 30_000)
+  }
+
   test("an incomplete snapshot fails only the restore check", async () => {
     // Nothing else can see it: the game is perfectly deterministic from a
     // cold start, and only restore-then-continue tells them apart.
     const subject = await loadSubject(join(FIXTURES, "incomplete-snapshot"))
-    const report = await validate(subject, { seeds: ["t1"] })
+    const report = await validate(subject, { set: "every-game", seeds: ["t1"] })
     expect(report.outcomes.filter((o) => !o.ok).map((o) => o.check)).toEqual([
       "restore",
     ])
@@ -194,6 +282,7 @@ describe("a freshly evaluated module, not a fresh instance", () => {
   test("the determinism check catches a module-level counter", async () => {
     const subject = await loadSubject(join(FIXTURES, "module-counter"))
     const report = await validate(subject, {
+      set: "every-game",
       seeds: ["t1"],
       only: ["determinism"],
     })
@@ -206,7 +295,11 @@ describe("a freshly evaluated module, not a fresh instance", () => {
 describe("the report", () => {
   test("reads as lines a person can act on", async () => {
     const subject = await loadSubject(join(FIXTURES, "incomplete-snapshot"))
-    const report = await validate(subject, { seeds: ["t1"], only: ["restore"] })
+    const report = await validate(subject, {
+      set: "every-game",
+      seeds: ["t1"],
+      only: ["restore"],
+    })
     const text = formatReport(report)
     expect(text).toContain("FAIL")
     expect(text).toContain("E_RESTORE_MISMATCH")
@@ -217,6 +310,7 @@ describe("the report", () => {
     // The conforming fixture ends at tick 1800 whatever is pressed.
     const subject = await loadSubject(join(FIXTURES, "conforming"))
     const report = await validate(subject, {
+      set: "every-game",
       seeds: ["t1", "t2"],
       only: ["determinism"],
     })
@@ -241,9 +335,12 @@ describe("the report", () => {
   test("a passing report says so", async () => {
     const subject = await loadSubject(join(FIXTURES, "conforming"))
     const report = await validate(subject, {
+      set: "every-game",
       seeds: ["t1"],
       only: ["manifest"],
     })
-    expect(formatReport(report)).toContain("all checks passed")
+    expect(formatReport(report)).toContain(
+      "all checks in the every-game set passed",
+    )
   }, 30_000)
 })

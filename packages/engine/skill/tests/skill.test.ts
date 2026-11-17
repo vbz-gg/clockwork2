@@ -103,8 +103,8 @@ describe("SKILL.md", () => {
     // A platform built on the engine may run checks of its own beside the
     // engine's, so a guide that called the script what the platform runs
     // would tell an author a local pass is a listing.
-    expect(source).toContain(
-      "the engine's eleven checks; a platform may run more",
+    expect(source.replace(/\s+/g, " ")).toContain(
+      "the engine's eleven checks every game needs, and with `--ranked` the two a ranked or practice run needs; a platform may run more",
     )
   })
 
@@ -311,11 +311,11 @@ describe("the templates", () => {
   })
 
   for (const name of ["canvas2d", "three"]) {
-    test(`${name} passes the conformance suite unmodified`, async () => {
+    test(`${name} passes the conformance suite unmodified, the ranked set included`, async () => {
       // The guide tells the reader the template conforms before they change
-      // anything. This is that claim, run.
+      // anything. This is that claim, run, with every check there is.
       const subject = await loadSubject(join(TEMPLATES, name, "src"))
-      const report = await validate(subject)
+      const report = await validate(subject, { set: "ranked" })
       const failed = report.outcomes
         .filter((outcome) => !outcome.ok)
         .map(

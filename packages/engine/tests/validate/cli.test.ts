@@ -64,7 +64,7 @@ describe("run", () => {
       "--seeds=t1",
     )
     expect(code).toBe(0)
-    expect(out).toContain("all checks passed")
+    expect(out).toContain("all checks in the every-game set passed")
   }, 60_000)
 
   test("a non-conformant game exits 1 and names the code", async () => {
@@ -127,6 +127,40 @@ describe("run", () => {
     )
     const report = JSON.parse(out) as { outcomes: Array<{ note?: string }> }
     expect(report.outcomes[0]?.note).toBe("2 recordings")
+  }, 60_000)
+
+  test("--ranked adds the ranked set's checks, and a game without a ranking fails it", async () => {
+    // The unranked fixture passes every check a game needs; only a caller
+    // that asks about ranked runs is told it cannot be ranked.
+    const local = await run(
+      "run",
+      join(FIXTURES, "unranked"),
+      "--only=manifest",
+      "--seeds=t1",
+    )
+    expect(local.code).toBe(0)
+    const ranked = await run(
+      "run",
+      join(FIXTURES, "unranked"),
+      "--ranked",
+      "--only=manifest,ranking",
+      "--seeds=t1",
+    )
+    expect(ranked.code).toBe(1)
+    expect(ranked.out).toContain("E_RANK_UNDECLARED")
+    expect(ranked.out).toContain("in the ranked set failed: ranking")
+  }, 60_000)
+
+  test("--only naming a ranked check without --ranked exits 2 and runs nothing", async () => {
+    const { code, out, err } = await run(
+      "run",
+      join(FIXTURES, "conforming"),
+      "--only=seed-sensitivity",
+      "--seeds=t1",
+    )
+    expect(code).toBe(2)
+    expect(err).toContain("the every-game set does not run")
+    expect(out).not.toContain("pass ")
   }, 60_000)
 
   test("a path that is not a bundle exits 3 rather than pretending to pass", async () => {

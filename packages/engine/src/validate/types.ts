@@ -66,6 +66,8 @@ export type CheckOutcome = {
 }
 
 export type Report = {
+  /** The set that ran. */
+  readonly set: CheckSet
   readonly ok: boolean
   readonly outcomes: readonly CheckOutcome[]
   readonly ms: number
@@ -90,7 +92,12 @@ export type Subject = {
   readonly entry?: string
   /** The directory holding the bundle and its assets, for the budget check. */
   readonly root?: string
-  /** A default config, when the game takes one. */
+  /**
+   * The config every check plays. `loadSubject` sets it to
+   * `servedConfig(manifest)`, every declared parameter at its default, unless
+   * it is given another. A subject built by hand without one plays the served
+   * config too, never an empty one.
+   */
   readonly config?: unknown
   /**
    * The bytes of the game's data packs, by manifest path, unchecked. The
@@ -100,6 +107,14 @@ export type Subject = {
    */
   readonly packs?: ReadonlyMap<string, Uint8Array>
 }
+
+/**
+ * Which checks a caller runs. `every-game` is what any game on the engine
+ * needs. `ranked` adds what a ranked or practice run on a platform needs:
+ * that the seed changes the game, and that the manifest says how a run ranks.
+ * There is no default; every caller names its set.
+ */
+export type CheckSet = "every-game" | "ranked"
 
 export type CheckContext = {
   readonly subject: Subject

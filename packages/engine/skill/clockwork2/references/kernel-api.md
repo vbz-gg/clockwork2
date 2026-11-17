@@ -547,6 +547,14 @@ Drives a session to its end, or to `maxTicks`. This is what a validator runs, wi
 export declare function runSession<TView = unknown, TConfig = PlainValue>(options: RunSessionOptions<TView, TConfig>): SessionResult;
 ```
 
+### servedConfig
+
+The config a platform serves a ranked or practice run: every parameter the manifest declares, at its default. A player never supplies one, because a replay plays the recording's config, so a config the player chose would be replayed and agree with itself. The conformance checks play this too, so what they check is what a session plays.
+
+```ts
+export declare function servedConfig(manifest: Manifest): ParamValues;
+```
+
 ### sha256Hex
 
 The digest of `bytes`, as 64 lowercase hex digits.
@@ -724,6 +732,10 @@ ERROR_CODES: {
     readonly E_CHECK_THREW: "a conformance check threw while running";
     /** The subject could not be loaded: no entry file, or no module to run. */
     readonly E_SUBJECT_LOAD: "the subject could not be loaded";
+    /** Two seeds reached the same state on every log the seed check plays. */
+    readonly E_SEED_IGNORED: "two seeds reached the same state on every log; the seed decides nothing";
+    /** The manifest says nothing about how a run ranks. */
+    readonly E_RANK_UNDECLARED: "the manifest declares no rankBy and tiePolicy, which a ranked run needs";
 }
 ```
 
@@ -2896,6 +2908,7 @@ Builds a Subject from a directory or entry file.
 
 ```ts
 export declare function loadSubject(target: string, options?: {
+    /** A config to play instead of the served one. */
     readonly config?: unknown;
     /** The packs' bytes, instead of reading them from the bundle's directory. */
     readonly packs?: ReadonlyMap<string, Uint8Array>;
@@ -2920,8 +2933,10 @@ export declare function scanImportGraph(entry: string, options?: ScanOptions): S
 
 ### validate
 
+Runs a set of checks against a subject and reports every outcome.
+
 ```ts
-export declare function validate(subject: Subject, options?: ValidateOptions): Promise<Report>;
+export declare function validate(subject: Subject, options: ValidateOptions): Promise<Report>;
 ```
 
 ### BANNED_GLOBALS
@@ -2956,6 +2971,14 @@ Property names that are banned however the object was reached.
 BANNED_PROPERTIES: ReadonlyMap<string, string>
 ```
 
+### CHECK_SETS
+
+Each set's checks, in the order they run. The ranked set is the every-game set and two more, which hold what a ranked or practice run on a platform needs and a game played only on its own page does not.
+
+```ts
+CHECK_SETS: Readonly<Record<CheckSet, readonly Check[]>>
+```
+
 ### CHECK_WINDOW_TICKS
 
 How far the checks play each log: 36,000 ticks, ten minutes at 60 Hz. A run the game has not ended by then stops there, with terminal `timeout`, and the report says where every run ended. Nothing is refused for running the whole window, because no run has a step limit; the window bounds what the suite costs and nothing else.
@@ -2964,16 +2987,26 @@ How far the checks play each log: 36,000 ticks, ten minutes at 60 Hz. A run the 
 CHECK_WINDOW_TICKS = 36000
 ```
 
-### CHECKS
-
-```ts
-CHECKS: readonly Check[]
-```
-
 ### DEFAULT_SEEDS
 
 ```ts
 DEFAULT_SEEDS: string[]
+```
+
+### SENSITIVITY_SEEDS
+
+The two seeds the seed check plays, which no other check uses. They are the seeds vbz's platform played when this check was its own, so a game it checked then gets the same answer here.
+
+```ts
+SENSITIVITY_SEEDS: readonly ["vbz-seed-a", "vbz-seed-b"]
+```
+
+### SENSITIVITY_TICKS
+
+How far the seed check plays each log: 3,600 ticks, a minute at 60 Hz, as the platform's own check did. It runs six sessions, two seeds over three logs, and stops at the first log whose two runs differ.
+
+```ts
+SENSITIVITY_TICKS = 3600
 ```
 
 ### ScanOptions
@@ -2996,9 +3029,15 @@ export interface ScanOptions {
 
 ```ts
 export interface ValidateOptions {
+    /**
+     * Which checks run: `every-game`, what any game on the engine needs, or
+     * `ranked`, those and the checks a ranked or practice run on a platform
+     * needs. Required, so every caller says which question it is asking.
+     */
+    readonly set: CheckSet;
     /** Seeds every check runs against. More seeds, more confidence, more time. */
     readonly seeds?: readonly string[];
-    /** Run only these checks, by name. */
+    /** Run only these checks of the set, by name. A name the set lacks throws. */
     readonly only?: readonly string[];
     /** Set false to leave the runtime traps off, for measuring their cost. */
     readonly shims?: boolean;
@@ -3056,6 +3095,14 @@ export type CheckOutcome = {
 };
 ```
 
+### CheckSet
+
+Which checks a caller runs. `every-game` is what any game on the engine needs. `ranked` adds what a ranked or practice run on a platform needs: that the seed changes the game, and that the manifest says how a run ranks. There is no default; every caller names its set.
+
+```ts
+export type CheckSet = "every-game" | "ranked";
+```
+
 ### Finding
 
 ```ts
@@ -3075,6 +3122,8 @@ export type Finding = {
 
 ```ts
 export type Report = {
+    /** The set that ran. */
+    readonly set: CheckSet;
     readonly ok: boolean;
     readonly outcomes: readonly CheckOutcome[];
     readonly ms: number;
@@ -3157,7 +3206,12 @@ export type Subject = {
     readonly entry?: string;
     /** The directory holding the bundle and its assets, for the budget check. */
     readonly root?: string;
-    /** A default config, when the game takes one. */
+    /**
+     * The config every check plays. `loadSubject` sets it to
+     * `servedConfig(manifest)`, every declared parameter at its default, unless
+     * it is given another. A subject built by hand without one plays the served
+     * config too, never an empty one.
+     */
     readonly config?: unknown;
     /**
      * The bytes of the game's data packs, by manifest path, unchecked. The

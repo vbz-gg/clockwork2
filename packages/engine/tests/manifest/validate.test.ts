@@ -4,6 +4,7 @@ import {
   mergeParamDefaults,
   type ParamSchema,
   type ParamValues,
+  servedConfig,
   validateManifest,
   validateParams,
 } from "../../src/manifest/index"
@@ -367,6 +368,18 @@ describe("parameters", () => {
       const merged = mergeParamDefaults(schema, null)
       expect("title" in merged).toBe(false)
       expect("music" in merged).toBe(false)
+    })
+  })
+
+  describe("servedConfig", () => {
+    test("is every declared parameter at its default, and nothing else", () => {
+      const served = servedConfig({ ...REFERENCE_MANIFEST, params: schema })
+      expect(served).toEqual({ theme: "#112233", mode: "easy", lives: 3 })
+      expect(served).toEqual(mergeParamDefaults(schema, null))
+    })
+
+    test("is empty for a game that declares no parameters", () => {
+      expect(servedConfig(REFERENCE_MANIFEST)).toEqual({})
     })
   })
 })
