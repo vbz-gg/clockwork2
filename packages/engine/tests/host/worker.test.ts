@@ -8,6 +8,9 @@
  */
 
 import { describe, expect, test } from "bun:test"
+import createServedConfigGame, {
+  MANIFEST as SERVED_CONFIG_MANIFEST,
+} from "../../fixtures/served-config/index"
 import { RecordedInputSource, runSession } from "../../src"
 import { GameHost, ManualScheduler } from "../../src/host/index"
 import {
@@ -161,6 +164,35 @@ describe("the worker protocol", () => {
     }
     expect(run(90)).toEqual({ endTick: 90, terminal: "timeout" })
     expect(run()).toEqual({ endTick: 3600, terminal: "completed" })
+  })
+
+  test("a worker given no config plays the served one, as the checks do", () => {
+    // The fixture ends at its endAt parameter's default, 900; an empty config
+    // would never end it.
+    type Ended = { endTick: number; terminal: string }
+    const run = (config?: { endAt: number }): Ended | null => {
+      const pair = new FakeWorkerPair()
+      runSimulationWorker(
+        createServedConfigGame,
+        SERVED_CONFIG_MANIFEST,
+        pair.scope,
+      )
+      let ended = null as Ended | null
+      const simulation = new WorkerSimulation({
+        worker: pair.page,
+        seed: "served",
+        ...(config === undefined ? {} : { config }),
+        onEnded: (result) => {
+          ended = { endTick: result.endTick, terminal: result.terminal }
+        },
+      })
+      for (let frame = 0; ended === null && frame < 5_000; frame++) {
+        simulation.frame(1000 / 60)
+      }
+      return ended
+    }
+    expect(run()).toEqual({ endTick: 900, terminal: "completed" })
+    expect(run({ endAt: 120 })).toEqual({ endTick: 120, terminal: "completed" })
   })
 
   test("the view it sends survives a structured clone", () => {

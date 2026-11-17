@@ -35,6 +35,7 @@ import {
   Session,
   type SessionResult,
   type Snapshot,
+  servedConfig,
   type TerminalReason,
 } from "../index.js"
 import { browserScheduler, type Scheduler } from "./clock.js"
@@ -50,6 +51,11 @@ export interface GameHostOptions<
   readonly module: GameModule<TView, TConfig>
   readonly manifest: Manifest
   readonly seed: string
+  /**
+   * The config the session plays. Left out, it is `servedConfig(manifest)`,
+   * every declared parameter at its default, which is what a platform serves
+   * a ranked or practice run and what the conformance checks play.
+   */
   readonly config?: TConfig
   readonly presentation?: Presentation<TView, TContainer>
   readonly container?: TContainer
@@ -139,10 +145,14 @@ export class GameHost<
   private heldFrames = 0
   private readonly requests: PackRequests
   private readonly packs: PackSet
+  /** The config given, or the served one: what the session and its recording carry. */
+  private readonly config: TConfig
 
   constructor(
     private readonly options: GameHostOptions<TView, TContainer, TConfig>,
   ) {
+    this.config =
+      options.config ?? (servedConfig(options.manifest) as unknown as TConfig)
     this.packs = PackSet.verify(
       options.manifest.assets,
       options.packs?.preloaded ?? [],
@@ -177,7 +187,7 @@ export class GameHost<
     return new Session<TView, TConfig>({
       module: this.options.module,
       seed: this.options.seed,
-      config: (this.options.config ?? {}) as TConfig,
+      config: this.config,
       inputs: this.source,
       ...(this.options.maxTicks === undefined
         ? {}
@@ -489,7 +499,7 @@ export class GameHost<
       manifestHash: hashCanonical(this.options.manifest as never),
       tickHz: this.options.manifest.session.tickHz,
       seed: this.options.seed,
-      config: (this.options.config ?? {}) as PlainValue,
+      config: this.config as PlainValue,
       inputs,
       checkpoints: result.checkpoints,
       endTick: result.endTick,

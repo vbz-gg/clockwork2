@@ -2093,6 +2093,7 @@ export declare class GameHost<TView = unknown, TContainer = unknown, TConfig = P
     readonly live: LiveInputQueue | null;
     /** Real time that passed while the loop held for a pack. */
     /** Frames that ran no tick because the loop was holding from their start. */
+    /** The config given, or the served one: what the session and its recording carry. */
     constructor(options: GameHostOptions<TView, TContainer, TConfig>);
     get tick(): number;
     /**
@@ -2505,6 +2506,11 @@ export interface GameHostOptions<TView = unknown, TContainer = unknown, TConfig 
     readonly module: GameModule<TView, TConfig>;
     readonly manifest: Manifest;
     readonly seed: string;
+    /**
+     * The config the session plays. Left out, it is `servedConfig(manifest)`,
+     * every declared parameter at its default, which is what a platform serves
+     * a ranked or practice run and what the conformance checks play.
+     */
     readonly config?: TConfig;
     readonly presentation?: Presentation<TView, TContainer>;
     readonly container?: TContainer;
@@ -2833,6 +2839,11 @@ export interface WorkerSimulationOptions {
     /** The caller owns the Worker, so the bundler resolves its URL, not us. */
     readonly worker: Worker;
     readonly seed: string;
+    /**
+     * The config the session plays. Left out, the worker plays
+     * `servedConfig(manifest)`, every declared parameter at its default, which
+     * is what a platform serves and what the conformance checks play.
+     */
     readonly config?: PlainValue;
     /**
      * Where the session stops, with terminal `timeout`, if the game has not
@@ -2924,7 +2935,8 @@ export type PackTransfer = {
 export type ToWorker = {
     readonly type: "init";
     readonly seed: string;
-    readonly config: PlainValue;
+    /** Left out, the worker plays `servedConfig(manifest)`. */
+    readonly config?: PlainValue;
     /** Where the session stops. Left out, it runs until the game ends it. */
     readonly maxTicks?: number;
     /** Every start pack, and any demand pack the page already has. */

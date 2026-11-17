@@ -1342,6 +1342,12 @@ A live session has no step limit: it runs until the game ends it or `stop` is
 called. `maxTicks` on the host is for a replay, which passes
 `Math.max(endTick, 1)` to stop where the run it replays stopped.
 
+A host given no `config` plays `servedConfig(manifest)`, every declared
+parameter at its default, and its recording carries that config. That is what
+a platform serves and what the conformance checks play, so a page that passes
+none plays the game the checks passed. The worker host does the same, inside
+the worker, which holds the manifest.
+
 ### Watching a recorded run
 
 A replay is a session whose inputs come from a log instead of from devices, so

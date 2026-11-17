@@ -8,6 +8,9 @@
  */
 
 import { describe, expect, test } from "bun:test"
+import createServedConfigGame, {
+  MANIFEST as SERVED_CONFIG_MANIFEST,
+} from "../../fixtures/served-config/index"
 import {
   decodeRecording,
   encodeRecording,
@@ -386,6 +389,31 @@ describe("stepping by hand", () => {
     expect(ended).toEqual([
       expect.objectContaining({ endTick: 20_000, terminal: "abandoned" }),
     ])
+  })
+
+  test("a host given no config plays the served one, as the checks do", () => {
+    // The fixture ends at its endAt parameter's default, 900, and fills in no
+    // default of its own: an empty config would never end.
+    const play = (config?: { endAt: number }) => {
+      const host = new GameHost({
+        module: createServedConfigGame(),
+        manifest: SERVED_CONFIG_MANIFEST,
+        seed: "served",
+        inputs: new RecordedInputSource([]),
+        scheduler: new ManualScheduler(),
+        ...(config === undefined ? {} : { config }),
+      })
+      let steps = 0
+      while (host.stepOnce() && steps < 5_000) steps++
+      return host
+    }
+    const served = play()
+    expect(served.result().endTick).toBe(900)
+    expect(served.result().terminal).toBe("completed")
+    expect(served.recording().config).toEqual({ endAt: 900 })
+    const given = play({ endAt: 120 })
+    expect(given.result().endTick).toBe(120)
+    expect(given.recording().config).toEqual({ endAt: 120 })
   })
 
   test("a maxTicks stops the session there with timeout", () => {
