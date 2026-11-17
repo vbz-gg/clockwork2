@@ -90,20 +90,35 @@ describe("manifest validation", () => {
 
   test("a format that is not a number says only what it must be", () => {
     // Read from a plain object, "constructor" and "toString" would find an
-    // inherited function and hand it back as the message. "2" is not 2 either.
+    // inherited function and hand it back as the message.
     for (const schemaVersion of [
       "constructor",
       "toString",
       "__proto__",
       "hasOwnProperty",
-      "2",
+      "valueOf",
       null,
+      4,
     ]) {
       const issue = validateManifest({
         ...REFERENCE_MANIFEST,
         schemaVersion,
       }).find((i) => i.at === "schemaVersion")
       expect(issue?.message, String(schemaVersion)).toBe("must be 3")
+    }
+  })
+
+  test("a format quoted as a string still gets its own message", () => {
+    for (const [schemaVersion, says] of [
+      ["2", "session.maxTicks"],
+      [2, "session.maxTicks"],
+      ["1", "inputs.controls"],
+    ] as const) {
+      const issue = validateManifest({
+        ...REFERENCE_MANIFEST,
+        schemaVersion,
+      }).find((i) => i.at === "schemaVersion")
+      expect(issue?.message, String(schemaVersion)).toContain(says)
     }
   })
 
@@ -446,6 +461,64 @@ describe("parameters", () => {
           },
         }),
       ).toThrow("params.lives: its default must be at least 1")
+    })
+
+    test("reads a parameter named like an object's own method as the parameter", () => {
+      // A plain object answers each of these names with a function from its
+      // prototype, so a read that does not ask for an own property finds a
+      // value nobody declared.
+      const int = (extra: object) =>
+        ({ type: "int", label: "X", ...extra }) as ParamSchema[string]
+      for (const name of [
+        "toString",
+        "constructor",
+        "valueOf",
+        "hasOwnProperty",
+      ]) {
+        const required: ParamSchema = { [name]: int({}) }
+        expect(
+          () => servedConfig({ ...REFERENCE_MANIFEST, params: required }),
+          name,
+        ).toThrow(
+          `params.${name} is required and has no default, so a platform cannot serve it`,
+        )
+        expect(validateParams(required, {}), name).toEqual([
+          { at: `params.${name}`, message: "is required" },
+        ])
+
+        const optional: ParamSchema = { [name]: int({ optional: true }) }
+        const servedOptional = servedConfig({
+          ...REFERENCE_MANIFEST,
+          params: optional,
+        })
+        expect(Object.hasOwn(servedOptional, name), name).toBe(false)
+        expect(validateParams(optional, servedOptional), name).toEqual([])
+
+        const defaulted: ParamSchema = { [name]: int({ default: 4 }) }
+        const served = servedConfig({
+          ...REFERENCE_MANIFEST,
+          params: defaulted,
+        })
+        expect(Object.hasOwn(served, name), name).toBe(true)
+        expect(served[name], name).toBe(4)
+        expect(validateParams(defaulted, { [name]: "four" }), name).toEqual([
+          { at: `params.${name}`, message: "must be a whole number" },
+        ])
+        // And a config naming one against a schema without it is unknown.
+        expect(validateParams({}, { [name]: 1 }), name).toEqual([
+          { at: `params.${name}`, message: "is not in the schema" },
+        ])
+      }
+    })
+
+    test("serves a parameter named __proto__ as a value, not a prototype", () => {
+      const schema = JSON.parse(
+        '{"__proto__": {"type": "int", "label": "X", "default": 4}}',
+      ) as ParamSchema
+      const served = servedConfig({ ...REFERENCE_MANIFEST, params: schema })
+      expect(Object.hasOwn(served, "__proto__")).toBe(true)
+      expect(Object.getPrototypeOf(served)).toBe(Object.prototype)
+      expect(validateParams(schema, served)).toEqual([])
     })
 
     test("passes validateParams whenever it serves anything", () => {

@@ -148,6 +148,24 @@ function checkParamDefinition(
   }
 }
 
+/**
+ * A parameter's own value in a config, never one the object inherits. A
+ * parameter may be called `toString`, `constructor` or `valueOf`, and a plain
+ * object answers each of those with a function from its prototype.
+ */
+function ownValue(values: object, name: string): unknown {
+  return Object.hasOwn(values, name)
+    ? (values as Record<string, unknown>)[name]
+    : undefined
+}
+
+/** Whether a parameter declares a default, by its own property. */
+function declaresDefault(definition: ParamDefinition): boolean {
+  return (
+    Object.hasOwn(definition, "default") && definition.default !== undefined
+  )
+}
+
 /** Checks a set of supplied values against a schema. */
 export function validateParams(
   schema: ParamSchema,
@@ -158,11 +176,9 @@ export function validateParams(
 
   for (const [name, definition] of Object.entries(schema)) {
     const at = `params.${name}`
-    const value = (supplied as Record<string, unknown>)[name]
+    const value = ownValue(supplied, name)
     if (value === undefined) {
-      const hasDefault =
-        "default" in definition && definition.default !== undefined
-      if (definition.optional !== true && !hasDefault) {
+      if (definition.optional !== true && !declaresDefault(definition)) {
         issues.push({ at, message: "is required" })
       }
       continue
@@ -171,7 +187,7 @@ export function validateParams(
   }
 
   for (const name of Object.keys(supplied)) {
-    if (!(name in schema)) {
+    if (!Object.hasOwn(schema, name)) {
       // game-base ignored these, so a typo in a config was invisible.
       issues.push({ at: `params.${name}`, message: "is not in the schema" })
     }
@@ -294,15 +310,25 @@ export function mergeParamDefaults(
   values: ParamValues | null | undefined,
 ): ParamValues {
   const merged: Record<string, string | number | boolean> = {}
-  const supplied = (values ?? {}) as Record<string, unknown>
+  const supplied = values ?? {}
+  // Defined rather than assigned, so a parameter named `__proto__` is a
+  // value in the config and not its prototype.
+  const set = (name: string, value: string | number | boolean): void => {
+    Object.defineProperty(merged, name, {
+      value,
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    })
+  }
   for (const [name, definition] of Object.entries(schema)) {
-    const value = supplied[name]
+    const value = ownValue(supplied, name)
     if (value !== undefined) {
-      merged[name] = value as string | number | boolean
+      set(name, value as string | number | boolean)
       continue
     }
-    if ("default" in definition && definition.default !== undefined) {
-      merged[name] = definition.default
+    if (declaresDefault(definition)) {
+      set(name, definition.default as string | number | boolean)
     }
   }
   return merged
@@ -328,7 +354,7 @@ export function servedConfig(manifest: Manifest): ParamValues {
   const unserved = new Set(
     Object.entries(schema)
       .filter(([name, definition]) => {
-        return definition.optional !== true && served[name] === undefined
+        return definition.optional !== true && !Object.hasOwn(served, name)
       })
       .map(([name]) => `params.${name}`),
   )
@@ -441,20 +467,30 @@ const REMOVED =
 
 /**
  * What changed since each older format, so a manifest written for one says
- * what to change rather than only that its number is wrong. A map keyed by the
- * number, so a `schemaVersion` such as "constructor" finds nothing rather
- * than something an object inherits.
+ * what to change rather than only that its number is wrong. A map, so a
+ * `schemaVersion` such as "constructor" finds nothing rather than something
+ * an object inherits.
  */
-const FORMAT_CHANGES: ReadonlyMap<unknown, string> = new Map([
+const FORMAT_CHANGES: ReadonlyMap<string | undefined, string> = new Map([
   [
-    1,
+    "1",
     "must be 3: format 1 bound device codes in inputs.map and declared inputs.controls, and since format 2 a game declares each input by name and range. Format 3 then removed session.maxTicks, session.maxWallSeconds and budgets.bundleBytes, and made rankBy and tiePolicy optional",
   ],
   [
-    2,
+    "2",
     "must be 3: format 3 removed session.maxTicks and session.maxWallSeconds, because no run has a step limit, and budgets.bundleBytes, which nothing read; rankBy and tiePolicy are optional, declared together or not at all",
   ],
 ])
+
+/**
+ * The key an old format's message is filed under: 2 and "2" alike, since a
+ * manifest written by hand or read from elsewhere may quote the number.
+ */
+function formatKey(version: unknown): string | undefined {
+  return typeof version === "number" || typeof version === "string"
+    ? String(version)
+    : undefined
+}
 
 /** Every problem with a manifest, in document order. */
 export function validateManifest(value: unknown): Issue[] {
@@ -468,7 +504,8 @@ export function validateManifest(value: unknown): Issue[] {
     issues.push({
       at: "schemaVersion",
       message:
-        FORMAT_CHANGES.get(m.schemaVersion) ?? `must be ${MANIFEST_FORMAT}`,
+        FORMAT_CHANGES.get(formatKey(m.schemaVersion)) ??
+        `must be ${MANIFEST_FORMAT}`,
     })
   }
   if (typeof m.id !== "string" || !ID_PATTERN.test(m.id)) {
