@@ -101,6 +101,8 @@ export declare class LiveInputQueue implements InputSource, InputSink {
      * session resumes at, which is not when the player made it.
      */
     pause(): void;
+    /** Whether the queue is paused, taking no input until `resume`. */
+    get paused(): boolean;
     onResume(listener: () => void): () => void;
     resume(): void;
     take(tick: number): readonly InputEvent[];
@@ -2115,6 +2117,12 @@ export declare class GameHost<TView = unknown, TContainer = unknown, TConfig = P
     /** Present only for a live session; a replay reads its recorded source. */
     readonly live: LiveInputQueue | null;
     /** While a presentation's `prepare` runs: what `start` hands every caller. */
+    /** `pause` was called while `prepare` ran: the host is paused when it is ready. */
+    /**
+     * Whether the live queue is paused because this host paused it. The host
+     * resumes only that: a queue the page paused itself stays paused.
+     */
+    /** What the presentation is mounted and prepared with: one object for both. */
     /** Real time that passed while the loop held for a pack. */
     /** Frames that ran no tick because the loop was holding from their start. */
     /** The config given, or the served one: what the session and its recording carry. */
@@ -2147,19 +2155,29 @@ export declare class GameHost<TView = unknown, TContainer = unknown, TConfig = P
      * A presentation with `prepare` is mounted, then prepared, and the clock
      * starts only when `prepare` resolves. Until then `status` is
      * `"preparing"`, no tick runs and the live queue takes no input, so nothing
-     * the player does before the game can draw is recorded. A presentation
-     * without `prepare`, or no presentation, starts the clock before `start`
-     * returns, as it always has.
+     * the player does before the game can draw is recorded. A `pause` while it
+     * waits is kept: the host is then `"paused"` when `prepare` resolves, and
+     * `resume` starts the clock. A presentation without `prepare`, or no
+     * presentation, starts the clock before `start` returns, as it always has.
+     * On a paused host `start` does what `resume` does.
      *
-     * @returns whether the clock is running: true once it is, false when it
-     *   never will, because the session has ended, `prepare` rejected (reported
-     *   through `onError` as `E_PRESENTATION_FAILED`), or the host was stopped
-     *   or destroyed while `prepare` ran. It never rejects, so a caller with
-     *   nothing to wait for may leave it.
+     * @returns whether the host is ready: true once the clock is running, or
+     *   paused because `pause` was called while `prepare` ran; false when it
+     *   never will be, because the session has ended, `prepare` rejected
+     *   (reported through `onError` as `E_PRESENTATION_FAILED`), or the host
+     *   was stopped or destroyed while `prepare` ran. It never rejects, so a
+     *   caller with nothing to wait for may leave it.
      */
     start(): Promise<boolean>;
+    /** Pauses the live queue, unless something else already has. */
+    /** Resumes the live queue if this host was the one that paused it. */
     /** Starts the clock now. */
+    /**
+     * Pauses the clock. While `prepare` runs it is remembered, and the host is
+     * paused rather than running once the presentation is ready.
+     */
     pause(): void;
+    /** Resumes a paused clock; while `prepare` runs, takes back a `pause`. */
     resume(): void;
     /** Ends the session without finishing it, for a player who walked away. */
     stop(reason?: TerminalReason): void;
@@ -2548,9 +2566,11 @@ export interface GameHostOptions<TView = unknown, TContainer = unknown, TConfig 
     readonly manifest: Manifest;
     readonly seed: string;
     /**
-     * The config the session plays. Left out, it is `servedConfig(manifest)`,
-     * every declared parameter at its default, which is what a platform serves
-     * a ranked or practice run and what the conformance checks play.
+     * The config the session plays. Left out of a live session, it is
+     * `servedConfig(manifest)`, every declared parameter at its default, which
+     * is what a platform serves a ranked or practice run and what the
+     * conformance checks play. A replay, given `inputs`, must pass the
+     * recording's own config, because that is what the run it replays played.
      */
     readonly config?: TConfig;
     readonly presentation?: Presentation<TView, TContainer>;

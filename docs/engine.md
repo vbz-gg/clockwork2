@@ -1335,14 +1335,18 @@ host.start()
 The host owns the accumulator, the checkpoints and the recording. The game
 knows about none of them.
 
-`start()` returns a promise of whether the clock is running. With a
-presentation that has no `prepare`, the clock is running before `start()`
-returns and the promise resolves `true`, so a page can ignore it. With one,
-`status` reads `"preparing"` until `prepare` settles; the promise resolves
-`true` when the clock starts, and `false` when it never will: `prepare`
-rejected, which `onError` reports as `E_PRESENTATION_FAILED`, or the host was
-stopped or destroyed in the meantime, after which nothing starts. It never
-rejects. A game runs in its own page, on its own site; there is
+`start()` returns a promise of whether the host is ready. With a presentation
+that has no `prepare`, the clock is running before `start()` returns and the
+promise resolves `true`, so a page can ignore it. With one, `status` reads
+`"preparing"` until `prepare` settles; the promise resolves `true` when the
+clock starts, and `false` when it never will: `prepare` rejected, which
+`onError` reports as `E_PRESENTATION_FAILED`, or the host was stopped or
+destroyed in the meantime, after which nothing starts. It never rejects. A
+`pause()` while `prepare` runs is kept, so a tab hidden while the renderer
+started comes back paused: the promise resolves `true` with `status`
+`"paused"`, and `resume()` starts the clock. `start()` on a paused host does
+what `resume()` does. The host resumes the live queue only when it paused it
+itself, so a queue the page paused stays paused. A game runs in its own page, on its own site; there is
 no frame between the page and the game.
 
 A game with data packs gives the host its start packs and a loader for the
@@ -1377,7 +1381,7 @@ A live session has no step limit: it runs until the game ends it or `stop` is
 called. `maxTicks` on the host is for a replay, which passes
 `Math.max(endTick, 1)` to stop where the run it replays stopped.
 
-A host given no `config` plays `servedConfig(manifest)`, every declared
+A live host given no `config` plays `servedConfig(manifest)`, every declared
 parameter at its default, and its recording carries that config. That is what
 a platform serves and what the conformance checks play, so a page that passes
 none plays the game the checks passed. The worker host does the same, inside
@@ -1392,11 +1396,16 @@ it runs down the same loop and reaches the same states:
 const host = new GameHost({
   ...rest,
   seed: recording.seed,
+  config: recording.config,
   inputs: new RecordedInputSource(recording.inputs),
   maxTicks: Math.max(recording.endTick, 1),
   speed: 2,
 })
 ```
+
+A replay plays the recording's own seed and config. `GameHost` refuses one
+given `inputs` and no `config` with `E_ARG_INVALID`, rather than filling in the
+served config, which the run being replayed may not have played.
 
 `host.live` is null for a replay, which does the rest of the work by itself: the
 device helpers have no queue to record into, so a key pressed by somebody

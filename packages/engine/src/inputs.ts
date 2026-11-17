@@ -244,14 +244,14 @@ export class LiveInputQueue implements InputSource, InputSink {
   private readonly resumeListeners = new Set<() => void>()
   /** What a summed amount owed past its range, carried into later ticks. */
   private readonly carried = new Map<string, number>()
-  private paused = false
+  private pausedNow = false
 
   constructor(private readonly inputs: Inputs) {}
 
   push(pushed: PendingInput): void {
     // -0 would be recorded as 0 by JSON and replayed differently.
     const input = Object.is(pushed.value, -0) ? { ...pushed, value: 0 } : pushed
-    if (this.paused) return
+    if (this.pausedNow) return
     const declaration = declared(this.inputs, input.code)
     if (declaration === undefined) {
       fail("E_INPUT_UNDECLARED", {
@@ -336,9 +336,14 @@ export class LiveInputQueue implements InputSource, InputSink {
    * session resumes at, which is not when the player made it.
    */
   pause(): void {
-    if (this.paused) return
+    if (this.pausedNow) return
     for (const release of this.pauseListeners) release()
-    this.paused = true
+    this.pausedNow = true
+  }
+
+  /** Whether the queue is paused, taking no input until `resume`. */
+  get paused(): boolean {
+    return this.pausedNow
   }
 
   onResume(listener: () => void): () => void {
@@ -349,8 +354,8 @@ export class LiveInputQueue implements InputSource, InputSink {
   }
 
   resume(): void {
-    if (!this.paused) return
-    this.paused = false
+    if (!this.pausedNow) return
+    this.pausedNow = false
     for (const listener of this.resumeListeners) listener()
   }
 
