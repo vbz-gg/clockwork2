@@ -377,6 +377,61 @@ describe("PackSet.lazy, for a replay with every pack in memory", () => {
     }
   })
 
+  test("a pack that fails leaves the session's packs as they were", () => {
+    // Area A is delivered and named for ticks 10 to 19; area B, held by the
+    // lazy set with a wrong byte, is named from 20. Releasing A before B was
+    // checked would leave a session that had thrown with A already gone.
+    const AREA_A = encode('{"area":"a"}')
+    const AREA_B = encode('{"area":"b"}')
+    const areas = [
+      declare("packs/a.json", AREA_A, { load: "demand" }),
+      declare("packs/b.json", AREA_B, { load: "demand" }),
+    ]
+    const wrongB = AREA_B.slice()
+    wrongB[3] = (wrongB[3] as number) ^ 1
+    let ticks = 0
+    const game: GameModule = {
+      manifest: null,
+      init: () => {
+        ticks = 0
+      },
+      tick: () => {
+        ticks++
+      },
+      view: () => ({}),
+      snapshot: () => ({ ticks }),
+      restore: (snapshot) => {
+        ticks = snapshot.ticks as number
+      },
+      score: () => ({ ticks }),
+      isOver: () => ticks >= 100,
+      effects: () => [],
+      packsNeeded: () =>
+        ticks >= 20 ? ["packs/b.json"] : ticks >= 10 ? ["packs/a.json"] : [],
+    }
+    const session = new Session({
+      module: game,
+      seed: "areas",
+      config: {},
+      inputs: new RecordedInputSource([]),
+      assets: areas,
+      packs: PackSet.lazy(areas, [["packs/b.json", wrongB]]),
+    })
+    while (session.tick < 20) {
+      for (const path of session.packsMissing()) session.deliver(path, AREA_A)
+      session.step()
+    }
+    expect(session.holds("packs/a.json")).toBe(true)
+    for (let attempt = 0; attempt < 2; attempt++) {
+      expect(codeOf(() => session.step())).toBe("E_PACK_HASH_MISMATCH")
+      // Nothing moved: no tick ran, A is still held, and the same step fails
+      // the same way.
+      expect(session.tick).toBe(20)
+      expect(session.holds("packs/a.json")).toBe(true)
+      expect(session.packsMissing()).toEqual([])
+    }
+  })
+
   test("checks a start pack when the session is built, before init can read it", () => {
     const game = new PackGame()
     const corrupt = CORE.slice()

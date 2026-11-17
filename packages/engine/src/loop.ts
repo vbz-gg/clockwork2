@@ -492,19 +492,20 @@ export class Session<TView = unknown, TConfig = PlainValue> {
    * on whether that happened quickly. A pack prefetched and not yet named is
    * kept, and so is everything in a shared set. A pack from the set that no
    * session has needed before is checked here, before the tick that may read
-   * it, so wrong bytes fail at that tick.
+   * it, so wrong bytes fail at that tick, and before anything here changes,
+   * so a pack that fails leaves this session's packs as they were.
    */
   private handOver(tick: number): void {
+    for (const path of this.needed) {
+      if (!this.own.has(path)) this.checked(path, tick)
+    }
     for (const path of this.named) {
       if (!this.needed.includes(path)) {
         this.named.delete(path)
         this.own.delete(path)
       }
     }
-    for (const path of this.needed) {
-      this.named.add(path)
-      if (!this.own.has(path)) this.checked(path, tick)
-    }
+    for (const path of this.needed) this.named.add(path)
     this.readable =
       this.needed.length === 0
         ? this.start
