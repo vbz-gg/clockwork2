@@ -2,6 +2,37 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.9.0](https://github.com/vbz-gg/clockwork2/compare/v0.8.0...v0.9.0) (2026-11-17)
+
+
+### ⚠ BREAKING CHANGES
+
+* **input:** manifest schema 1 is refused; a game declares its inputs in schema 2. A recorded
+input carries no device. The ./parent, ./frame and ./protocol subpaths are removed.
+
+Docs-Updated: engine.md, the guide and the README describe declared inputs and the device helpers
+
+### Features
+
+* **guide:** ship the agent guide in the engine package as clockwork2 ([#29](https://github.com/vbz-gg/clockwork2/issues/29)) ([b89314b](https://github.com/vbz-gg/clockwork2/commit/b89314b0e6de22f45aa93836bf132e976928b9c1))
+* **input:** games declare their inputs and run in their own page ([#28](https://github.com/vbz-gg/clockwork2/issues/28)) ([ea32b4d](https://github.com/vbz-gg/clockwork2/commit/ea32b4dfec4edec3407cf16bd30d3d4bde141502))
+
+
+### Bug Fixes
+
+* **scripts:** a Docs-Updated line in wrapped prose is not the record ([#25](https://github.com/vbz-gg/clockwork2/issues/25)) ([bd80a37](https://github.com/vbz-gg/clockwork2/commit/bd80a373f2a54dd9975ebec7e2b3837eb78d6781))
+
+
+### Documentation
+
+* **readme:** coverage is 99.75%, and name all 17 lines it misses ([#27](https://github.com/vbz-gg/clockwork2/issues/27)) ([72e946f](https://github.com/vbz-gg/clockwork2/commit/72e946ffa74e8eb839aa8920d4b2b9c09810bdf7))
+
+
+### CI
+
+* **release:** tell the platform instead of the arcade ([#23](https://github.com/vbz-gg/clockwork2/issues/23)) ([dff59c9](https://github.com/vbz-gg/clockwork2/commit/dff59c970a8eb5262fa9222d90d48aa6536c04a5))
+* **release:** tell vbz-gg/sdk, and the platform now checks daily ([#26](https://github.com/vbz-gg/clockwork2/issues/26)) ([124e418](https://github.com/vbz-gg/clockwork2/commit/124e418a8f67e02090ba36d9d90eeb6d9470daf3))
+
 ## [0.8.0](https://github.com/vbz-gg/clockwork2/compare/v0.7.3...v0.8.0) (2026-11-09)
 
 
