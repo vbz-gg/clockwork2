@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.10.0](https://github.com/vbz-gg/clockwork2/compare/v0.9.0...v0.10.0) (2026-11-17)
+
+
+### ⚠ BREAKING CHANGES
+
+* manifest format 3, no step limit, ranked-only checks, served config, script-made events, presentation readiness (#30)
+
+### Features
+
+* manifest format 3, no step limit, ranked-only checks, served config, script-made events, presentation readiness ([#30](https://github.com/vbz-gg/clockwork2/issues/30)) ([6aa8b74](https://github.com/vbz-gg/clockwork2/commit/6aa8b74840be0c9d3548812ed969bfabd12a840c))
+
 ## [0.9.0](https://github.com/vbz-gg/clockwork2/compare/v0.8.0...v0.9.0) (2026-11-17)
 
 

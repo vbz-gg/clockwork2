@@ -796,7 +796,7 @@ INPUT_BUDGET_PER_TICK = 16
 The major of this constant is pinned by a game's manifest. A bundle built against a different kernel major is refused rather than run.
 
 ```ts
-KERNEL_VERSION = "0.9.0"
+KERNEL_VERSION = "0.10.0"
 ```
 
 ### KEY_CODES
