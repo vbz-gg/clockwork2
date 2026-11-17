@@ -18,11 +18,17 @@
 # made from this guide's templates, ./src/sim in one built with the vbz kit.
 #
 # Exit codes: 0 all checks passed, 1 a check failed, 2 bad arguments,
-# 3 the suite itself threw.
+# 3 the suite itself threw. An argument the CLI does not take, such as a
+# mistyped --rank, is a bad argument and runs nothing.
 set -euo pipefail
 
-target="${1:-./src}"
-shift || true
+# The path comes first. A call that starts with a flag checks ./src.
+if [[ $# -eq 0 || "$1" == -* ]]; then
+  target="./src"
+else
+  target="$1"
+  shift
+fi
 
 # `clockwork2-validate` is the bin `@clockwork2/engine/validate` installs. Calling
 # the bin rather than the package name keeps bunx on the copy in the game's

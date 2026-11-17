@@ -208,6 +208,28 @@ describe("every file the guide ships", () => {
   })
 })
 
+describe("scripts/validate.sh", () => {
+  const script = join(SKILL, "scripts/validate.sh")
+
+  test("refuses an argument the checks do not take, and runs nothing", () => {
+    // It runs the game's own clockwork2-validate, found from where it is run,
+    // which here is this repository's root.
+    for (const args of [
+      [join(ENGINE, "fixtures/conforming"), "--rank"],
+      ["--ranked=true"],
+    ]) {
+      const result = spawnSync("bash", [script, ...args], {
+        cwd: REPOSITORY,
+        encoding: "utf8",
+      })
+      const wrong = args.at(-1) as string
+      expect(result.status, wrong).toBe(2)
+      expect(result.stderr, wrong).toContain(`run does not take ${wrong}`)
+      expect(result.stdout, wrong).not.toContain("pass ")
+    }
+  }, 60_000)
+})
+
 describe("the scripts, on a game with data packs", () => {
   const scripts = join(SKILL, "scripts")
 

@@ -10,7 +10,7 @@
 
 import { isClockworkError } from "../index.js"
 import { loadSubject } from "./load.js"
-import { formatReport, validate } from "./runner.js"
+import { CHECK_NAME_WIDTH, formatReport, validate } from "./runner.js"
 import { scanImportGraph } from "./scan/import-graph.js"
 import type { Report } from "./types.js"
 
@@ -30,11 +30,45 @@ const USAGE = `clockwork2-validate
   --json         print the report as JSON
 `
 
+/** What `run` takes after its path: a flag alone, or a name and a value. */
+const RUN_FLAGS: ReadonlySet<string> = new Set(["--json", "--ranked"])
+const RUN_OPTIONS: readonly string[] = ["--only=", "--seeds="]
+
+/**
+ * Every argument after the path that the command does not take. Refused
+ * rather than ignored: a mistyped `--rank` or a `--ranked=true` would
+ * otherwise run the every-game set and exit 0, which reads as a pass of the
+ * ranked set.
+ */
+function unknownArguments(
+  command: string,
+  rest: readonly string[],
+): readonly string[] {
+  if (command !== "run") return rest
+  return rest.filter(
+    (arg) =>
+      !RUN_FLAGS.has(arg) &&
+      !RUN_OPTIONS.some((option) => arg.startsWith(option)),
+  )
+}
+
+/** Clears the progress line, which is at most the longest check name long. */
+const CLEAR_PROGRESS = `${" ".repeat(CHECK_NAME_WIDTH + 5)}\r`
+
 async function main(argv: readonly string[]): Promise<number> {
-  const [command, target] = argv
+  const [command, target, ...rest] = argv
   if (command === undefined || target === undefined) {
     console.log(USAGE)
     return command === undefined ? 0 : 2
+  }
+  if (target.startsWith("-")) {
+    console.error(`${command} needs a path before ${target}\n\n${USAGE}`)
+    return 2
+  }
+  const unknown = unknownArguments(command, rest)
+  if (unknown.length > 0 && (command === "run" || command === "scan")) {
+    console.error(`${command} does not take ${unknown.join(", ")}\n\n${USAGE}`)
+    return 2
   }
 
   if (command === "scan") {
@@ -89,7 +123,7 @@ async function main(argv: readonly string[]): Promise<number> {
   if (asJson) {
     console.log(JSON.stringify(report, null, 2))
   } else {
-    process.stderr.write("            \r")
+    process.stderr.write(CLEAR_PROGRESS)
     console.log(formatReport(report))
   }
   return report.ok ? 0 : 1

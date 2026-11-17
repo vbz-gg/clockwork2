@@ -1209,7 +1209,9 @@ bunx clockwork2-validate run ./src --json
 
 `validate(subject, { set })` has no default set: every caller names the
 question it is asking, and an `only` naming a check its set does not run is
-refused with `E_ARG_INVALID` before anything runs.
+refused with `E_ARG_INVALID` before anything runs. The CLI, and the guide's
+`validate.sh`, refuse any argument they do not take with exit code 2, so a
+mistyped `--rank` runs nothing rather than the every-game set.
 
 | # | Check | What it does |
 | --- | --- | --- |

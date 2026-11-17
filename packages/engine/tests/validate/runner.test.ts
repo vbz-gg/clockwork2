@@ -13,6 +13,7 @@ import { ClockworkError } from "../../src"
 import { CHECK_SETS } from "../../src/validate/checks/index"
 import { codeFromError } from "../../src/validate/checks/support"
 import {
+  CHECK_NAME_WIDTH,
   DEFAULT_SEEDS,
   formatReport,
   validate,
@@ -266,6 +267,35 @@ describe("formatReport", () => {
     expect(text).toContain(
       "2 check(s) in the ranked set failed: headless, restore",
     )
+  })
+
+  test("every check's name fits its column, the longest included", () => {
+    // The column was 14 wide, two short of "seed-sensitivity", which pushed
+    // that line's time and title two places right of every other line's.
+    expect(CHECK_NAME_WIDTH).toBe("seed-sensitivity".length)
+    const names = CHECK_SETS.ranked.map((check) => check.name)
+    const text = formatReport({
+      set: "ranked",
+      ok: true,
+      ms: 10,
+      outcomes: names.map((check, i) => ({
+        check,
+        title: `title ${i}`,
+        ok: true,
+        findings: [],
+        ms: i * 37,
+      })),
+    })
+    const lines = text.split("\n").filter((line) => line.startsWith("pass"))
+    expect(lines.length).toBe(names.length)
+    const titleAt = new Set(lines.map((line) => line.indexOf("ms  title")))
+    expect([...titleAt]).toHaveLength(1)
+    for (const [i, line] of lines.entries()) {
+      // The name, then at least one space before the time.
+      expect(line).toMatch(
+        new RegExp(`^pass  ${names[i]} +\\d+ms  title ${i}$`),
+      )
+    }
   })
 
   test("a skipped check reads as skipped, not as a pass", () => {

@@ -48,6 +48,38 @@ describe("usage", () => {
     expect(out).toContain("clockwork2-validate")
   }, 30_000)
 
+  test("an argument run does not take exits 2, names it and runs nothing", async () => {
+    // Ignored, a mistyped --rank or a --ranked=true ran the every-game set
+    // and exited 0, which read as a pass of the ranked set.
+    for (const wrong of ["--rank", "--ranked=true", "--only", "extra"]) {
+      const { code, out, err } = await run(
+        "run",
+        join(FIXTURES, "conforming"),
+        "--seeds=t1",
+        wrong,
+      )
+      expect(code, wrong).toBe(2)
+      expect(err, wrong).toContain(`run does not take ${wrong}`)
+      expect(out, wrong).not.toContain("pass ")
+    }
+  }, 60_000)
+
+  test("a flag where the path goes exits 2", async () => {
+    const { code, err } = await run("run", "--ranked")
+    expect(code).toBe(2)
+    expect(err).toContain("run needs a path before --ranked")
+  }, 30_000)
+
+  test("scan takes nothing after its path", async () => {
+    const { code, err } = await run(
+      "scan",
+      join(FIXTURES, "conforming/index.ts"),
+      "--json",
+    )
+    expect(code).toBe(2)
+    expect(err).toContain("scan does not take --json")
+  }, 30_000)
+
   test("an unknown command exits 2 and names it", async () => {
     const { code, err } = await run("frobnicate", "./somewhere")
     expect(code).toBe(2)

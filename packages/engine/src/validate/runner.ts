@@ -35,6 +35,17 @@ export interface ValidateOptions {
 export const DEFAULT_SEEDS = ["conformance-1", "conformance-2", "conformance-3"]
 
 /**
+ * The longest check name in any set, which sizes the name column of a
+ * printed report and the CLI's progress line, so every name fits with room
+ * after it.
+ */
+export const CHECK_NAME_WIDTH = Math.max(
+  ...Object.values(CHECK_SETS).flatMap((checks) =>
+    checks.map((check) => check.name.length),
+  ),
+)
+
+/**
  * Runs a set of checks against a subject and reports every outcome.
  *
  * @throws E_ARG_INVALID for a set that does not exist, or an `only` naming a
@@ -132,7 +143,7 @@ export function formatReport(report: Report): string {
     const note =
       outcome.skipped !== undefined ? outcome.skipped : (outcome.note ?? "")
     lines.push(
-      `${mark}  ${outcome.check.padEnd(14)} ${String(outcome.ms).padStart(6)}ms  ${outcome.title}`,
+      `${mark}  ${outcome.check.padEnd(CHECK_NAME_WIDTH)} ${String(outcome.ms).padStart(6)}ms  ${outcome.title}`,
     )
     if (note !== "") lines.push(`      ${note}`)
     for (const line of endLines(outcome.ends ?? [])) lines.push(`      ${line}`)
