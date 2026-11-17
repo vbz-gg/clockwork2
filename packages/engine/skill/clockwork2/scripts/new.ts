@@ -2,12 +2,15 @@
 /**
  * Copies a template into a new directory and renames it.
  *
- *   new.ts ./my-game                  the canvas2d template
- *   new.ts ./my-game --renderer=three
+ *   <guide>/scripts/new.ts ./my-game                  the canvas2d template
+ *   <guide>/scripts/new.ts ./my-game --renderer=three
  *
  * The copy passes `validate` before a line of it is changed, which is the
  * point: start from something that conforms and keep it conforming, rather
  * than writing a game and finding out at submission time.
+ *
+ * The templates are games on the engine alone. A game built with the vbz kit
+ * starts from that kit's own scaffold, and nothing here is copied into one.
  */
 
 import { cpSync, existsSync, readFileSync, writeFileSync } from "node:fs"

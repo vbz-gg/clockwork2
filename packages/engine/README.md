@@ -23,6 +23,13 @@ implementation-defined, and they really do differ: `Math.cos(0.1)` is
 `dmath` ships the same function names, transcribed from fdlibm using only
 operations ECMAScript specifies exactly.
 
+The package carries `clockwork2`, an agent guide for writing a game on it, at
+`skill/clockwork2/`: the rules a simulation has to follow, a section per error
+code, scripts that run the engine's twelve conformance checks, and two starter
+templates. Point a coding agent's tools at
+`node_modules/@clockwork2/engine/skill/clockwork2/` to install it, and run its
+scripts from the game's own root.
+
 `docs/engine.md` in the repository explains the whole design from first
 principles.
 

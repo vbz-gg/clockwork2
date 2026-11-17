@@ -11,15 +11,18 @@
  * with `/` on every system, because a manifest path is the same on every
  * system and the manifest refuses a backslash.
  *
- *   package.ts ./dist                 hash everything under ./dist
- *   package.ts ./dist --manifest=./src/manifest.ts   compare with what is declared
+ * Run it from the game's own root, with <guide> the directory SKILL.md is in:
+ *
+ *   <guide>/scripts/package.ts ./dist                 hash everything under ./dist
+ *   <guide>/scripts/package.ts ./dist --manifest=./src/manifest.ts
+ *                                     compare with what is declared
  */
 
 import { createHash } from "node:crypto"
 import { readdirSync, readFileSync, statSync } from "node:fs"
 import { join, relative, resolve, sep } from "node:path"
 import type * as Kernel from "@clockwork2/engine"
-import { resolveFrom } from "./_resolve"
+import { resolveFrom } from "./_resolve.js"
 
 function flag(name: string): string | undefined {
   const found = process.argv.find((a) => a.startsWith(`--${name}=`))

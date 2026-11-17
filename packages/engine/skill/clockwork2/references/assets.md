@@ -7,12 +7,13 @@ It reads declared files only, so a file the manifest leaves out is not
 reported.
 
 ```
-scripts/package.ts ./dist                                 print the array
-scripts/package.ts ./dist --manifest=./src/manifest.ts     compare with declared
+<guide>/scripts/package.ts ./dist                                 print the array
+<guide>/scripts/package.ts ./dist --manifest=./src/manifest.ts     compare with declared
 ```
 
-`package.ts` prints a file under `packs/` as a data pack and anything else as
-art.
+Run it from the game's own root, with `<guide>` the directory `SKILL.md` is
+in. `package.ts` prints a file under `packs/` as a data pack and anything else
+as art.
 
 ## Art and packs
 

@@ -1,11 +1,12 @@
 # Kernel API
 
 **Generated from the built type declarations. Do not edit.**
-Regenerate with `bun run scripts/gen-skill-api.ts`; `skill/tests/skill.test.ts`
-fails when this file and the declarations disagree.
+The clockwork2 repository regenerates it with `bun run gen:skill-api`, and
+the guide's own tests there fail when this file and the declarations
+disagree.
 
 Anything not listed here is not part of the contract. Where this reference
-and `@clockwork2/validate` disagree, the validator is right.
+and `@clockwork2/engine/validate` disagree, the validator is right.
 
 ## `@clockwork2/engine`
 

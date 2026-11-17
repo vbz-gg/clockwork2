@@ -134,7 +134,7 @@ saves 4% on a swept stick and nothing on a notched wheel, which records whole
 notches either way. Every input costs about 40 bytes of JSON, its name
 included, so a short name is a smaller recording too.
 
-Produced by `bun run scripts/measure-inputs.ts`. Each row is one run of 18000 ticks (five minutes at 60 Hz) in a real `GameHost` driven by a `ManualScheduler`, one animation frame of 1000/60 ms per tick (18001 frames for the first row), under bun 1.3.11, importing the engine from `packages/engine/src`. The real `InputCapture` is attached to the host's live queue through a fake browser; before each frame the model player below sends the events a browser would deliver, then the frame runs and the queue stamps what is pending onto the frame's tick.
+Produced in the clockwork2 repository by `bun run scripts/measure-inputs.ts`. Each row is one run of 18000 ticks (five minutes at 60 Hz) in a real `GameHost` driven by a `ManualScheduler`, one animation frame of 1000/60 ms per tick (18001 frames for the first row), under bun 1.3.11, importing the engine from `packages/engine/src`. The real `InputCapture` is attached to the host's live queue through a fake browser; before each frame the model player below sends the events a browser would deliver, then the frame runs and the queue stamps what is pending onto the frame's tick.
 
 - **Inputs** is the length of `recording.inputs` at the end.
 - **Per tick** is inputs over the run's end tick.

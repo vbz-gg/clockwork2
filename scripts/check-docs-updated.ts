@@ -2,9 +2,10 @@
  * Rejects a commit that changes what the documentation describes unless its
  * message carries a `Docs-Updated:` trailer.
  *
- * docs/engine.md, README.md and skill/platform-game/ are read by people and by
- * agents that follow them literally, so a stale sentence is worse than a
- * missing one. Two of the drifts can be measured - skill/tests/skill.test.ts
+ * docs/engine.md, README.md and the agent guide the engine package ships at
+ * packages/engine/skill/clockwork2/ are read by people and by agents that
+ * follow them literally, so a stale sentence is worse than a missing one. Two
+ * of the drifts can be measured - packages/engine/skill/tests/skill.test.ts
  * compares failure-modes.md against ERROR_CODES, and gen-skill-api.ts --check
  * compares kernel-api.md against the built types - and both run in CI after a
  * build. Nothing can measure whether a paragraph is still true. The trailer is
@@ -47,13 +48,16 @@ export const MIN_VALUE_LENGTH = 10
  */
 export const MAX_TRAILER_LINE = 100
 
-/** Paths whose change can leave a doc, a skill file or a script behind. */
+/**
+ * Paths whose change can leave a doc, a guide file or a script behind. The
+ * agent guide lives in the engine package, at packages/engine/skill/clockwork2,
+ * so the first pattern covers it and the guide's own tests alike.
+ */
 export const BEARING_PATTERNS: readonly RegExp[] = [
   /^packages\//,
   /^demo\//,
   /^e2e\//,
   /^scripts\//,
-  /^skill\//,
   /^docs\//,
   /^README\.md$/,
   /^package\.json$/,
@@ -196,8 +200,9 @@ function main(): void {
 
   console.error(`\ncommit rejected: ${result.error}\n`)
   console.error(
-    "docs/engine.md, README.md and skill/platform-game/ describe this codebase.",
+    "docs/engine.md, README.md and the agent guide in packages/engine/skill/clockwork2/",
   )
+  console.error("describe this codebase.")
   console.error(
     "The trailer records that you re-read the ones covering what you changed and",
   )

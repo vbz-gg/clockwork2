@@ -32,6 +32,8 @@ frames and simulates exactly the same ticks.
 
 ## Changing it
 
-Read `references/determinism-rules.md` before editing `sim.ts`, and run
-`bun run validate` after. The renderer has no rules beyond reading and not
+Read the clockwork2 guide's `references/determinism-rules.md` before editing
+`sim.ts`, and run `bun run validate` after. The guide ships inside
+`@clockwork2/engine`, so it is at
+`node_modules/@clockwork2/engine/skill/clockwork2/` once you have installed. The renderer has no rules beyond reading and not
 writing.

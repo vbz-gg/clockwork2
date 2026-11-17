@@ -1,9 +1,9 @@
 # Failure modes
 
-One section per error code, keyed exactly on the code. `skill/tests/skill.test.ts`
-fails when this file and the kernel's `ERROR_CODES` table disagree, in either
-direction, so a code with no section here cannot ship and a section for a code
-that no longer exists cannot linger.
+One section per error code, keyed exactly on the code. The guide's own tests,
+in the clockwork2 repository, fail when this file and the kernel's
+`ERROR_CODES` table disagree, in either direction, so a code with no section
+here cannot ship and a section for a code that no longer exists cannot linger.
 
 Read the code, not the message. Messages are prose and change; a code is a
 promise. Catching code switches on `error.code`, never on a substring of

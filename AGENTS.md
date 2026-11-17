@@ -12,13 +12,13 @@ bun run build          # tsc -b over project references
 bun run typecheck
 bun run lint           # biome check .
 bun run lint:fix
-bun test               # unit tests, the demo's fixtures and the skill
-bun test skill         # the skill's own checks, on their own
+bun test               # unit tests, the demo's fixtures and the guide
+bun test packages/engine/skill/  # the guide's own checks, on their own
 bun run test:coverage  # the same tests, then the 99% floor over packages/*/src
 bun run test:engines   # golden vectors under every installed JS engine
 bun run test:e2e       # Playwright against the built demo
 bun run test:e2e:nightly  # the seeded fuzz spec, twenty seeds
-bun run gen:skill-api  # regenerate the skill's API reference after a build
+bun run gen:skill-api  # regenerate the guide's API reference after a build
 bun run check:publishable  # pack the package and read what a consumer gets
 bun run demo           # the demo dev server - never start this yourself
 bun run demo:build
@@ -200,13 +200,15 @@ published from a laptop, where no workflow ran at all.
 
 `bun run check:publishable` packs the package and reads what a consumer would
 get: that the tarball carries a README and a `dist`, that nothing has crept
-into `dependencies`, and that plain node can import every subpath the exports
-map names. CI runs it on every push and the release gate runs it again.
+into `dependencies`, that plain node can import every subpath the exports
+map names, and that the agent guide it carries at `skill/clockwork2/` is the
+committed one, file for file and byte for byte, with nothing else under
+`skill/`. CI runs it on every push and the release gate runs it again.
 
 `.versionrc.json`'s `prerelease` hook runs the gate before the version is
 bumped, so it never sees the tree a release actually ships. Anything holding
 the version literal therefore has to be in `bumpFiles`. `KERNEL_VERSION` is,
-and so is the skill's generated `references/kernel-api.md`, which embeds it.
+and so is the guide's generated `references/kernel-api.md`, which embeds it.
 Without that second entry the bump wrote 0.2.0 into the kernel and left the
 reference at 0.1.0; the tag build regenerated the reference, found the
 difference and exited 1. That failed every release rather than an occasional
@@ -386,10 +388,11 @@ any test going red first:
 - Record-and-replay tests need a non-triviality guard. Assert the recording has
   inputs and the session reached a meaningful tick count, or a page that
   silently records nothing passes everything.
-- `bun run test` passes `packages/ scripts/ demo/ skill/`. Those are path
-  filters, not directories, so the trailing slash matters: without it, `demo`
-  also matches `e2e/specs/07-demo-controls.spec.ts` and Bun tries to run a
-  Playwright spec.
+- `bun run test` passes `packages/ scripts/ demo/`. Those are path filters,
+  not directories, so the trailing slash matters: without it, `demo` also
+  matches `e2e/specs/07-demo-controls.spec.ts` and Bun tries to run a
+  Playwright spec. `packages/` takes in the guide's own tests, which live at
+  `packages/engine/skill/tests/`.
 - `retries` is 0 in the Playwright config on purpose. For a determinism suite,
   flake is the finding. Rewrite a timing-sensitive test against the virtual
   clock rather than retrying it.
@@ -416,11 +419,13 @@ any test going red first:
   path; it costs about 380ms of node startup per engine. The driver is the
   harness's only `.mjs` file, because node has to run it with no build step.
 
-## Working on the skill
+## Working on the guide
 
-`skill/platform-game/` is prose an agent follows literally, so a stale sentence
-is worse than a missing one. Everything in it that can be checked is checked by
-`skill/tests/skill.test.ts`, and a change to the kernel can therefore fail it:
+The `clockwork2` guide at `packages/engine/skill/clockwork2/` is an Agent
+Skill: prose an agent follows literally, so a stale sentence is worse than a
+missing one. Everything in it that can be checked is checked by
+`packages/engine/skill/tests/skill.test.ts`, and a change to the kernel can
+therefore fail it:
 
 - `references/kernel-api.md` is generated. Never edit it. After changing a
   public type, run `bun run build && bun run gen:skill-api` in the same commit.
@@ -430,23 +435,40 @@ is worse than a missing one. Everything in it that can be checked is checked by
 - The two templates' `src/sim.ts` files must stay byte-identical, and both
   templates must pass the whole conformance suite unmodified.
 
+The guide ships in the npm package, at `skill/clockwork2/`, so a game author's
+tools can install it from `node_modules`. What has to hold because of that:
+
+- Only `skill/clockwork2` is in the package's `files`. The guide's tests and
+  its `tsconfig.json` sit beside it in `packages/engine/skill/` so the tarball
+  does not carry them, and `bun run check:publishable` fails when the packed
+  guide differs from the committed one or anything else under `skill/` ships.
+- It is read in a game's checkout, where nothing of this repository exists.
+  Every command it shows runs from the game's own root and names its own
+  scripts as `<guide>/scripts/...`; the tests refuse a bare `scripts/` command.
+- It is true for a game on the engine alone and for the simulation of a game
+  built with the vbz kit. Its `scripts/new.ts` and templates are for the first
+  and are never copied into the second, and `scripts/validate.sh` is the
+  engine's twelve checks, not everything a platform runs.
+
 ## Commit gates
 
-Two hooks run on every commit. `pre-commit` lints, and checks that the skill's
+Two hooks run on every commit. `pre-commit` lints, and checks that the guide's
 failure-modes reference still has one section per error code. `commit-msg` runs
 commitlint, and demands a `Docs-Updated:` trailer. Never bypass either with
 `--no-verify`.
 
-The trailer records the pass no test can make. `skill/tests/skill.test.ts`
-measures the two drifts a machine can see, and nothing measures whether a
-paragraph of `docs/engine.md` is still true. Writing the trailer says you
-re-read the pages covering what you changed and brought them back in line.
+The trailer records the pass no test can make.
+`packages/engine/skill/tests/skill.test.ts` measures the two drifts a machine
+can see, and nothing measures whether a paragraph of `docs/engine.md` is still
+true. Writing the trailer says you re-read the pages covering what you changed
+and brought them back in line.
 
-It is demanded when the commit stages anything under `packages/`, `demo/`,
-`e2e/`, `scripts/`, `skill/`, `docs/` or `.github/`, or `README.md`,
-`package.json`, `tsconfig*.json` or `biome.json`. Merge, revert, fixup, squash
-and `chore(release)` commits are exempt: git and commit-and-tag-version write
-those messages themselves, some with no editor at all.
+It is demanded when the commit stages anything under `packages/`, which holds
+the guide, `demo/`, `e2e/`, `scripts/`, `docs/` or `.github/`, or `README.md`,
+`package.json`, `tsconfig*.json`, `biome.json` or `bunfig.toml`. Merge, revert,
+fixup, squash and `chore(release)` commits are exempt: git and
+commit-and-tag-version write those messages themselves, some with no editor at
+all.
 
 The trailer is a line below the subject that opens a paragraph or follows
 only other trailers in its paragraph. Prose that wraps onto a line starting

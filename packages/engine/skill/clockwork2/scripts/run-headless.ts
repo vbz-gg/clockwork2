@@ -7,9 +7,11 @@
  * game end on its own, what does a session actually look like, and did the
  * change I just made move any state that was already recorded.
  *
- *   run-headless.ts ./src
- *   run-headless.ts ./src --seed=abc --log=bot --ticks=3600
- *   run-headless.ts ./src --log=idle --quiet   only the last line
+ * Run it from the game's own root, with <guide> the directory SKILL.md is in:
+ *
+ *   <guide>/scripts/run-headless.ts ./src
+ *   <guide>/scripts/run-headless.ts ./src --seed=abc --log=bot --ticks=3600
+ *   <guide>/scripts/run-headless.ts ./src --log=idle --quiet   only the last line
  *
  * `--log` is one of idle, chaos or bot. They are generated from the seed by
  * `@clockwork2/engine/testing`, not read from a file, so a log is reproducible
@@ -19,7 +21,7 @@
 import type * as Kernel from "@clockwork2/engine"
 import type * as KernelTesting from "@clockwork2/engine/testing"
 import type * as Validate from "@clockwork2/engine/validate"
-import { resolveFrom } from "./_resolve"
+import { resolveFrom } from "./_resolve.js"
 
 function flag(name: string, fallback: string): string {
   const found = process.argv.find((a) => a.startsWith(`--${name}=`))

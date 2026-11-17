@@ -6,7 +6,7 @@ bounded and billed is data, so a platform can decide whether to run untrusted
 code before running it.
 
 `assertManifest` from `@clockwork2/engine` is the schema. There is no separate
-JSON Schema file in this skill, on purpose: two descriptions of one shape
+JSON Schema file in this guide, on purpose: two descriptions of one shape
 drift, and the one that drifts is always the one nobody runs. The full type is
 in `kernel-api.md`, which is generated from the declarations.
 
@@ -67,8 +67,9 @@ in `kernel-api.md`, which is generated from the declarations.
 ## The fields worth thinking about
 
 `id` is immutable. Change it and it is a different game with a different
-leaderboard. `scripts/new.ts` sets it from the directory name once, at
-creation, rather than leaving it to be edited later and forgotten.
+leaderboard. This guide's `scripts/new.ts` sets it from the directory name
+once, at creation, rather than leaving it to be edited later and forgotten,
+and the vbz kit's scaffold does the same for a vbz game.
 
 `counters` and `rankBy` replace an objective system. An objective is `counters[name] >= threshold`,
 computed by the platform, not by the game. A game that wants a new kind of

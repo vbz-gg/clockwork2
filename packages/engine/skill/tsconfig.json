@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
-  "extends": "../tsconfig.base.json",
+  "extends": "../../../tsconfig.base.json",
   "compilerOptions": {
     "lib": ["ES2022", "DOM"],
     "types": ["bun"],
@@ -9,9 +9,5 @@
     "declarationMap": false,
     "sourceMap": false
   },
-  "include": [
-    "platform-game/scripts",
-    "platform-game/assets/templates",
-    "tests"
-  ]
+  "include": ["clockwork2/scripts", "clockwork2/assets/templates", "tests"]
 }

@@ -1,12 +1,13 @@
 ---
-name: platform-game
-description: Build a browser game on Clockwork 2 that a platform can verify - fixed-step ticks, seeded randomness, an input log that replays to the same state on a server. Use when writing or reviewing a game module, a manifest, a renderer or a recording; when a conformance check fails with an E_ code; or when porting a variable-step game onto the fixed-step contract. Covers the simulation and renderer boundary, deterministic maths, snapshots and restore, counters and objectives, declared inputs and what to record, data packs, budgets, and the twelve checks in @clockwork2/engine/validate.
+name: clockwork2
+description: Build a browser game on Clockwork 2 that a platform can verify - fixed-step ticks, seeded randomness, an input log that replays to the same state on a server. Use when writing or reviewing a game module, a manifest, a renderer or a recording; when a conformance check fails with an E_ code; or when porting a variable-step game onto the fixed-step contract. Covers the simulation and renderer boundary, deterministic maths, snapshots and restore, counters and objectives, declared inputs and what to record, data packs, budgets, and the twelve checks in @clockwork2/engine/validate. Holds for a game on the engine alone and for the simulation of one built with the vbz kit.
 ---
 
 # Building a verifiable game
 
 **Where this file and `scripts/validate.sh` disagree, the script is right.** It
-is what the platform runs. Prose cannot fail a build.
+runs the engine's twelve checks; a platform may run more. Prose cannot fail a
+build.
 
 A platform ranks on results, so a score has to be something it can verify
 rather than trust. The browser records the player's inputs,
@@ -14,20 +15,51 @@ the server replays them, and both sides must reach the same state - on V8,
 JavaScriptCore and SpiderMonkey alike. Everything below follows from that one
 sentence.
 
+## Where the commands run
+
+This guide ships inside the `@clockwork2/engine` package, at
+`skill/clockwork2/`, so a game that installs the engine has a copy at
+`node_modules/@clockwork2/engine/skill/clockwork2/`. An agent's tools may
+install it somewhere else. `<guide>` in a command is the directory this file
+is in, wherever that is, and a name such as `scripts/package.ts` is a file in
+it.
+
+Run every command from the game's own root. The scripts load the engine out of
+the game's `node_modules`, so a game is checked against the engine it pins
+rather than the copy this guide came with, and `validate.sh` calls `bunx`,
+which finds the game's `clockwork2-validate` only from there.
+
+Where a command says `./src`, give it the directory holding the simulation's
+entry, the `index.ts` with the default export and `MANIFEST`. That is `./src`
+in a game made from this guide's templates and `./src/sim` in one built with
+the vbz kit.
+
 ## Start here
 
+A game on the engine alone starts from one of this guide's templates.
+`new.ts` makes the game's directory, and everything after it runs from inside:
+
 ```bash
-scripts/new.ts ./my-game                    # canvas2d
-scripts/new.ts ./my-game --renderer=three
+<guide>/scripts/new.ts ./my-game                    # canvas2d
+<guide>/scripts/new.ts ./my-game --renderer=three
 cd ./my-game && bun install
-bun run validate                            # passes before you change anything
+bun run validate                                    # passes before you change anything
 ```
 
 Start from a template rather than from an empty directory. The template
 conforms on its first run, so any failure after that is something you just
 did, which is a far shorter thing to debug than a game that has never passed.
 
+`scripts/new.ts` and the two templates exist for a game on the engine alone,
+and are not copied into a vbz game. A game built with the vbz kit starts from
+the kit's own scaffold, as the kit's guide describes, and everything else here
+applies to its simulation unchanged. It has no `bun run validate`; where this
+guide says that, run `<guide>/scripts/validate.sh ./src/sim` from the game's
+root.
+
 ## The shape of a game
+
+A game made from the templates:
 
 ```
 src/sim.ts        the simulation - rules apply here and nowhere else
@@ -38,9 +70,13 @@ src/main.ts       the page: runs the host, and decides which keys and fingers
                   drive the declared inputs
 ```
 
-`index.ts` must not import `present.ts`. The import graph is scanned
-transitively, and a simulation that can reach a canvas is a simulation that
-can decide a score from one.
+A vbz game has the same parts under the names its kit gives them, with the
+entry at `src/sim/index.ts` and the renderer under `src/present/`.
+
+`index.ts` must not import `present.ts`, and in a vbz game the entry must not
+reach `src/present/`. The import graph is scanned transitively, and a
+simulation that can reach a canvas is a simulation that can decide a score
+from one.
 
 A game implements `GameModule`: `init`, `tick`, `view`, `snapshot`, `restore`,
 `score`, `isOver`, `effects`. A game that reads data it ships as files also
@@ -50,8 +86,8 @@ generated from the type declarations.
 
 ## The ten rules
 
-Each names the check that enforces it. Run `scripts/validate.sh ./src` to run
-all twelve checks; `--only=name` runs one.
+Each names the check that enforces it. Run `<guide>/scripts/validate.sh ./src`
+to run all twelve checks; `--only=name` runs one.
 
 1. **`tick()` advances exactly one tick and takes no delta.** A fixed step is
    what makes a simulation independent of the player's frame rate. The host
@@ -130,20 +166,24 @@ the sound twice, and a headless replay would have to stub the call.
 
 ## Workflow
 
-1. `scripts/new.ts ./my-game` - a conforming starting point.
-2. Write the simulation in `src/sim.ts`. Read
-   `references/determinism-rules.md` first; it is the whole rulebook and it is
-   short. Declare the inputs `tick` reads in `src/manifest.ts` as you go;
+Each command runs from the game's own root.
+
+1. `<guide>/scripts/new.ts ./my-game` - a conforming starting point for a game
+   on the engine alone. A vbz game starts from its kit's scaffold instead.
+2. Write the simulation, in `src/sim.ts` in a game made from the templates.
+   Read `references/determinism-rules.md` first; it is the whole rulebook and
+   it is short. Declare the inputs `tick` reads in the manifest as you go;
    `references/inputs.md` says how to keep what they record small.
-3. `scripts/validate.sh ./src` after each meaningful change, not once at the
-   end. A determinism bug found three edits after it was written is a
+3. `<guide>/scripts/validate.sh ./src` after each meaningful change, not once
+   at the end. A determinism bug found three edits after it was written is a
    different job from one found three weeks after.
-4. `scripts/run-headless.ts ./src` to see what a session actually looks like -
-   how long it runs, what the checkpoints are, whether it ends on its own.
+4. `<guide>/scripts/run-headless.ts ./src` to see what a session actually
+   looks like - how long it runs, what the checkpoints are, whether it ends on
+   its own.
 5. Write the renderer. It has no rules beyond reading, so leave it until the
    simulation conforms.
-6. `scripts/package.ts ./dist --manifest=./src/manifest.ts` before shipping:
-   every file declared, every hash matching.
+6. `<guide>/scripts/package.ts ./dist --manifest=./src/manifest.ts` before
+   shipping: every file declared, every hash matching.
 
 ## When a check fails
 
@@ -198,9 +238,13 @@ The three that account for most failures:
 
 ## Scripts
 
-- `scripts/validate.sh <path>` - the twelve checks. The authority.
-- `scripts/run-headless.ts <path>` - run a session with no browser and print
-  its checkpoints.
-- `scripts/package.ts <dir> [--manifest=]` - hash assets and check the
+Each runs from the game's own root, as `<guide>/scripts/...`.
+
+- `<guide>/scripts/validate.sh <path>` - the engine's twelve checks; a platform
+  may run more. The authority on those twelve.
+- `<guide>/scripts/run-headless.ts <path>` - run a session with no browser and
+  print its checkpoints.
+- `<guide>/scripts/package.ts <dir> [--manifest=]` - hash assets and check the
   manifest declares them.
-- `scripts/new.ts <dir> [--renderer=]` - a conforming starting point.
+- `<guide>/scripts/new.ts <dir> [--renderer=]` - a conforming starting point
+  for a game on the engine alone, from one of this guide's templates.

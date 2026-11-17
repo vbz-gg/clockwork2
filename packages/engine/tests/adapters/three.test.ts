@@ -13,8 +13,9 @@
  *
  * `mock.module` is process-global in bun and bun runs test files in one
  * process, so this file and the pixi one are the only places it is used, and
- * only for `three` and `pixi.js`. Nothing else under packages/, demo/tests/ or
- * skill/tests/ imports either.
+ * only for `three` and `pixi.js`. Nothing else under packages/ imports either,
+ * the agent guide's tests in packages/engine/skill/tests/ included, and nothing
+ * under demo/tests/ does.
  */
 
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test"

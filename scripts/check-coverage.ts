@@ -20,8 +20,12 @@
  * how much was reached", and a package whose tests are gone has no code that
  * ran. What catches that is review, and `bun run test` reporting fewer tests.
  *
- *   bun test --coverage packages/ scripts/ demo/ skill/
+ *   bun test --coverage packages/ scripts/ demo/
  *   bun run scripts/check-coverage.ts
+ *
+ * `packages/` takes in the agent guide's own tests, which live in the engine
+ * package at `packages/engine/skill/tests`; bunfig.toml keeps the guide's
+ * scripts and templates out of the measurement.
  *
  * Exit codes: 0 at or above the floor, 1 below it, 2 no readable lcov.
  */
@@ -138,7 +142,7 @@ function main(): void {
     text = readFileSync(LCOV, "utf8")
   } catch {
     console.error(`\nno ${LCOV}. Run the coverage suite first:\n`)
-    console.error("  bun test --coverage packages/ scripts/ demo/ skill/\n")
+    console.error("  bun test --coverage packages/ scripts/ demo/\n")
     process.exit(2)
   }
 

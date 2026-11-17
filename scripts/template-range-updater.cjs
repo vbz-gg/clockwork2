@@ -1,5 +1,5 @@
 /**
- * Keeps the skill's game templates asking for the engine being released.
+ * Keeps the agent guide's game templates asking for the engine being released.
  *
  * Both templates' package.json asked for `^0.1.0` from 0.1.0 to 0.7.3. On a
  * 0.x version a caret admits only the same minor, so a game scaffolded from

@@ -1,12 +1,14 @@
 /**
- * Proves the skill's failure-modes reference still has one section per error
- * code, and no section for a code that no longer exists.
+ * Proves the agent guide's failure-modes reference still has one section per
+ * error code, and no section for a code that no longer exists.
  *
- * skill/tests/skill.test.ts asserts the same thing by importing ERROR_CODES
- * from the built kernel, which needs `bun run build` first and so only runs in
- * CI. This reads the two files as text instead, in milliseconds, from the git
- * index, so a commit that adds a code without explaining it is refused at the
- * point it is made rather than a CI round later.
+ * packages/engine/skill/tests/skill.test.ts asserts the same thing by importing
+ * ERROR_CODES from the built kernel, which needs `bun run build` first and so
+ * only runs in CI. This reads the two files as text instead, in milliseconds,
+ * from the git index, so a commit that adds a code without explaining it is
+ * refused at the point it is made rather than a CI round later. The pre-commit
+ * hook runs it from the repository root, which is where both paths below are
+ * relative to.
  *
  *   bun run scripts/check-failure-modes.ts
  *
@@ -17,7 +19,8 @@ import { execSync } from "node:child_process"
 import { readFileSync } from "node:fs"
 
 export const ERRORS_SOURCE = "packages/engine/src/errors.ts"
-export const REFERENCE = "skill/platform-game/references/failure-modes.md"
+export const REFERENCE =
+  "packages/engine/skill/clockwork2/references/failure-modes.md"
 
 /**
  * Reads what this commit will contain: the staged blob where there is one, and
