@@ -813,9 +813,16 @@ only after ticks have run and inputs have been recorded. With it, the host
 mounts the presentation, calls `prepare`, and starts the clock only once it
 resolves: no tick runs and the live queue takes no input before then. A
 rejection is reported as `E_PRESENTATION_FAILED`, carrying the presentation's
-own message, and the session never starts. A presentation that draws from
-`mount`, as the three adapters below do, leaves `prepare` out and nothing about
-it changes.
+own message, and the session never starts. A presentation that is ready when
+`mount` returns leaves `prepare` out and nothing about it changes.
+
+Of the three adapters below, the PIXI one needs `prepare`: PIXI 8's
+`Application.init` is asynchronous, so `PixiPresentation.prepare` waits for it
+and a device where it fails gets `E_PRESENTATION_FAILED` before tick 0. The
+canvas2d and three adapters start inside `mount`, taking a 2d context and
+building a `WebGLRenderer` synchronously, so they have no `prepare`; a device
+that cannot give them one makes `mount`, and so `start()`, throw before any
+tick runs.
 
 Three adapters ship, each read-only and driven the same way:
 

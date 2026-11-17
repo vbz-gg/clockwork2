@@ -23,9 +23,16 @@ see. `start()` returns a promise of `true` once the clock runs.
 A rejection means this device cannot draw the game. The host reports it
 through `onError` as `E_PRESENTATION_FAILED`, carrying the presentation's own
 message, `start()` resolves `false`, and the session never starts. A host
-stopped or destroyed while `prepare` runs starts nothing when it settles. The
-three adapters here draw from `mount` and have no `prepare`, so for them
-`start()` starts the clock before it returns, as it always has.
+stopped or destroyed while `prepare` runs starts nothing when it settles.
+
+Of the three adapters here, PIXI is the one that starts asynchronously: its
+`Application.init` is a promise, so `PixiPresentation` has a `prepare` that
+waits for it, and a device where init fails gets `E_PRESENTATION_FAILED`
+before tick 0. canvas2d and three start inside `mount`: canvas2d takes its 2d
+context and three builds its `WebGLRenderer` there, synchronously, so they
+have no `prepare`, `start()` starts the clock before it returns, and a device
+that cannot draw them makes `mount`, and so `start()`, throw before any tick
+runs.
 
 ## The four arguments
 
@@ -77,7 +84,8 @@ them - rebuilding the scene each frame works and is slow.
 ## `@clockwork2/engine/adapter-pixi`
 
 The same contract with a PIXI `Application`, `autoStart: false`. The demo in
-this repository uses it.
+this repository uses it. `prepare` waits for PIXI's asynchronous init, so a
+host starts no tick before PIXI can draw.
 
 ## Nodes by id
 
