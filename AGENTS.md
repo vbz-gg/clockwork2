@@ -216,11 +216,11 @@ rather than for this one.
 
 ## One package, four halves
 
-`packages/engine` holds what were six packages: the kernel at `src/`, the host
-bridge at `src/host/`, the conformance checker at `src/validate/` and the three
-renderers at `src/adapters/`. Each is a subpath export carrying its own types,
-and the package is `"sideEffects": false`, so importing `/dmath` pulls nothing
-else.
+`packages/engine` holds what were six packages: the kernel at `src/`, the
+page host and its device helpers at `src/host/`, the conformance checker at
+`src/validate/` and the three renderers at `src/adapters/`. Each is a subpath
+export carrying its own types, and the package is `"sideEffects": false`, so
+importing `/dmath` pulls nothing else.
 
 `@clockwork2/engine` has no runtime dependencies and its `package.json` has no
 `dependencies` key at all. `pixi.js`, `three` and `typescript` are optional
@@ -242,6 +242,13 @@ consumer gets rather than what this repository can resolve. A subpath whose
 optional peer is missing here is reported as unchecked rather than as a fault -
 `pixi.js` is not installed in this checkout, so `/adapter-pixi` cannot be
 imported on any machine that has not asked for pixi.
+
+**An engine error is recognised by its mark, never by `instanceof`.** A
+studio's page holds two copies of the engine, the page module's and the
+rules code's, and the conformance checker loads another inside the built
+rules code, so `isClockworkError` reads the `Symbol.for("clockwork2.error")`
+mark and a known code. Anything else that crosses between copies needs the
+same look.
 
 **The simulation must not reach a DOM type.** When this was six packages that
 fell out of the layout: the base `tsconfig` has no `DOM` lib and only the
@@ -343,6 +350,30 @@ without any test going red first:
 assert against them rather than hardcoding 5 and 250. If the loop drops time,
 the recording must end at the tick the host actually reached, or the log
 replays to a different state.
+
+## Working on inputs
+
+`docs/engine.md` under "Input" is the design. What a change can break without
+any test going red first:
+
+- A recorded input carries no device. Do not add one back: which device drove
+  an input is the game's page's choice, and a server checks only the declared
+  name and range.
+- Every input goes through the live queue's per-input check, which
+  `checkInputs` also calls. A second check written for one side drifts from the
+  other, and the side that drifts is the one a server trusts.
+- A merge happens in place, and never across a press. Moving a merged level
+  to the end puts a pointer's position after its press, and a hit test in
+  `tick` then reads the old one; merging a value from after a press into the
+  one before it moves the press to where the pointer ended.
+- While the queue is paused the helpers hear nothing. State a helper keeps for
+  an input the paused queue dropped no longer matches the log.
+- Every press a helper records it also releases. A new way for a press to end
+  (a new event, a new device) needs its release in the same change, and a test
+  that drives it.
+- A number in the guide's table of recording sizes, or a budget constant, comes
+  from a measurement that says how it was produced. Change the helpers and the
+  measurement runs again.
 
 ## Tests
 

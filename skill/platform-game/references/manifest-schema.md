@@ -14,9 +14,9 @@ in `kernel-api.md`, which is generated from the declarations.
 
 ```ts
 {
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: "lane-runner",          // immutable across every version of this game
-  version: "1.0.0",           // strictly increasing
+  version: "1.0.0",           // semantic: a patch keeps the rules
   name: "Lane Runner",
   kernel: { version: "0.1.0" },
   genres: ["arcade"],         // optional
@@ -28,16 +28,9 @@ in `kernel-api.md`, which is generated from the declarations.
     hasEnding: true,          // false for an endless game, still capped
   },
 
-  inputs: {
-    map: {
-      left: [{ code: "ArrowLeft", device: "key", label: "Left" }],
-      right: [{ code: "ArrowRight", device: "key" }],
-    },
-    controls: {                // how a phone steers this game
-      mode: "scheme",          // or { mode: "custom" }, or leave it out
-      scheme: "dpad",          // a layout the host draws and owns
-      bind: { left: "left" },  // its slots, to your actions
-    },
+  inputs: {                   // what the game records, by name and range
+    left: { min: 0, max: 1, label: "Left" },
+    right: { min: 0, max: 1, label: "Right" },
   },
 
   counters: [
@@ -95,18 +88,20 @@ the game sees it. `mergeParamDefaults` fills the rest. The values arrive as
 the `config` argument to `init`, so they are part of what a recording carries
 and what a replay restores.
 
-`inputs.controls` says how a phone steers the game, and there are three
-answers. `{ mode: "scheme", scheme, bind }` names a layout the **host** draws
-and puts your actions in its slots: bind the slots you use and leave the rest
-of the layout empty, so a left-and-right game sits in a d-pad's left and right
-positions. Which scheme names exist is the platform's table rather than the
-engine's, so the engine checks only that every bound slot names an action you
-declared in `inputs.map`. `{ mode: "custom" }` means you paint the controls in
-your own renderer; the host draws nothing, your hit test goes in `tick()`
-because a renderer may not construct an input, and it works in simulation
-units because the host quantised the pointer against a viewport that differs
-per device. Leaving the field out says the game wants a keyboard, and a
-platform can say so to somebody holding a phone.
+`inputs` is everything the game records. Each entry is a name and the whole
+numbers it carries, `min` to `max` inclusive, with an optional `label` a page
+may show; at most 64 are declared. A press is `{ min: 0, max: 1 }`. Which key,
+finger, stick or tilt drives an input is not in the manifest at all: the
+game's page decides that in code, usually through `InputCapture`, and may draw
+any on-screen controls it likes. The kernel refuses an undeclared name or a
+value outside its range when the page pushes it, and a server's `checkInputs`
+refuses a submitted log holding one, so the manifest is the whole of what a
+recording may contain. `inputs.md` explains how to choose what to record, which
+decides how large every recording is.
+
+A schema 1 manifest, which bound device codes under `inputs.map` and declared
+on-screen controls under `inputs.controls`, is refused with a message saying
+what changed.
 
 `assets` is every file you ship, with its sha256 and byte count. A wrong
 hash, a wrong size, a declared file that is missing, or a total over
@@ -130,8 +125,26 @@ submission rather than at validation.
 
 ## Versioning
 
-`version` is strictly increasing, and a recording made against one version
-replays against that version. Changing simulation behaviour without bumping
-the version is the failure this rule exists to prevent: every score already
-recorded becomes unverifiable, silently, and nothing in the replay path can
-tell you it happened.
+`version` is a semantic version, `MAJOR.MINOR.PATCH`, and `assertManifest`
+refuses anything else. Use the parts for what they say about the rules:
+
+- **A patch** changes how the game looks, or fixes a bug, and keeps what a
+  score means. The same play scores the same.
+- **A minor** changes the rules: an input, a counter, how runs rank, how long
+  a run lasts, or anything that lets the same play score differently.
+- **A major** is a game players would call different.
+
+A platform may treat every patch of one `MAJOR.MINOR` as the same game, and
+vbz does: its day's ranked runs play the newest patch of one line, and the
+board mixes that line's patches. So a patch keeps the manifest fields that
+decide how a run is played and ranked exactly as the line's first release
+declared them - `id`, `session`, `inputs`, `counters`, `rankBy`, `tiePolicy`,
+`params` and `capabilities` - and vbz refuses one that does not. Whether a fix
+in the code changed what a score means is something no check can see, so
+decide it before choosing the number.
+
+A recording made against one version replays against that version, whatever
+was published after it. Changing simulation behaviour without a new version is
+the failure this rule exists to prevent: every score already recorded becomes
+unverifiable, silently, and nothing in the replay path can tell you it
+happened.

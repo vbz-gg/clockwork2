@@ -26,10 +26,10 @@ import { Timer } from "../../src/timer"
 
 describe("RecordedInputSource", () => {
   const log = [
-    { tick: 0, device: "key", code: "left", value: 1 },
-    { tick: 5, device: "key", code: "left", value: 0 },
-    { tick: 5, device: "key", code: "thrust", value: 1 },
-    { tick: 30, device: "key", code: "thrust", value: 0 },
+    { tick: 0, code: "left", value: 1 },
+    { tick: 5, code: "left", value: 0 },
+    { tick: 5, code: "thrust", value: 1 },
+    { tick: 30, code: "thrust", value: 0 },
   ] as const
 
   /**
@@ -63,11 +63,16 @@ describe("RecordedInputSource", () => {
   })
 })
 
+const QUEUE_INPUTS = {
+  left: { min: 0, max: 1 },
+  right: { min: 0, max: 1 },
+}
+
 describe("LiveInputQueue", () => {
   test("pendingCount is what has not been taken yet", () => {
-    const queue = new LiveInputQueue()
-    queue.push({ device: "key", code: "left", value: 1 })
-    queue.push({ device: "key", code: "right", value: 1 })
+    const queue = new LiveInputQueue(QUEUE_INPUTS)
+    queue.push({ code: "left", value: 1 })
+    queue.push({ code: "right", value: 1 })
     expect(queue.pendingCount).toBe(2)
     queue.take(0)
     expect(queue.pendingCount).toBe(0)
@@ -79,10 +84,10 @@ describe("LiveInputQueue", () => {
    * session's last presses, and replay to a state the player never reached.
    */
   test("reset empties both what is pending and what was recorded", () => {
-    const queue = new LiveInputQueue()
-    queue.push({ device: "key", code: "left", value: 1 })
+    const queue = new LiveInputQueue(QUEUE_INPUTS)
+    queue.push({ code: "left", value: 1 })
     queue.take(0)
-    queue.push({ device: "key", code: "right", value: 1 })
+    queue.push({ code: "right", value: 1 })
     expect(queue.pendingCount).toBe(1)
     expect(queue.recorded().length).toBe(1)
 
@@ -343,9 +348,7 @@ describe("the reference game's view", () => {
     const game = createReferenceGame()
     game.init("view", REFERENCE_CONFIG)
     const first = game.view()
-    const thrust = [
-      { tick: 0, device: "key", code: "thrust", value: 1 },
-    ] as const
+    const thrust = [{ tick: 0, code: "thrust", value: 1 }] as const
     for (let i = 0; i < 60; i++) game.tick(i === 0 ? thrust : [])
     const later = game.view()
     expect([later.shipX, later.shipY]).not.toEqual([first.shipX, first.shipY])

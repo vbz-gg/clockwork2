@@ -112,9 +112,34 @@ which is the order the host would have produced.
 
 ### E_INPUT_RANGE
 
-An input value fell outside what the device vocabulary allows. Analog axes are
-quantised integers, not floats in [-1, 1]; use `quantiseAxis` rather than
-inventing a scale.
+An entry in an input log is one no recording can hold: its tick or its value
+is not a whole number, its value is `-0`, it has no name, or its tick is past
+the run's end or before the span a chunk covers. Inputs are whole numbers, not
+floats in [-1, 1]: declare a range such as `{ min: -127, max: 127 }` and scale
+a reading into it, which is what the device helpers do for a stick.
+
+### E_INPUT_UNDECLARED
+
+An input is not one the manifest declares, or carries a value outside its
+declared range. The live queue throws it where the input is pushed, so a
+misspelt name in a page is found while you play; a server's `checkInputs`
+throws it for a submitted log holding one.
+
+Declare every input the page records in `inputs`, by name and range, and push
+only those names. A value past its range means the range is too narrow for
+what the page records, or the page rounds it the wrong way.
+
+### E_INPUT_BUDGET
+
+A log holds more inputs than `checkInputs` allows: more than
+`MAX_INPUTS_PER_TICK` in one tick, or more than `INPUT_BUDGET_PER_TICK` for
+each tick of the run on average. A recording of a real player stays far under
+both.
+
+The usual cause is a page recording a stream: every pointer move, every tilt
+reading, every frame of a stick. Record what changed, in the coarsest range the
+game needs, and merge levels and amounts to one input per tick, which the
+device helpers do for you.
 
 ### E_RECORDING_VERSION
 

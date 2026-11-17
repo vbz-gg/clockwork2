@@ -76,10 +76,10 @@ function frame(now: number): void {
   if (done) return
   if (pending > 0) {
     sim.send(
-      Array.from({ length: pending }, () => ({
-        device: "virtual" as const,
+      // Each click is a press and a release.
+      Array.from({ length: pending * 2 }, (_, i) => ({
         code: "push",
-        value: 1,
+        value: i % 2 === 0 ? 1 : 0,
       })),
     )
     pending = 0

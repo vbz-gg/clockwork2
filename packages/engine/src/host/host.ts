@@ -161,7 +161,7 @@ export class GameHost<
     })
     this.speed = options.speed ?? 1
     if (options.inputs === undefined) {
-      const queue = new LiveInputQueue()
+      const queue = new LiveInputQueue(options.manifest.inputs)
       this.live = queue
       this.source = queue
     } else {
@@ -290,11 +290,15 @@ export class GameHost<
     if (this.state !== "running") return
     this.state = "paused"
     this.unschedule()
+    // Whatever the player holds is released into the log, and nothing more
+    // is taken until the run resumes.
+    this.live?.pause()
   }
 
   resume(): void {
     if (this.state !== "paused") return
     this.state = "running"
+    this.live?.resume()
     // The clock restarts here rather than carrying the pause forward, so a
     // paused tab does not come back owing four minutes of simulation.
     this.lastNow = this.scheduler.now()
@@ -348,6 +352,10 @@ export class GameHost<
     if (this.state !== "running") return
     const elapsed = (now - this.lastNow) * this.speed
     this.lastNow = now
+    // Polled devices are read before the ticks, so what a gamepad shows at
+    // the start of this frame lands on the first tick it runs, live and in
+    // the recording alike.
+    this.live?.poll()
 
     let ticksThisFrame = 0
     const waiting = this.session.packsMissing()

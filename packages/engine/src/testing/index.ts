@@ -7,7 +7,9 @@ export {
 } from "./compare.js"
 export {
   ACTIONS,
+  botInputs,
   botLog,
+  chaosInputs,
   chaosLog,
   idleLog,
   standardLogs,

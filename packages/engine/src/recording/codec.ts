@@ -65,7 +65,7 @@ export function decodeRecording(source: string | unknown): Recording {
   }
   if (!READABLE_RECORDING_VERSIONS.includes(r.version as never)) {
     fail("E_RECORDING_VERSION", {
-      detail: `version is ${String(r.version)}, this kernel reads ${READABLE_RECORDING_VERSIONS.join(" and ")}`,
+      detail: `version is ${String(r.version)}, this kernel reads ${READABLE_RECORDING_VERSIONS.join(", ")}`,
     })
   }
 

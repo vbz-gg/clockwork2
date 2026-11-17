@@ -16,43 +16,27 @@ import type { CounterDeclaration, TiePolicy } from "../counters.js"
 export const TICK_RATES = [30, 60, 120] as const
 export type TickRate = (typeof TICK_RATES)[number]
 
-export type InputBinding = {
-  /** A device code: "ArrowUp", "KeyW", "button0", "axis0", "pointer". */
-  readonly code: string
-  readonly device: "key" | "pointer" | "touch" | "gamepad" | "virtual"
+/**
+ * One input a game records: a name, and the whole numbers it can carry.
+ *
+ * A press is an input from 0 to 1. A position, a stick or a tilt is a range
+ * the game chooses, and the coarsest range the game needs is the one to
+ * declare, because every value a reading passes through is an input to
+ * record.
+ */
+export type InputDeclaration = {
+  readonly min: number
+  readonly max: number
   /** Shown to the player on a controls card. */
   readonly label?: string
 }
 
 /**
- * How a player without a keyboard steers this game.
- *
- * `scheme` names an on-screen layout the **host** draws and owns, and binds
- * each of that layout's slots to one of this game's actions. Which schemes
- * exist is the host's business rather than the engine's: a platform ships a
- * table of them and the engine checks only that the binding is coherent.
- * The host builds every input the layout sends, so `virtual-input` stays the
- * one door a virtual input comes through.
- *
- * `custom` means the game draws and hit-tests its own controls inside its
- * renderer, from pointer input, and the host draws nothing. Two things to
- * know before choosing it. The hit test belongs in the simulation, because a
- * renderer cannot construct an input. And it works in simulation units
- * rather than CSS pixels, because `quantisePoint` has already divided by a
- * viewport that differs per device.
- *
- * Leaving `controls` out says the game needs a keyboard or a mouse. That is
- * a third answer rather than a missing one: a host can then tell a phone
- * player so, instead of framing a canvas they cannot steer.
+ * Every input a game records, by name. Only these are recorded, and a server
+ * refuses a log holding anything else, so each game decides what its
+ * recording holds.
  */
-export type Controls =
-  | {
-      readonly mode: "scheme"
-      readonly scheme: string
-      /** A slot of that scheme to an action that appears in `inputs.map`. */
-      readonly bind: { readonly [slot: string]: string }
-    }
-  | { readonly mode: "custom" }
+export type Inputs = { readonly [name: string]: InputDeclaration }
 
 export type ParamBase = {
   readonly label: string
@@ -160,7 +144,8 @@ export type Session = {
 }
 
 export type Manifest = {
-  readonly schemaVersion: 1
+  /** 2 since `inputs` declares the game's own inputs rather than binding devices. */
+  readonly schemaVersion: 2
   /** Immutable across every version of the game. */
   readonly id: string
   /** Strictly increasing. */
@@ -169,10 +154,7 @@ export type Manifest = {
   readonly kernel: { readonly version: string }
   readonly genres?: readonly string[]
   readonly session: Session
-  readonly inputs: {
-    readonly map: { readonly [action: string]: readonly InputBinding[] }
-    readonly controls?: Controls
-  }
+  readonly inputs: Inputs
   readonly counters: readonly CounterDeclaration[]
   readonly rankBy: readonly string[]
   readonly tiePolicy: TiePolicy

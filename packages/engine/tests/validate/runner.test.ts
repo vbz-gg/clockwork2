@@ -23,7 +23,7 @@ import type { Report, Subject } from "../../src/validate/types"
 function exploding(error: unknown): Subject {
   return {
     manifest: {
-      schemaVersion: 1,
+      schemaVersion: 2,
       id: "explodes",
       version: "1.0.0",
       name: "Explodes",
@@ -34,7 +34,7 @@ function exploding(error: unknown): Subject {
         maxWallSeconds: 120,
         hasEnding: true,
       },
-      inputs: { map: { push: [{ code: "Space", device: "key" }] } },
+      inputs: { push: { min: 0, max: 1 } },
       counters: [{ name: "score", direction: "up", monotonic: true }],
       rankBy: ["score"],
       tiePolicy: "shared",

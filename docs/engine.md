@@ -599,98 +599,143 @@ and the configuration.
 
 ## Input
 
-Input events are built by the host from device events. A game cannot construct
-one.
-
-That rule closes a hole no conformance check could see. A game that could make
-its own input events could do its hit-testing in the renderer, feed the answer
-into the simulation as a virtual press, and produce a recording that replays
-perfectly while the result was decided on the client.
-
-An event is four fields:
+A game declares its inputs in its manifest, each a name and the whole numbers it
+carries, and records what its player did as those inputs:
 
 ```ts
-type InputEvent = {
-  readonly tick: number      // the tick the simulation is about to run
-  readonly device: "key" | "pointer" | "touch" | "gamepad" | "virtual"
-  readonly code: string      // an action name from the manifest
-  readonly value: number     // an integer
+inputs: {
+  left: { min: 0, max: 1, label: "Left" },   // a press: 1 down, 0 up
+  aimX: { min: 0, max: 31 },                  // a position, in 32 steps
+  steer: { min: -10, max: 10 },               // a stick or a tilt
 }
 ```
 
-The tick is stamped when the input enters the queue, against the tick that is
-about to run. That is the only timing information a recording carries, and it is
-what makes replay exact.
-
-Analog sources are quantised to integers by the host, with deadzones, before the
-simulation sees them. `value` is never a float.
-
-The manifest maps device codes to action names, so the game's `tick` sees
-`"left"` rather than `"ArrowLeft"`, and a player who rebinds a key changes
-nothing about the simulation. A pointer goes through the same table.
-
-### Pointer codes
-
-A pointer is spelled with a small slot number, because `PointerEvent.pointerId`
-is the browser's and is neither small nor comparable between runs:
-
-```
-pointer0     1 when that finger is down, 0 when it lifts
-pointer0-x   its position across the viewport, in simulation units
-pointer0-y   its position down the viewport
-pointer1     the second finger, and so on
-```
-
-A slot is the lowest free index when a finger lands, and goes back in the pool
-when it lifts, so one finger is always slot 0 and the assignment is a pure
-function of the order the events arrived in. A game binds the slots it
-handles; a finger past them is dropped the way an unbound key is.
-
-Coordinates are quantised against the element the game is drawn in, so they
-are the same units the simulation works in and carry no CSS pixel. A move
-that does not change the quantised value pushes nothing, because
-`pointermove` fires far more often than a coordinate changes and an unchanged
-value is not an input.
-
-`pointercancel` releases the slot as `pointerup` does. The browser sends it
-when it takes the pointer away, and a host that listened only for `pointerup`
-would leave that control held for the rest of the session.
-
-### On-screen controls
-
-A phone has no keyboard, so a game says in `inputs.controls` how it expects to
-be steered there. There are three answers and the difference between them is
-who draws the buttons.
+A recorded input is three fields:
 
 ```ts
-type Controls =
-  | { mode: "scheme"; scheme: string; bind: { [slot: string]: string } }
-  | { mode: "custom" }
+type InputEvent = {
+  readonly tick: number   // the tick the simulation is about to run
+  readonly code: string   // the name of a declared input
+  readonly value: number  // a whole number in its declared range
+}
 ```
 
-`scheme` names a layout the **host** draws, and binds that layout's slots to
-this game's own actions. The engine does not own the set of schemes: a
-platform ships a table of them and the engine checks only that every bound
-slot names an action declared in `inputs.map`. A game binds the slots it uses
-and no more, so a left-and-right game can sit in a d-pad's left and right
-positions and leave the other two empty. A press becomes a `virtual-input`
-message, and `InputCapture.virtual()` is the only place one may enter a
-session.
+There is no device. Whether `left` came from a key, a finger or a stick is the
+game's page's business, and the game decides what to record. `tick` reads the
+inputs and decides what they mean.
 
-`custom` means the game paints its own controls in its renderer and reads
-pointer input. The host draws nothing. Two consequences follow from the rule
-at the top of this section, that a game cannot construct an input event. The
-hit test has to happen in `tick()`, because a renderer deciding which button
-was pressed and handing the answer to the simulation is the hole that rule
-closes. And it works in simulation units, because the host has already
-quantised the pointer against a viewport that differs from one device to the
-next. The layout of the controls is therefore simulation state and replays
-exactly, which also means the renderer has to draw each control where the
-simulation believes it is.
+The tick is stamped when the input enters the queue, against the tick that is
+about to run. That is the only timing information a recording carries, and it
+is what makes replay exact.
 
-Leaving `controls` out says the game needs a keyboard or a mouse. A host can
-then say so to a player holding a phone, rather than framing a canvas they
-cannot steer.
+The live queue checks every input where it is pushed: a name the manifest does
+not declare, or a value outside its range, throws `E_INPUT_UNDECLARED`, so a
+misspelt name in a page is found while its author plays. A server holds a
+submitted log to the same rules with `checkInputs`, against the manifest it
+stored for the version, and to a budget of `INPUT_BUDGET_PER_TICK` inputs per
+tick on average (`E_INPUT_BUDGET`). A browser following the manifest never
+records anything else, but the code in a game's page is the game's own, and a
+log reaches a server from anywhere; the replay and `checkInputs` are what a
+score rests on.
+
+One thing to decide in `tick` rather than in the page: what a tap hit. A game
+that worked out in its drawing code that a tap landed on a target and recorded
+only the answer would replay perfectly and still have decided the result where
+nothing checks it. Record where the finger was, and hit-test in `tick`.
+
+### Choosing what to record
+
+Every value an input passes through is an input to record, store and replay, so
+what a game declares and how it records decides how big its recordings are.
+The rules:
+
+- **Declare the coarsest range the game needs.** A pointer measured in 32 steps
+  across the screen records a fraction of what one measured in 1000 does,
+  because a finger moving slowly crosses far fewer steps. The range is the
+  recording's resolution.
+- **Record what changed, not a stream.** A level (a position, a stick, tilt) is
+  worth recording when its value changes; an unchanged reading is not an input.
+- **Keep one value per tick.** Several readings of a stick between two ticks
+  are one input: where it ended up.
+- **Prefer a game-sized value to a raw reading.** A steer from -10 to 10
+  derived from tilt records less, and replays the same, as three gravity axes
+  from -100 to 100.
+- **Leave out what the game does not read.** A hover position, a third tilt
+  axis or a second stick costs inputs whether or not `tick` looks at it.
+
+The device helpers below do the first four for every input they record. The
+guide's `references/inputs.md` has the measured size of a five-minute
+recording from each helper, at a coarse and a fine range, and says how each
+was produced: the busiest, two thumbs on a pointer declared 0 to 1000, records
+3.9 inputs a tick and 3.0 MB of JSON.
+
+### The device helpers
+
+`InputCapture` in `@clockwork2/engine/host` is one way to record the common
+devices, and a game may use it, use part of it, or record its inputs itself by
+pushing to `host.live`. It takes a mapping in the game's code:
+
+```ts
+new InputCapture({
+  manifest: MANIFEST,
+  queue: live,                           // host.live, null only in a replay
+  element: canvas,                       // pointers and the wheel are heard here
+  keys: { ArrowLeft: "left", KeyA: "left" },
+  pointers: [{ down: "tap", x: "aimX", y: "aimY" }, { down: "tap" }],
+  wheel: { y: "zoom" },
+  gamepads: { any: { buttons: { 0: "jump" }, axes: { 0: "steer" } } },
+  tilt: { x: "steer", fullAt: 30 },
+  onNotice: (notice) => showTo(player, notice),
+}).attach()
+```
+
+`checkCapture(mapping, manifest)` checks a mapping without attaching it: every
+name declared, a press's range holding 0 and 1, one source for a position or an
+amount, key names that exist. The constructor runs it and throws, and a page
+can run it before it starts a run, so a mistake never spends one.
+
+What each kind of input records:
+
+- **A press** (a key, a pointer going down, a mouse or gamepad button) is 1
+  while held and 0 when released. A name pressed from several places is down
+  while any of them is. An auto-repeat of a key already held is not an input;
+  one of a key the helpers do not hold, as after a pause or a lost focus,
+  presses it again.
+- **A position or a reading** (a pointer's x or y across the element, a stick
+  axis, a trigger, tilt) is recorded in its name's range when it changes, and
+  merged to the last value of each tick, except that a value after a press in
+  the same tick is kept after it, so the press keeps where it went down. A stick rests at the middle of its
+  range and a trigger at its minimum, and reading them there is not an input.
+  Sticks and tilt have a deadband.
+- **An amount** (wheel notches, mouse movement while the mouse is locked to the
+  game) is summed per tick, its fraction carried, and held to its range; what a
+  tick could not carry is carried into later ticks, up to one range.
+
+Every press the helpers record they also release. A pointer is captured when it
+goes down, so a mouse released outside the element still comes up; a capture
+lost after the release takes no slot; a finger the browser takes away for a
+scroll is released; and window blur, a hidden tab, a pause and an unplugged
+controller each release everything held. `touch-action: none` is set on the
+element, so a drag on a drawn control stays a drag.
+
+Pointers have small slot numbers: slot 0 is the first finger down, slot 1 the
+second. A slot is taken only when a pointer goes down, so a mouse resting over
+the game does not push a finger to slot 1. A second mouse button pressed while
+one is held arrives as a move with new `buttons`, and the helpers record it
+from there; mapping a right button also keeps the browser's menu shut.
+
+A blocked gamepad, a controller without the standard layout and a refused
+mouse lock are reported to `onNotice` and never stop the run: a player on keys
+or touch plays on.
+
+Tilt is read from `deviceorientation` as the direction of gravity across the
+screen, x to the right, y up and z out of the screen, turned with the screen,
+and mapped onto each name's range. iOS asks the player's permission only from a
+tap, so a page calls `requestMotion()` as the first thing its Play button's
+click does, before anything is awaited, and starts the run after the answer. It
+resolves granted once a first real reading arrives, or a refusal naming why:
+`E_MOTION_INSECURE` (not https), `E_MOTION_UNSUPPORTED`, `E_MOTION_DENIED`,
+`E_MOTION_BLOCKED` (the page's permissions policy) or `E_MOTION_NO_SENSOR`.
 
 ## Rendering
 
@@ -913,7 +958,7 @@ A recording is what the browser sends and the server verifies:
   "tickHz": 60,
   "seed": "...",
   "config": { "speed": 1 },
-  "inputs": [{ "tick": 12, "device": "key", "code": "left", "value": 1 }],
+  "inputs": [{ "tick": 12, "code": "left", "value": 1 }],
   "checkpoints": [{ "tick": 0, "hash": "..." }, { "tick": 60, "hash": "..." }],
   "endTick": 1650,
   "terminal": "completed",
@@ -994,9 +1039,9 @@ not have to run it first.
 
 ```ts
 {
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: "lane-runner",            // immutable across every version
-  version: "1.0.0",             // strictly increasing
+  version: "1.0.0",             // semantic; a patch keeps the rules
   name: "Lane Runner",
   kernel: { version: "0.1.0" },
 
@@ -1007,9 +1052,10 @@ not have to run it first.
     hasEnding: true,
   },
 
-  inputs: {
-    map: { left: [{ code: "ArrowLeft", device: "key", label: "Left" }] },
-    controls: { mode: "scheme", scheme: "dpad", bind: { left: "left" } },
+  inputs: {                     // what the game records, by name and range
+    left: { min: 0, max: 1, label: "Left" },
+    right: { min: 0, max: 1, label: "Right" },
+    aimX: { min: 0, max: 31 },
   },
 
   counters: [{ name: "motes", direction: "up", monotonic: true }],
@@ -1036,11 +1082,27 @@ A few fields decide more than they look like they do.
 `id` is immutable. Change it and it is a different game with a different
 leaderboard, which is why the skill's scaffold sets it once at creation.
 
+`version` is a semantic version, and its parts are a promise about the rules:
+a patch changes how the game looks or fixes a bug and keeps what a score
+means, a minor changes the rules, and a major is a different game. A platform
+may treat every patch of one `MAJOR.MINOR` as the same game, ranking them on
+one board, so a patch should keep the fields that decide how a run is played
+and ranked (`session`, `inputs`, `counters`, `rankBy`, `tiePolicy`, `params`,
+`capabilities`) as the line's first release declared them. A recording names
+its exact version and replays against that version only.
+
 `counters` and `rankBy` replace an objective system. An objective is
 `counters[name] >= threshold`, computed by the platform, so a new kind of
 objective is a new counter rather than new code on both sides. A counter
 declared `monotonic` may never move the wrong way, and the suite checks every
 tick.
+
+`inputs` is everything the game records, each a name and the whole numbers it
+carries. Which key, finger or stick drives an input is the game's page's
+choice, made in code (see [Input](#input)); the manifest says only what is
+recorded, and a server refuses a log holding anything else. Schema 1 bound
+device codes here and declared on-screen controls; a schema 1 manifest is
+refused and told what changed.
 
 `params` are typed, validated against their ranges before the game sees them,
 and arrive as the `config` argument to `init`. They travel in the recording, so
@@ -1129,12 +1191,23 @@ const host = new GameHost({
   checkpointEvery: MANIFEST.session.tickHz,
   onEnded: (result) => submit(host.recording()),
 })
-new InputCapture({ manifest: MANIFEST, queue: host.live }).attach()
+// Optional: which keys and fingers drive the game's declared inputs. Only a
+// replay has no live queue.
+const live = host.live
+if (live === null) throw new Error("a live session has a live input queue")
+new InputCapture({
+  manifest: MANIFEST,
+  queue: live,
+  element: container,
+  keys: { ArrowLeft: "left", ArrowRight: "right" },
+  pointers: [{ down: "tap", x: "aimX" }],
+}).attach()
 host.start()
 ```
 
-The host owns the accumulator, the input capture, the checkpoints and the
-recording. The game knows about none of them.
+The host owns the accumulator, the checkpoints and the recording. The game
+knows about none of them. A game runs in its own page, on its own site; there is
+no frame between the page and the game.
 
 A game with data packs gives the host its start packs and a loader for the
 rest:
@@ -1150,13 +1223,10 @@ const host = new GameHost({
 })
 ```
 
-`fetchPackLoader` builds each URL from the manifest, because no frame message
-may carry one. It asks with `mode: "cors"` and no credentials, counts the body
-as it arrives and stops past the declared size, and reports a refused or failed
-fetch as `E_PACK_NOT_DELIVERED`. The frame document of the SDK
-(`@vbz-gg/sdk`, published as `@vbz-gg/game-base` up to 0.2.0) sets
-`connect-src 'none'`, which blocks every fetch, so a framed game built with
-the SDK cannot fetch its packs until that rule allows the frame's own address.
+`fetchPackLoader` builds each URL from the manifest and the content's own
+digest. It asks with `mode: "cors"` and no credentials, counts the body as it
+arrives and stops past the declared size, and reports a refused or failed fetch
+as `E_PACK_NOT_DELIVERED`.
 
 The host holds its loop while a pack the game named is missing and reports
 what it is waiting for in `FrameInfo.waitingFor`. A prefetch that fails is
@@ -1167,105 +1237,25 @@ Anything a loader settles after the session ended is ignored. A platform that
 issues sessions with a deadline has to allow for the longest hold in
 `maxWallSeconds`.
 
-For untrusted games the bridge runs the game document in an iframe with
-`sandbox="allow-scripts"` and without `allow-same-origin`, which puts it in an
-opaque origin. The two flags together would let the frame remove its own
-sandbox. An opaque origin is same-origin with nothing, so the parent posts with
-target origin `*` and checks `event.source`, while the frame checks
-`event.origin`. Workers from an opaque origin have to be `blob:` URLs.
+### Watching a recorded run
 
-The frame document loads before anything about the session has been decided, so
-`FrameBridge` starts with no game at all and builds one when `init` arrives:
+A replay is a session whose inputs come from a log instead of from devices, so
+it runs down the same loop and reaches the same states:
 
 ```ts
-connectToParent({
-  manifest: MANIFEST,
-  parentOrigin: PLATFORM_ORIGIN,
-  createHost: (init, bridge) =>
-    new GameHost({ ...rest, seed: init.seed, maxTicks: init.maxTicks }),
+const host = new GameHost({
+  ...rest,
+  seed: recording.seed,
+  inputs: new RecordedInputSource(recording.inputs),
+  speed: 2,
 })
 ```
 
-That ordering is why the seed never travels in the frame's URL, where it would
-be in a referrer, a history entry and every log between the page and the CDN.
-
-A framed game with data packs passes its loader to the bridge as `packs`. The
-start packs belong to the game version rather than to the seed, so the bridge
-starts fetching them as soon as it exists, and answers `hello` with `ready`
-only once they are here. `createHost` then finds them in `init.packs`, ready to
-pass to `GameHost`. The bridge listens from the start all the same: the parent
-says `hello` once, and a frame that began listening only after its download
-would never hear it. A start pack that cannot be fetched answers `hello` with
-`E_FRAME_INIT_FAILED` and the pack's own code in the detail.
-`start` before `init` is answered with an error rather than ignored, and a
-second `init` is refused, because a frame runs one session.
-
-The message table is a fixed vocabulary. Host to game: `hello`, `init`, `start`,
-`pause`, `resume`, `end`, `resize`, `theme`, `virtual-input`. Game to host:
-`ready`, `started`, `progress`, `checkpoint`, `log-chunk`, `ended`, recording
-chunks, `error`, `heartbeat`. No message carries a token, a balance, a URL,
-HTML, a function or another player's data, and there is no `navigate` row, so
-adding one is a visible diff.
-
-### Watching a recorded run
-
-`init` may carry a log, and then the session is a replay:
-
-```ts
-frame.init(seed, config, 60, maxTicks, { inputs: recording.inputs, speed: 2 })
-```
-
-The game builds its host the same way it always does, with one more field:
-
-```ts
-createHost: (init, bridge) =>
-  new GameHost({
-    ...rest,
-    seed: init.seed,
-    ...(init.inputs === undefined
-      ? {}
-      : { inputs: new RecordedInputSource(init.inputs) }),
-    ...(init.speed === undefined ? {} : { speed: init.speed }),
-  }),
-```
-
-A replay is a session whose inputs come from a log instead of from devices, so
-it runs down the same loop and reaches the same states. `host.live` is null for
-one, which does the rest of the work by itself: a device capture has no queue
-to attach to, a `virtual-input` from the parent lands nowhere, and `log-chunk`
-has no log of its own to slice. A game must not attach an `InputCapture` when
-`init.inputs` is present, and the two templates guard on `host.live !== null`
-rather than on the field.
-
-`speed` is only for a replay, and an `init` asking for one without a log is
-refused with `E_FRAME_INIT_FAILED`. Speed on a live session is a player slowing
-the game down to play it, which is the reason a frame exposes no `setSpeed` at
-all.
-
-`log-chunk` is the one that exists for the platform rather than for the game. It
-carries a slice of the input log every couple of seconds while the run is still
-going, and the tail is flushed before `ended`. A host that keeps those slices,
-stamped with its own clock, can reject a submitted recording whose past
-disagrees with what the player had already committed to, without replaying
-anything.
-
-Two things about this path are easy to get wrong and fail in silence.
-
-The parent says `hello` on the frame's `load` event, not before. A message
-posted earlier reaches the blank document an iframe starts on, where nothing is
-listening, and nothing retries it: no error, no `ready`, a game that never
-starts.
-
-The host serving the game's files needs `Access-Control-Allow-Origin: *`.
-Because the frame has no origin of its own, every script it loads is a
-cross-origin request, including its own bundle from the very server that sent
-the document. A server answering with its own origin instead is answering a
-request from "null", which never matches, and the frame loads nothing.
-
-`demo/embed.html` and `demo/frame.html` are the two halves running against each
-other, and `e2e/specs/08-iframe.spec.ts` drives them in a real browser: the
-handshake, the seed arriving over the bridge, log slices landing before the run
-ends, and the recording that comes back replaying on a server to the same state.
+`host.live` is null for a replay, which does the rest of the work by itself: the
+device helpers have no queue to record into, so a key pressed by somebody
+watching cannot reach the run they are watching. `speed` is for a replay; a
+live session runs at 1, because speed on a live run is a player slowing the game
+down to play it.
 
 The simulation can also run in a worker with the clock staying on the page. The
 renderer then holds a copy of the view rather than a reference to it, which is
@@ -1279,7 +1269,7 @@ demand pack when the worker posts `packs-needed`. The page transfers a copy it
 made for the purpose, exactly the pack's length, so a cache or a loader that
 keeps the original is not emptied by the transfer. A worker that is holding
 still answers every frame, with the same tick, or the page would never send
-another and the hold would never end. `demo/packs-embed.html` and
+another and the hold would never end. `demo/packs.html` and
 `demo/packs-worker.html` run a pack game both ways in a real browser, and
 `e2e/specs/09-packs.spec.ts` replays each on a server.
 
@@ -1322,6 +1312,28 @@ record. Timing is the tick index on each input.
 rather than when a frame drains the queue. Draining is frame-shaped, so stamping
 at drain time makes the same keystroke land on different ticks at different
 frame rates.
+
+**Inputs are the game's own, by name and range, with no device.** Schema 1
+bound device codes to actions and recorded which device each input came from,
+and a platform drew on-screen controls from the manifest. A game now draws its
+own controls, declares what it records, and maps devices onto those names in
+its page. The engine keeps optional helpers for the common devices and a check
+of a log against the declared inputs, and nothing about a device reaches a
+recording.
+
+**A merged input stays where the first one stood, and never crosses a
+press.** A level merged to the last value of a tick overwrites the earlier
+entry in place rather than moving to the end, so a pointer's position recorded
+before its press stays before it. A value that arrives after a press in the
+same tick is a new entry after the press instead, so the press is hit-tested
+where it went down and the drag that followed is still recorded; it costs one
+input more in the tick a finger lands and moves.
+
+**Games run in their own page.** The sandboxed-frame bridge, its message
+protocol and the page-to-frame tilt forwarding are gone. A game runs on its
+own site, so the keys, sensors, fullscreen and audio a page allows reach it
+directly; the protections a frame gave a host serving strangers' code are not
+needed when the page and the game are the same author's.
 
 **The snapshot carries the generator's position.** The seed says where the
 stream began and nothing about how far along it is, and a snapshot is a resume
@@ -1389,6 +1401,28 @@ Memory has a measurement and no budget. The performance check reports peak
 resident memory for one run on JavaScriptCore under Bun. A V8 isolate, where a
 server replay may run, uses a different amount, and nothing here measures one
 yet, so a platform sizing replay workers should measure in its own.
+
+Tilt is checked on one phone and one tablet, with `demo/tilt.html`, which
+walks a person through each pose and copies what it recorded. On a Galaxy
+S24+ under Chrome 157 every pose read as it should, upright and on its side,
+and readings kept arriving at about 59 a second while the page scrolled. An
+iPad Pro (2018) under iPadOS Safari 26.6 failed until the helpers stopped
+trusting its angles: Safari there mirrors `screen.orientation.angle` and
+measures it from landscape, and `window.orientation` read 0 with the iPad
+upside down. Only the orientation's name was right in all four positions, so
+`screenAngleOf` works the angle out from it on a portrait-natural device. The
+iPad then passed every pose upright and on its side, and under iPadOS 26.7 it
+passed every pose from an upside-down start too: there `screen.orientation.angle`
+read 270, `window.orientation` 180 and the name `portrait-secondary`, and the
+helpers used 180. While its page scrolled, the iPad's readings fell from 59 a
+second to between 1 and 5 under 26.6, and from 59.7 to a lowest of 2 and an
+average of 9.3 over 3.7 seconds under 26.7, so a game that steers by tilt must
+not let its page scroll during a run. No iPhone has been checked.
+
+The input budget is a model's. `INPUT_BUDGET_PER_TICK` is 16, four times the
+busiest rate scripted runs of each helper produced, not a rate measured from
+real players, and a recording of a real hand, or a game mapping several
+devices at once, may need it revisited.
 
 The demo is the only substantial game on the engine so far. Games are rewritten
 against this API rather than adapted onto it, so a larger one would answer two

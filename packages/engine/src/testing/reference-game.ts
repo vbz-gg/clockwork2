@@ -55,7 +55,7 @@ export const REFERENCE_COUNTERS: readonly CounterDeclaration[] = [
 ]
 
 export const REFERENCE_MANIFEST: Manifest = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: "reference-drift",
   version: "1.0.0",
   name: "Reference Drift",
@@ -67,12 +67,11 @@ export const REFERENCE_MANIFEST: Manifest = {
     hasEnding: true,
   },
   inputs: {
-    map: {
-      left: [{ code: "ArrowLeft", device: "key", label: "Turn left" }],
-      right: [{ code: "ArrowRight", device: "key", label: "Turn right" }],
-      thrust: [{ code: "ArrowUp", device: "key", label: "Thrust" }],
-    },
+    left: { min: 0, max: 1, label: "Turn left" },
+    right: { min: 0, max: 1, label: "Turn right" },
+    thrust: { min: 0, max: 1, label: "Thrust" },
   },
+
   counters: REFERENCE_COUNTERS,
   rankBy: ["score", "ticksSurvived"],
   tiePolicy: "shared",

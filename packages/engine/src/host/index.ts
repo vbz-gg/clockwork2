@@ -1,10 +1,10 @@
 /**
  * @clockwork2/host-bridge
  *
- * The loop, the input capture and the frame protocol. Subpaths keep the halves
- * apart: `./parent` runs in the platform's page, `./frame` inside the
- * sandboxed game document, `./worker` inside the simulation worker, and
- * `./protocol` is the message table both sides read.
+ * Running a game in a page: the loop, pack loading, and the optional device
+ * helpers that turn keys, pointers, the wheel, gamepads and tilt into a
+ * game's own inputs. `./worker` is the second host, for a simulation that
+ * runs in a worker.
  */
 
 export { AudioSink, type AudioSinkOptions, type SoundRecipe } from "./audio.js"
@@ -17,11 +17,36 @@ export {
   type LoopStats,
 } from "./host.js"
 export {
-  type ActionBinding,
-  bindingsFrom,
+  type CaptureDocument,
+  type CaptureEnvironment,
+  type CaptureMapping,
+  checkCapture,
+  DEVICE_NOTICES,
+  type DeviceNotice,
+  type DeviceNoticeCode,
+  GAMEPAD_AXES,
+  GAMEPAD_BUTTONS,
+  GAMEPAD_SLOTS,
+  type GamepadMapping,
   InputCapture,
   type InputCaptureOptions,
+  POINTER_BUTTONS,
+  POINTER_SLOTS,
+  type PointerSlot,
+  screenRotation,
 } from "./input.js"
+export {
+  currentScreenAngle,
+  MOTION_REFUSALS,
+  MOTION_WAIT_MS,
+  type MotionAccess,
+  type MotionEnvironment,
+  type MotionRefusal,
+  motionEnvironment,
+  requestMotion,
+  type ScreenAngleSource,
+  screenAngleOf,
+} from "./motion.js"
 export {
   type FetchPackLoaderOptions,
   fetchPackLoader,
@@ -30,13 +55,3 @@ export {
   type PackLoader,
   type PackSupply,
 } from "./packs.js"
-export {
-  createDispatcher,
-  FRAME_ERRORS,
-  type GameToHost,
-  type HandlerTable,
-  type HostToGame,
-  LOG_CHUNK_INTERVAL_MS,
-  PROGRESS_INTERVAL_MS,
-  PROTOCOL_VERSION,
-} from "./protocol/index.js"

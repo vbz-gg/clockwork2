@@ -52,10 +52,10 @@ const STEP = 1000 / MANIFEST.session.tickHz
 
 /** Inputs the tests make, at ticks either side of the hold and during it. */
 const PLAN: readonly InputEvent[] = [
-  { tick: 50, device: "key", code: "push", value: 1 },
-  { tick: LEVEL_FROM, device: "key", code: "push", value: 1 },
-  { tick: 320, device: "key", code: "push", value: 1 },
-  { tick: 900, device: "key", code: "push", value: 1 },
+  { tick: 50, code: "push", value: 1 },
+  { tick: LEVEL_FROM, code: "push", value: 1 },
+  { tick: 320, code: "push", value: 1 },
+  { tick: 900, code: "push", value: 1 },
 ]
 
 /** Lets every pending promise chain settle. */
@@ -208,7 +208,7 @@ describe("a pack arrives at the same step in every host", () => {
         (input) => input.tick === tick && !sent.has(input.tick),
       )
       for (const input of due) sent.add(input.tick)
-      sim.send(due.map(({ device, code, value }) => ({ device, code, value })))
+      sim.send(due.map(({ code, value }) => ({ code, value })))
       const before = tick
       sim.frame(STEP)
       await settle()

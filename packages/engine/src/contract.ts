@@ -8,11 +8,14 @@
  * independent of the player's frame rate, and the surest way to keep it that
  * way is to give the game nothing to integrate against.
  *
- * Input events are built by the host from device events, never by the game. A
- * game that could construct its own input could do its hit-testing in the
- * renderer and feed the answer to the simulation as a virtual press. That
- * replays perfectly and still decides the score on the client, which is the
- * one failure a conformance suite cannot see.
+ * Inputs are the game's own. A manifest declares each input by name and
+ * range, the game's page records what its player did as those inputs, and
+ * the simulation reads them in `tick`. What a server trusts is the replay of
+ * the recorded inputs, and `checkInputs`, which refuses any input the
+ * manifest does not declare. A game that decided in its drawing code that a
+ * tap hit a target, and recorded only the answer, would replay perfectly and
+ * still have decided the result where nothing checks it, so the guidance is
+ * to record the tap and decide in `tick`.
  */
 
 import type { PackReader } from "./packs.js"
@@ -32,17 +35,6 @@ export type Snapshot = { readonly [key: string]: PlainValue }
 /** Declared counters. Every value is an integer. */
 export type Counters = Readonly<Record<string, number>>
 
-/** The devices a host may build an input from. */
-export const INPUT_DEVICES = [
-  "key",
-  "pointer",
-  "touch",
-  "gamepad",
-  "virtual",
-] as const
-
-export type InputDevice = (typeof INPUT_DEVICES)[number]
-
 /**
  * One input, stamped with the tick it applies to.
  *
@@ -51,12 +43,12 @@ export type InputDevice = (typeof INPUT_DEVICES)[number]
  * time, so the same keystroke landed on a different tick depending on the
  * frame rate.
  *
- * `value` is an integer. Analog sources are quantised by the host, with the
- * deadzones in `inputs.ts`, before the simulation ever sees them.
+ * There is no device: each game declares its own inputs, by name and range,
+ * and decides what to record. `value` is a whole number in that range.
  */
 export type InputEvent = {
   readonly tick: number
-  readonly device: InputDevice
+  /** The name of an input the manifest declares. */
   readonly code: string
   readonly value: number
 }

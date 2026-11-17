@@ -1,15 +1,13 @@
 /**
  * Data packs in a real browser.
  *
- * The unit suite proves the hosts agree using a fake frame and a fake worker,
- * and both of the host bugs found while this was designed would have passed
- * there: a frame that downloads before it listens misses the parent's one
- * hello, and a page that transfers a buffer it shares empties its own cache.
- * Here the frame is really sandboxed and fetches from its own address across
- * an opaque origin, and the worker is a real one that receives transferred
- * buffers. Each run holds for its demand pack, which the page delays, and
- * each replays on a server to the same checkpoints with the pack read at the
- * same tick.
+ * The unit suite proves the hosts agree using a fake worker, and one of the
+ * host bugs found while this was designed would have passed there: a page
+ * that transfers a buffer it shares empties its own cache. Here a page plays
+ * the game itself, fetching its packs from its own address, and the worker is
+ * a real one that receives transferred buffers. Each run holds for its demand
+ * pack, which the page delays, and each replays on a server to the same
+ * checkpoints with the pack read at the same tick.
  */
 
 import { execFileSync } from "node:child_process"
@@ -45,10 +43,10 @@ async function push(page: Page, times: number): Promise<void> {
 }
 
 test.describe("data packs in a browser", () => {
-  test("a sandboxed frame fetches its packs, holds for one, and replays", async ({
+  test("a page fetches its packs, holds for one, and replays", async ({
     page,
   }, testInfo) => {
-    await page.goto("/packs-embed.html?seed=e2e-packs-frame&delay=600")
+    await page.goto("/packs.html?seed=e2e-packs-page&delay=600")
     await expect(page.locator("#phase")).toHaveText(/running/)
     await push(page, 4)
     await expect(page.locator("#phase")).toHaveText("recorded", {
@@ -75,7 +73,7 @@ test.describe("data packs in a browser", () => {
       String(LEVEL_FROM),
     )
 
-    const replayed = replay(testInfo, "framed-packs", encoded)
+    const replayed = replay(testInfo, "page-packs", encoded)
     expect(replayed.openedAt).toBe(LEVEL_FROM)
     expect(replayed.endTick).toBe(recording.endTick)
     expect(replayed.counters).toEqual(recording.counters)

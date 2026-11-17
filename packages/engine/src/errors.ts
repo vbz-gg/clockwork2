@@ -31,8 +31,16 @@ export const ERROR_CODES = {
   E_RECORDING_MALFORMED: "recording is malformed",
   /** An input log was not sorted by tick. */
   E_INPUT_UNSORTED: "input log is not sorted by tick",
-  /** An input carried a value outside the range the device vocabulary allows. */
+  /**
+   * An input log entry no recording can hold: a tick or a value that is not a
+   * whole number, a `-0`, no name, or a tick outside the run or the span.
+   */
   E_INPUT_RANGE: "input value is out of range",
+  /** An input the manifest does not declare, or a value outside its declared range. */
+  E_INPUT_UNDECLARED:
+    "an input is not one the manifest declares, or is out of its range",
+  /** A log holding more inputs than the budget allows (`checkInputs`). */
+  E_INPUT_BUDGET: "a log holds more inputs than any player makes",
   /** The session passed the tick cap its manifest declares. */
   E_TICK_LIMIT: "session passed maxTicks without ending",
   /** A manifest failed validation. */
@@ -101,8 +109,17 @@ export interface ClockworkErrorOptions {
 }
 
 /**
+ * The mark every `ClockworkError` carries. `Symbol.for` returns one symbol
+ * per name across every copy of the engine in a page or a process, so an
+ * error thrown by one copy is recognised by another, where `instanceof` would
+ * compare two different classes and say no.
+ */
+const CLOCKWORK_ERROR = Symbol.for("clockwork2.error")
+
+/**
  * The one error type. Catching code switches on `code`, never on the message,
- * and never on a substring of it.
+ * and never on a substring of it, and recognises one with `isClockworkError`,
+ * never `instanceof`, because a page can hold two copies of the engine.
  */
 export class ClockworkError extends Error {
   readonly code: ErrorCode
@@ -119,6 +136,7 @@ export class ClockworkError extends Error {
     this.code = code
     this.tick = options.tick
     this.detail = options.detail
+    Object.defineProperty(this, CLOCKWORK_ERROR, { value: true })
   }
 
   /** The short form a log line or a CLI prints: `E_RESTORE_MISMATCH@1800`. */
@@ -132,5 +150,14 @@ export function fail(code: ErrorCode, options?: ClockworkErrorOptions): never {
 }
 
 export function isClockworkError(value: unknown): value is ClockworkError {
-  return value instanceof ClockworkError
+  if (typeof value !== "object" || value === null) return false
+  const marked = value as {
+    readonly [CLOCKWORK_ERROR]?: unknown
+    readonly code?: unknown
+  }
+  return (
+    marked[CLOCKWORK_ERROR] === true &&
+    typeof marked.code === "string" &&
+    Object.hasOwn(ERROR_CODES, marked.code)
+  )
 }

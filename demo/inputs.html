@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Clockwork 2 - every input helper</title>
+    <style>
+      :root { color-scheme: dark; }
+      body { margin: 0; background: #0b0b14; color: #e8e9ee; font-family: ui-sans-serif, system-ui, sans-serif; }
+      h1 { position: absolute; left: 40px; top: 20px; margin: 0; font-size: 18px; }
+      p.hint { position: absolute; left: 40px; top: 56px; margin: 0; width: 640px; font-size: 13px; color: #8b8fa3; }
+      /* Fixed in size and place, so a spec knows where a position lands. */
+      #stage {
+        position: absolute; left: 40px; top: 120px; width: 640px; height: 360px;
+        box-sizing: border-box; border: 1px solid #3a3c4e; background: #14151f;
+        user-select: none; -webkit-user-select: none;
+      }
+      #panel { position: absolute; left: 720px; top: 120px; width: 520px; }
+      dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0 0 12px; font-size: 14px; }
+      dt { color: #8b8fa3; }
+      dd { margin: 0; font-family: ui-monospace, monospace; word-break: break-all; }
+      #log { max-height: 220px; overflow: auto; margin: 0; font-size: 11px; white-space: pre-wrap; word-break: break-all; }
+    </style>
+  </head>
+  <body>
+    <h1>Every input helper</h1>
+    <p class="hint">Keys: arrows, A, D, Space. Press, drag and right-click the stage, spin the wheel over it, plug in a controller, or tilt a phone after allowing it.</p>
+    <div id="stage"></div>
+    <div id="panel">
+      <button id="motion" type="button">Allow tilt</button>
+      <dl>
+        <dt>phase</dt><dd id="phase">idle</dd>
+        <dt>tick</dt><dd id="tick">0</dd>
+        <dt>inputs recorded</dt><dd id="count">0</dd>
+        <dt>mouse lock mapped</dt><dd id="lock-mapped">-</dd>
+        <dt>mouse locked</dt><dd id="locked">no</dd>
+        <dt>lock errors heard</dt><dd id="lock-errors">0</dd>
+        <dt>tilt</dt><dd id="motion-access">-</dd>
+        <dt>device notices</dt><dd id="notices">[]</dd>
+        <dt>error</dt><dd id="error"></dd>
+      </dl>
+      <pre id="log">[]</pre>
+    </div>
+    <script type="module" src="/src/inputs/page.ts"></script>
+  </body>
+</html>

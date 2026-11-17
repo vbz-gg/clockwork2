@@ -70,25 +70,10 @@
       "types": "./dist/probe/index.d.ts",
       "default": "./dist/probe/index.js"
     },
-    "./parent": {
-      "development": "./src/host/parent/index.ts",
-      "types": "./dist/host/parent/index.d.ts",
-      "default": "./dist/host/parent/index.js"
-    },
-    "./frame": {
-      "development": "./src/host/frame/index.ts",
-      "types": "./dist/host/frame/index.d.ts",
-      "default": "./dist/host/frame/index.js"
-    },
     "./worker": {
       "development": "./src/host/worker/index.ts",
       "types": "./dist/host/worker/index.d.ts",
       "default": "./dist/host/worker/index.js"
-    },
-    "./protocol": {
-      "development": "./src/host/protocol/index.ts",
-      "types": "./dist/host/protocol/index.d.ts",
-      "default": "./dist/host/protocol/index.js"
     },
     "./validate": {
       "development": "./src/validate/index.ts",

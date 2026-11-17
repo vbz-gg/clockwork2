@@ -307,6 +307,92 @@ export function mergeParamDefaults(
   return merged
 }
 
+/** A declared input's name: what a recorded input carries as its `code`. */
+const INPUT_NAME = /^[a-z][a-zA-Z0-9]*$/
+/** Enough for any game; a manifest with more is declaring a stream, not inputs. */
+export const MAX_DECLARED_INPUTS = 64
+/** A declared bound fits a 32-bit integer, which every engine stores exactly. */
+const INPUT_BOUND = 0x7fffffff
+const INPUT_FIELDS = new Set(["min", "max", "label"])
+
+/**
+ * The inputs a game records, by name and range. A schema 1 binding table is
+ * refused by name, so a manifest written for the old schema says what to
+ * change rather than failing on a field it never heard of.
+ */
+function checkInputDeclarations(inputs: unknown, issues: Issue[]): void {
+  if (!isPlainObject(inputs)) {
+    issues.push({
+      at: "inputs",
+      message: "must be an object of input name to { min, max }",
+    })
+    return
+  }
+  const names = Object.keys(inputs)
+  if (names.length > MAX_DECLARED_INPUTS) {
+    issues.push({
+      at: "inputs",
+      message: `declares ${names.length} inputs; at most ${MAX_DECLARED_INPUTS}`,
+    })
+  }
+  for (const name of names) {
+    const at = `inputs.${name}`
+    const declaration = inputs[name]
+    if (
+      (name === "map" || name === "controls") &&
+      isPlainObject(declaration) &&
+      declaration.min === undefined
+    ) {
+      issues.push({
+        at,
+        message:
+          "is schema 1's; in schema 2 a game declares each input as { min, max } and binds devices in its own code",
+      })
+      continue
+    }
+    if (!INPUT_NAME.test(name)) {
+      issues.push({
+        at,
+        message: "must be a name: a lower-case letter, then letters and digits",
+      })
+    }
+    if (!isPlainObject(declaration)) {
+      issues.push({ at, message: "must be { min, max }" })
+      continue
+    }
+    for (const field of Object.keys(declaration)) {
+      if (!INPUT_FIELDS.has(field)) {
+        issues.push({
+          at: `${at}.${field}`,
+          message: "is not a field of an input",
+        })
+      }
+    }
+    const { min, max, label } = declaration
+    for (const [field, bound] of [
+      ["min", min],
+      ["max", max],
+    ] as const) {
+      if (
+        typeof bound !== "number" ||
+        !Number.isInteger(bound) ||
+        Math.abs(bound) > INPUT_BOUND
+      ) {
+        issues.push({
+          at: `${at}.${field}`,
+          message: `must be a whole number within ${INPUT_BOUND} either side of 0`,
+        })
+      }
+    }
+    if (typeof min === "number" && typeof max === "number" && min > max) {
+      issues.push({ at: `${at}.max`, message: "must not be below min" })
+    }
+    if (label !== undefined && typeof label !== "string") {
+      issues.push({ at: `${at}.label`, message: "must be a string" })
+    }
+  }
+}
+
 /** Every problem with a manifest, in document order. */
 export function validateManifest(value: unknown): Issue[] {
   const issues: Issue[] = []
@@ -315,8 +401,14 @@ export function validateManifest(value: unknown): Issue[] {
   }
   const m = value as Record<string, unknown>
 
-  if (m.schemaVersion !== 1) {
-    issues.push({ at: "schemaVersion", message: "must be 1" })
+  if (m.schemaVersion !== 2) {
+    issues.push({
+      at: "schemaVersion",
+      message:
+        m.schemaVersion === 1
+          ? "must be 2: schema 1 bound device codes in inputs.map and declared inputs.controls; schema 2 declares each input by name and range"
+          : "must be 2",
+    })
   }
   if (typeof m.id !== "string" || !ID_PATTERN.test(m.id)) {
     issues.push({
@@ -422,95 +514,7 @@ export function validateManifest(value: unknown): Issue[] {
     })
   }
 
-  const inputs = m.inputs
-  if (!isPlainObject(inputs) || !isPlainObject(inputs.map)) {
-    issues.push({
-      at: "inputs.map",
-      message: "must be an object of action to bindings",
-    })
-  } else {
-    for (const [action, bindings] of Object.entries(inputs.map)) {
-      if (!Array.isArray(bindings) || bindings.length === 0) {
-        issues.push({
-          at: `inputs.map.${action}`,
-          message: "must be a non-empty array of bindings",
-        })
-        continue
-      }
-      bindings.forEach((binding: unknown, index: number) => {
-        const at = `inputs.map.${action}[${index}]`
-        if (!isPlainObject(binding)) {
-          issues.push({ at, message: "must be an object" })
-          return
-        }
-        if (typeof binding.code !== "string" || binding.code.length === 0) {
-          issues.push({
-            at: `${at}.code`,
-            message: "must be a non-empty string",
-          })
-        }
-        if (
-          !["key", "pointer", "touch", "gamepad", "virtual"].includes(
-            binding.device as string,
-          )
-        ) {
-          issues.push({ at: `${at}.device`, message: "is not a known device" })
-        }
-      })
-    }
-
-    // Which schemes exist is the host's table, not ours, so the name is only
-    // checked for being a name. What is checkable here is that the binding
-    // is coherent: a slot pointing at an action the game does not declare
-    // draws a control that sends nothing, and the player finds out by
-    // pressing it.
-    const controls = inputs.controls
-    if (controls !== undefined) {
-      if (!isPlainObject(controls)) {
-        issues.push({ at: "inputs.controls", message: "must be an object" })
-      } else if (controls.mode !== "scheme" && controls.mode !== "custom") {
-        issues.push({
-          at: "inputs.controls.mode",
-          message: 'must be "scheme" or "custom"',
-        })
-      } else if (controls.mode === "scheme") {
-        if (
-          typeof controls.scheme !== "string" ||
-          controls.scheme.length === 0
-        ) {
-          issues.push({
-            at: "inputs.controls.scheme",
-            message: "must be a non-empty string",
-          })
-        }
-        if (!isPlainObject(controls.bind)) {
-          issues.push({
-            at: "inputs.controls.bind",
-            message: "must be an object of slot to action",
-          })
-        } else {
-          const bound = Object.entries(controls.bind)
-          if (bound.length === 0) {
-            issues.push({
-              at: "inputs.controls.bind",
-              message: "must bind at least one slot",
-            })
-          }
-          for (const [slot, action] of bound) {
-            if (
-              typeof action !== "string" ||
-              !Object.hasOwn(inputs.map, action)
-            ) {
-              issues.push({
-                at: `inputs.controls.bind.${slot}`,
-                message: "must name an action declared in inputs.map",
-              })
-            }
-          }
-        }
-      }
-    }
-  }
+  checkInputDeclarations(m.inputs, issues)
 
   const capabilities = m.capabilities
   if (!isPlainObject(capabilities)) {

@@ -30,7 +30,6 @@ export type {
   Effect,
   GameModule,
   GameModuleSource,
-  InputDevice,
   InputEvent,
   PlainValue,
   Presentation,
@@ -38,7 +37,7 @@ export type {
   Snapshot,
   TerminalReason,
 } from "./contract.js"
-export { INPUT_DEVICES, instantiate, TERMINAL_REASONS } from "./contract.js"
+export { instantiate, TERMINAL_REASONS } from "./contract.js"
 export {
   type CounterDeclaration,
   type CounterDirection,
@@ -67,14 +66,22 @@ export {
 } from "./hash/index.js"
 export {
   type AxisOptions,
+  checkInputSpan,
+  checkInputs,
+  INPUT_BUDGET_PER_TICK,
+  type InputSink,
   type InputSource,
   LiveInputQueue,
+  MAX_INPUTS_PER_TICK,
+  type MergeRule,
+  outsideDeclaration,
   type PendingInput,
   quantiseAxis,
   quantisePoint,
   RecordedInputSource,
   validateInputLog,
 } from "./inputs.js"
+export { KEY_CODES } from "./key-codes.js"
 export {
   Accumulator,
   type AccumulatorOptions,
@@ -88,6 +95,8 @@ export {
 } from "./loop.js"
 export type {
   AssetDeclaration,
+  InputDeclaration,
+  Inputs,
   Manifest,
   ParamSchema,
   ParamValues,

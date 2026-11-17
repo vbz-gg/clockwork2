@@ -1,6 +1,6 @@
 ---
 name: platform-game
-description: Build a browser game on Clockwork 2 that the arcade can verify - fixed-step ticks, seeded randomness, an input log that replays to the same state on a server. Use when writing or reviewing a game module, a manifest, a renderer or a recording; when a conformance check fails with an E_ code; or when porting a variable-step game onto the fixed-step contract. Covers the simulation and renderer boundary, deterministic maths, snapshots and restore, counters and objectives, data packs, budgets, and the twelve checks in @clockwork2/engine/validate.
+description: Build a browser game on Clockwork 2 that a platform can verify - fixed-step ticks, seeded randomness, an input log that replays to the same state on a server. Use when writing or reviewing a game module, a manifest, a renderer or a recording; when a conformance check fails with an E_ code; or when porting a variable-step game onto the fixed-step contract. Covers the simulation and renderer boundary, deterministic maths, snapshots and restore, counters and objectives, declared inputs and what to record, data packs, budgets, and the twelve checks in @clockwork2/engine/validate.
 ---
 
 # Building a verifiable game
@@ -8,8 +8,8 @@ description: Build a browser game on Clockwork 2 that the arcade can verify - fi
 **Where this file and `scripts/validate.sh` disagree, the script is right.** It
 is what the platform runs. Prose cannot fail a build.
 
-The arcade pays and ranks on results, so a score has to be something the
-platform can verify rather than trust. The browser records the player's inputs,
+A platform ranks on results, so a score has to be something it can verify
+rather than trust. The browser records the player's inputs,
 the server replays them, and both sides must reach the same state - on V8,
 JavaScriptCore and SpiderMonkey alike. Everything below follows from that one
 sentence.
@@ -34,7 +34,8 @@ src/sim.ts        the simulation - rules apply here and nowhere else
 src/manifest.ts   data the platform reads without running anything
 src/index.ts      the bundle's entry: default export + MANIFEST
 src/present.ts    the renderer - no rules beyond "read, never write"
-src/main.ts       the page: wires the host bridge to a container
+src/main.ts       the page: runs the host, and decides which keys and fingers
+                  drive the declared inputs
 ```
 
 `index.ts` must not import `present.ts`. The import graph is scanned
@@ -132,7 +133,8 @@ the sound twice, and a headless replay would have to stub the call.
 1. `scripts/new.ts ./my-game` - a conforming starting point.
 2. Write the simulation in `src/sim.ts`. Read
    `references/determinism-rules.md` first; it is the whole rulebook and it is
-   short.
+   short. Declare the inputs `tick` reads in `src/manifest.ts` as you go;
+   `references/inputs.md` says how to keep what they record small.
 3. `scripts/validate.sh ./src` after each meaningful change, not once at the
    end. A determinism bug found three edits after it was written is a
    different job from one found three weeks after.
@@ -168,12 +170,16 @@ The three that account for most failures:
   first in ascending numeric order, whatever the insertion history.
 - DOM nodes, sockets, or anything else with an identity in simulation state.
 - A renderer that writes to the view, or to anything the simulation reads.
-- Changing simulation behaviour without bumping `version`. Every score already
+- Changing simulation behaviour without a new `version`. Every score already
   recorded becomes unverifiable, and nothing announces it.
-- Building an input event inside the game. The host builds them. A game that
-  could make its own could do its hit-testing in the renderer and hand the
-  answer to the simulation, which replays perfectly while the result was
-  decided on the client.
+- Shipping a rules change as a patch. A patch promises the same play scores
+  the same; `references/manifest-schema.md` under "Versioning" says which
+  changes need a minor.
+- Deciding a hit in the page and recording the answer. Record where the
+  finger was and hit-test in `tick()`: an answer worked out in the page
+  replays perfectly while the result was decided where nothing checks it.
+- Recording a stream of readings. Record a value when it changes, in the
+  coarsest range the game needs; `references/inputs.md` has the rules.
 
 ## References
 
@@ -181,6 +187,8 @@ The three that account for most failures:
 - `references/failure-modes.md` - one section per error code.
 - `references/kernel-api.md` - the API, generated from the type declarations.
 - `references/manifest-schema.md` - every manifest field and what it decides.
+- `references/inputs.md` - declaring inputs, choosing what to record, and the
+  device helpers.
 - `references/adapters.md` - canvas2d, three, pixi, `NodeSet`, effects,
   worker mode.
 - `references/assets.md` - declaring, hashing and loading files, and the data

@@ -48,13 +48,7 @@ const ENTRIES: ReadonlyArray<{
     specifier: "@clockwork2/engine/host",
     file: "packages/engine/dist/host/index.d.ts",
     blurb:
-      "Running a game in a page: the accumulator loop, pack loading, input capture and the frame protocol. Not reachable from a simulation.",
-  },
-  {
-    specifier: "@clockwork2/engine/frame",
-    file: "packages/engine/dist/host/frame/index.d.ts",
-    blurb:
-      "The game's half of the bridge, inside the sandboxed frame: where a frame fetches its start packs before it says ready.",
+      "Running a game in a page: the accumulator loop, pack loading, and the optional device helpers that turn keys, pointers, the wheel, gamepads and tilt into a game's own inputs. Not reachable from a simulation.",
   },
   {
     specifier: "@clockwork2/engine/worker",

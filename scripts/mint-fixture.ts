@@ -113,7 +113,7 @@ for (let frame = 0; frame < 60_000 && host.status !== "ended"; frame++) {
   // The snake moves every six ticks, so there is no point deciding faster.
   if (frame % 6 === 0) {
     const turn = chooseTurn(module.view())
-    if (turn !== null) host.live?.push({ device: "key", code: turn, value: 1 })
+    if (turn !== null) host.live?.push({ code: turn, value: 1 })
   }
   // A little jitter, because a real display has some.
   scheduler.advance(frame % 7 === 0 ? 20 : 16)

@@ -36,7 +36,7 @@ export declare class Accumulator {
 
 ### ClockworkError
 
-The one error type. Catching code switches on `code`, never on the message, and never on a substring of it.
+The one error type. Catching code switches on `code`, never on the message, and never on a substring of it, and recognises one with `isClockworkError`, never `instanceof`, because a page can hold two copies of the engine.
 
 ```ts
 export declare class ClockworkError extends Error {
@@ -83,13 +83,32 @@ export declare class Hash64 {
 
 ### LiveInputQueue
 
-Collects device events between frames and stamps them at the moment the simulation reaches a tick. The log it builds is the recording.
+Collects inputs between frames and stamps them at the moment the simulation reaches a tick. The log it builds is the recording.
 
 ```ts
-export declare class LiveInputQueue implements InputSource {
-    /** Called by the host from a device event handler. */
-    push(input: PendingInput): void;
+export declare class LiveInputQueue implements InputSource, InputSink {
+    /** What a summed amount owed past its range, carried into later ticks. */
+    constructor(inputs: Inputs);
+    push(pushed: PendingInput): void;
+    addPoller(poll: () => void): () => void;
+    /** Reads every polled device. The host calls this before a frame's ticks. */
+    poll(): void;
+    onPause(release: () => void): () => void;
+    /**
+     * The session paused: whatever is held is released, and nothing more is
+     * taken until `resume`. A press while paused would land on the tick the
+     * session resumes at, which is not when the player made it.
+     */
+    pause(): void;
+    onResume(listener: () => void): () => void;
+    resume(): void;
     take(tick: number): readonly InputEvent[];
+    /**
+     * Holds each summed amount to its declared range. The excess is carried
+     * into later ticks, up to one range's width, and anything past that is
+     * dropped: a flick faster than the game declared it could record is
+     * recorded at the most it can carry, never refused.
+     */
     /** The whole log so far, which is what a recording carries. */
     recorded(): readonly InputEvent[];
     get pendingCount(): number;
@@ -308,6 +327,27 @@ The throwing form.
 export declare function assertManifest(value: unknown): Manifest;
 ```
 
+### checkInputs
+
+Checks a run's whole log against the manifest it was played under: every input is one the manifest declares, with a value in its range; no tick holds more than `MAX_INPUTS_PER_TICK`; and the run holds no more than `INPUT_BUDGET_PER_TICK x (endTick + 1)`.
+
+```ts
+export declare function checkInputs(events: readonly InputEvent[], inputs: Inputs, options: {
+    readonly endTick: number;
+}): void;
+```
+
+### checkInputSpan
+
+The same check for a slice of a log: the inputs after tick `afterTick` through `throughTick`, held to the budget for the ticks they cover. A server runs it on each chunk as it arrives, so a run cannot store more than its budget before it is submitted. `afterTick` is -1 for the first.
+
+```ts
+export declare function checkInputSpan(events: readonly InputEvent[], inputs: Inputs, span: {
+    readonly afterTick: number;
+    readonly throughTick: number;
+}): void;
+```
+
 ### compareByRank
 
 Orders two results. Negative means `a` ranks higher.
@@ -464,6 +504,14 @@ The next representable double towards +Infinity. Used by tests.
 
 ```ts
 export declare function nextUp(x: number): number;
+```
+
+### outsideDeclaration
+
+Why `value` is not one `declaration` allows, or null when it is.
+
+```ts
+export declare function outsideDeclaration(declaration: InputDeclaration, value: number): string | null;
 ```
 
 ### prefetchPaths
@@ -624,8 +672,15 @@ ERROR_CODES: {
     readonly E_RECORDING_MALFORMED: "recording is malformed";
     /** An input log was not sorted by tick. */
     readonly E_INPUT_UNSORTED: "input log is not sorted by tick";
-    /** An input carried a value outside the range the device vocabulary allows. */
+    /**
+     * An input log entry no recording can hold: a tick or a value that is not a
+     * whole number, a `-0`, no name, or a tick outside the run or the span.
+     */
     readonly E_INPUT_RANGE: "input value is out of range";
+    /** An input the manifest does not declare, or a value outside its declared range. */
+    readonly E_INPUT_UNDECLARED: "an input is not one the manifest declares, or is out of its range";
+    /** A log holding more inputs than the budget allows (`checkInputs`). */
+    readonly E_INPUT_BUDGET: "a log holds more inputs than any player makes";
     /** The session passed the tick cap its manifest declares. */
     readonly E_TICK_LIMIT: "session passed maxTicks without ending";
     /** A manifest failed validation. */
@@ -675,12 +730,12 @@ ERROR_CODES: {
 }
 ```
 
-### INPUT_DEVICES
+### INPUT_BUDGET_PER_TICK
 
-The devices a host may build an input from.
+How many inputs a log may hold per tick it covers, on average. A server holds a whole run to `INPUT_BUDGET_PER_TICK x (endTick + 1)` and each chunk to the same rate over the ticks it covers, so a recording cannot grow without bound however long the run.
 
 ```ts
-INPUT_DEVICES: readonly ["key", "pointer", "touch", "gamepad", "virtual"]
+INPUT_BUDGET_PER_TICK = 16
 ```
 
 ### KERNEL_VERSION
@@ -689,6 +744,22 @@ The major of this constant is pinned by a game's manifest. A bundle built agains
 
 ```ts
 KERNEL_VERSION = "0.8.0"
+```
+
+### KEY_CODES
+
+Every `KeyboardEvent.code` value a manifest may bind: the UI Events KeyboardEvent code Values Recommendation, without `Unidentified`.
+
+```ts
+KEY_CODES: readonly string[]
+```
+
+### MAX_INPUTS_PER_TICK
+
+The most inputs any single tick may hold. A safety net under the budget below: an honest burst stays far under it.
+
+```ts
+MAX_INPUTS_PER_TICK = 256
 ```
 
 ### MAX_JSON_PACK_BYTES
@@ -726,7 +797,7 @@ RECORDING_FORMAT = "cw2-recording"
 Bumped whenever a field changes meaning. `decodeRecording` checks it, which game-base's envelope did not: it wrote a version and read it nowhere, while changing codec twice underneath.
 
 ```ts
-RECORDING_VERSION = 2
+RECORDING_VERSION = 3
 ```
 
 ### TERMINAL_REASONS
@@ -820,6 +891,34 @@ export interface GameModule<TView = unknown, TConfig = PlainValue> {
 }
 ```
 
+### InputSink
+
+Where the device helpers put what they see: a live queue, or a worker's.
+
+```ts
+export interface InputSink {
+    push(input: PendingInput): void;
+    /**
+     * Runs `poll` once per frame, before the frame's ticks, for a device the
+     * browser does not send events for: a gamepad is read, not heard. Returns
+     * a function that stops it.
+     */
+    addPoller(poll: () => void): () => void;
+    /**
+     * Runs `release` when the session pauses, before the queue stops taking
+     * input, so whatever is held is let go in the log. Returns a function that
+     * stops it.
+     */
+    onPause(release: () => void): () => void;
+    /**
+     * Runs `listener` when the session resumes, so a capture that ignored the
+     * devices while paused starts hearing them again. Returns a function that
+     * stops it.
+     */
+    onResume(listener: () => void): () => void;
+}
+```
+
 ### InputSource
 
 Where a running simulation gets its inputs, live or recorded.
@@ -864,9 +963,9 @@ A device event the host has seen but not yet stamped.
 
 ```ts
 export interface PendingInput {
-    readonly device: InputDevice;
     readonly code: string;
     readonly value: number;
+    readonly merge?: MergeRule;
 }
 ```
 
@@ -1055,10 +1154,17 @@ A bundle's default export. A factory is allowed because one process running many
 export type GameModuleSource<TView = unknown, TConfig = PlainValue> = GameModule<TView, TConfig> | (() => GameModule<TView, TConfig>);
 ```
 
-### InputDevice
+### InputDeclaration
+
+One input a game records: a name, and the whole numbers it can carry.
 
 ```ts
-export type InputDevice = (typeof INPUT_DEVICES)[number];
+export type InputDeclaration = {
+    readonly min: number;
+    readonly max: number;
+    /** Shown to the player on a controls card. */
+    readonly label?: string;
+};
 ```
 
 ### InputEvent
@@ -1068,9 +1174,19 @@ One input, stamped with the tick it applies to.
 ```ts
 export type InputEvent = {
     readonly tick: number;
-    readonly device: InputDevice;
+    /** The name of an input the manifest declares. */
     readonly code: string;
     readonly value: number;
+};
+```
+
+### Inputs
+
+Every input a game records, by name. Only these are recorded, and a server refuses a log holding anything else, so each game decides what its recording holds.
+
+```ts
+export type Inputs = {
+    readonly [name: string]: InputDeclaration;
 };
 ```
 
@@ -1078,7 +1194,8 @@ export type InputEvent = {
 
 ```ts
 export type Manifest = {
-    readonly schemaVersion: 1;
+    /** 2 since `inputs` declares the game's own inputs rather than binding devices. */
+    readonly schemaVersion: 2;
     /** Immutable across every version of the game. */
     readonly id: string;
     /** Strictly increasing. */
@@ -1089,12 +1206,7 @@ export type Manifest = {
     };
     readonly genres?: readonly string[];
     readonly session: Session;
-    readonly inputs: {
-        readonly map: {
-            readonly [action: string]: readonly InputBinding[];
-        };
-        readonly controls?: Controls;
-    };
+    readonly inputs: Inputs;
     readonly counters: readonly CounterDeclaration[];
     readonly rankBy: readonly string[];
     readonly tiePolicy: TiePolicy;
@@ -1104,6 +1216,14 @@ export type Manifest = {
     readonly display?: Display;
     readonly capabilities: Capabilities;
 };
+```
+
+### MergeRule
+
+How a pending input joins others of the same name before the tick it lands on. `"latest"` keeps only the last value, for a reading that holds (a stick, tilt, a pointer's position): what the tick needs is where it ended up. `"sum"` adds them up, for an amount (wheel notches, mouse movement), and drops a sum of nothing. Left out, every input is kept in order, which a press needs.
+
+```ts
+export type MergeRule = "latest" | "sum";
 ```
 
 ### PackBytes
@@ -1707,12 +1827,28 @@ export declare class ReferenceGame implements GameModule<ReferenceView, Referenc
 }
 ```
 
+### botInputs
+
+Someone working the game's own inputs: a press held for a while and let go, and every other input moved across its range now and then, edges included. Representative rather than good, so "the run ends inside maxTicks" is tested against something that keeps playing.
+
+```ts
+export declare function botInputs(manifest: Manifest, seed: string, endTick: number): readonly InputEvent[];
+```
+
 ### botLog
 
 A plausible player: holds a direction for a while, thrusts in bursts.
 
 ```ts
 export declare function botLog(seed: string, endTick: number): readonly InputEvent[];
+```
+
+### chaosInputs
+
+Random values of the game's own inputs at random ticks, a quarter of them at the edge of their range. Not a player; a fuzzer.
+
+```ts
+export declare function chaosInputs(manifest: Manifest, seed: string, endTick: number): readonly InputEvent[];
 ```
 
 ### chaosLog
@@ -1850,7 +1986,7 @@ export type ReferenceView = {
 
 ## `@clockwork2/engine/host`
 
-Running a game in a page: the accumulator loop, pack loading, input capture and the frame protocol. Not reachable from a simulation.
+Running a game in a page: the accumulator loop, pack loading, and the optional device helpers that turn keys, pointers, the wheel, gamepads and tilt into a game's own inputs. Not reachable from a simulation.
 
 ### AudioSink
 
@@ -1936,42 +2072,34 @@ export declare class GameHost<TView = unknown, TContainer = unknown, TConfig = P
 
 ### InputCapture
 
-Listens for device events and pushes actions onto the queue.
+Listens for device events and records them as the game's inputs.
 
 ```ts
 export declare class InputCapture {
-    /** pointerId to the small slot number its device codes are spelled with. */
-    /** The last value pushed per analog code, so a repeat is not an input. */
+    /** Which sources hold each press name down. */
+    /** pointerId to the slot it is down in. */
+    /** Between the queue's pause and its resume, when nothing is heard. */
+    /** With `gamepads.any`, the controller that plays. */
+    /** A lock asked for and not yet granted or refused. */
+    /** The last value recorded per level name, so a repeat is not an input. */
+    /** Fractions of an amount not yet recorded. */
+    /** Gamepads by index, with the id last seen there. */
     constructor(options: InputCaptureOptions);
-    /** The device codes this game listens for, for a controls card. */
-    get codes(): readonly string[];
     attach(): void;
+    /** One notice per request, however many ways the browser says no. */
+    /** The lowest free slot, taken only when a pointer goes down. */
+    /** Presses and releases each mouse or pen button whose bit changed. */
+    /** Where the pointer is across the element, in each name's own range. */
+    /** Adds `amount` to what is owed, and records the whole part of it. */
+    /** A controller went away: its buttons come up and its sticks centre. */
+    /** A value that holds until it changes: a repeat is not an input. */
+    /** A press is down while any of its sources holds it. */
     /**
-     * Which finger this is, as a small stable number.
-     *
-     * `PointerEvent.pointerId` is assigned by the browser and is neither small
-     * nor comparable between runs, so it cannot appear in a device code. A slot
-     * can: the lowest free index at `pointerdown`, freed at `pointerup`. One
-     * finger is always slot 0, and the assignment is a pure function of the
-     * order the events arrived in, which is the order the log records.
-     *
-     * Without this every touch shared one code. Two fingers interleaved into
-     * one stream of coordinates, and the first to lift sent a release while the
-     * other was still down - so a game drawing its own d-pad and a jump button
-     * could not have both.
+     * Releases everything held, so a session that loses focus or pauses does
+     * not stick: keys and buttons come up, sticks centre, and the pointers'
+     * slots are freed. A controller button still physically down is pressed
+     * again by the next poll, which is right: it is down.
      */
-    /** A press from a host-drawn on-screen control. The only virtual source. */
-    virtual(action: string, value: number): void;
-    /**
-     * A value that is not a press: a coordinate, an axis.
-     *
-     * It goes through the manifest's binding table like a key does, so a game's
-     * `tick` sees the action it named rather than `pointer0-x`, and a code the
-     * game did not bind is dropped instead of filling the log. Repeats are
-     * dropped too: `pointermove` fires far more often than a quantised
-     * coordinate changes, and an unchanged value is not an input.
-     */
-    /** Releases everything held, so a session that loses focus does not stick. */
     releaseAll(): void;
     detach(): void;
 }
@@ -1994,14 +2122,6 @@ export declare class ManualScheduler implements Scheduler {
 }
 ```
 
-### bindingsFrom
-
-Builds a device-code to action lookup from the manifest.
-
-```ts
-export declare function bindingsFrom(manifest: Manifest): ReadonlyMap<string, ActionBinding>;
-```
-
 ### browserScheduler
 
 The real one: `requestAnimationFrame` over `performance.now`.
@@ -2010,14 +2130,20 @@ The real one: `requestAnimationFrame` over `performance.now`.
 export declare function browserScheduler(): Scheduler;
 ```
 
-### createDispatcher
+### checkCapture
 
-Builds a dispatcher from a complete table.
+Every problem with `mapping` against `manifest`, or an empty list. Pure, so a page, `vbz check` and `vbz dev` can run it before a run is started: a mapping mistake found after a ranked run was issued has already spent it.
 
 ```ts
-export declare function createDispatcher<T extends {
-    readonly type: string;
-}>(table: HandlerTable<T>): (message: unknown) => boolean;
+export declare function checkCapture(mapping: CaptureMapping, manifest: Manifest): string[];
+```
+
+### currentScreenAngle
+
+`screenAngleOf` for this page.
+
+```ts
+export declare function currentScreenAngle(): number | undefined;
 ```
 
 ### fetchPackLoader
@@ -2044,45 +2170,115 @@ Serves packs from memory: a server's cache, or a test.
 export declare function memoryPackLoader(packs: ReadonlyMap<string, PackBytes>): PackLoader;
 ```
 
-### FRAME_ERRORS
-
-What the frame reports when the conversation itself goes wrong.
+### motionEnvironment
 
 ```ts
-FRAME_ERRORS: {
-    /** `start` arrived before `init`, so there is no session to start. */
-    readonly NOT_INITIALISED: "E_FRAME_NOT_INITIALISED";
-    /** A second `init` arrived. A frame runs one session and is then done. */
-    readonly ALREADY_INITIALISED: "E_FRAME_ALREADY_INITIALISED";
-    /** Building the session from `init` threw. */
-    readonly INIT_FAILED: "E_FRAME_INIT_FAILED";
-    /** A second `start` arrived. One session is started once. */
-    readonly ALREADY_STARTED: "E_FRAME_ALREADY_STARTED";
-    /** The loop threw while running the player's own inputs. */
-    readonly THREW: "E_FRAME_THREW";
+export declare function motionEnvironment(): MotionEnvironment;
+```
+
+### requestMotion
+
+Asks for tilt. Call it as the first thing a click handler does, before any `await`: anything awaited first moves the request out of the tap, and iOS then refuses without asking.
+
+```ts
+export declare function requestMotion(options?: {
+    readonly wait?: number;
+    readonly environment?: MotionEnvironment;
+}): Promise<MotionAccess>;
+```
+
+### screenAngleOf
+
+How far the screen is turned, in the frame `deviceorientation` readings are measured in, which is the device's natural orientation.
+
+```ts
+export declare function screenAngleOf(scope: ScreenAngleSource): number | undefined;
+```
+
+### screenRotation
+
+The screen's rotation from the device's natural orientation, in degrees, as the tilt maths needs it, or undefined when the browser cannot say.
+
+```ts
+export declare function screenRotation(angle: number | undefined): 0 | 90 | 180 | 270 | undefined;
+```
+
+### DEVICE_NOTICES
+
+Something about a device the page should tell the player, which does not stop the run: a player on keys or touch plays on whatever a controller does.
+
+```ts
+DEVICE_NOTICES: {
+    /** The page forbids gamepads, so none is read. */
+    readonly GAMEPAD_BLOCKED: "E_GAMEPAD_BLOCKED";
+    /** A controller reports no standard layout, so its buttons may sit elsewhere. */
+    readonly GAMEPAD_UNMAPPED: "E_GAMEPAD_UNMAPPED";
+    /** The browser refused to lock the mouse to the game. */
+    readonly POINTER_LOCK_REFUSED: "E_POINTER_LOCK_REFUSED";
 }
 ```
 
-### LOG_CHUNK_INTERVAL_MS
-
-At most this often for a slice of the input log.
+### GAMEPAD_AXES
 
 ```ts
-LOG_CHUNK_INTERVAL_MS = 2000
+GAMEPAD_AXES = 16
 ```
 
-### PROGRESS_INTERVAL_MS
-
-At most this often, so a frame cannot flood the host with progress.
+### GAMEPAD_BUTTONS
 
 ```ts
-PROGRESS_INTERVAL_MS = 250
+GAMEPAD_BUTTONS = 32
 ```
 
-### PROTOCOL_VERSION
+### GAMEPAD_SLOTS
+
+The four controllers a browser reports at most.
 
 ```ts
-PROTOCOL_VERSION = 1
+GAMEPAD_SLOTS = 4
+```
+
+### MOTION_REFUSALS
+
+Why tilt is not available. Each is something to tell the player.
+
+```ts
+MOTION_REFUSALS: {
+    /** The page is not https (or localhost), and browsers give sensors only to a secure page. */
+    readonly INSECURE: "E_MOTION_INSECURE";
+    /** This browser has no orientation events, or cannot say which way the screen is turned. */
+    readonly UNSUPPORTED: "E_MOTION_UNSUPPORTED";
+    /** The player said no, or was asked outside a tap. */
+    readonly DENIED: "E_MOTION_DENIED";
+    /** The page's own permissions policy forbids the sensors. */
+    readonly BLOCKED: "E_MOTION_BLOCKED";
+    /** Nothing arrived: a laptop or a desktop with no tilt sensor. */
+    readonly NO_SENSOR: "E_MOTION_NO_SENSOR";
+}
+```
+
+### MOTION_WAIT_MS
+
+How long a grant waits for a first reading before it calls the device sensorless.
+
+```ts
+MOTION_WAIT_MS = 1000
+```
+
+### POINTER_BUTTONS
+
+`PointerEvent.button` values: main, middle, right, back, forward.
+
+```ts
+POINTER_BUTTONS = 5
+```
+
+### POINTER_SLOTS
+
+Fingers, pens and the mouse, each with a small slot number.
+
+```ts
+POINTER_SLOTS = 10
 ```
 
 ### AudioSinkOptions
@@ -2095,6 +2291,93 @@ export interface AudioSinkOptions {
         recipe: SoundRecipe;
     }>>;
     readonly volume?: number;
+}
+```
+
+### CaptureDocument
+
+What the helpers need from a document.
+
+```ts
+export interface CaptureDocument extends EventTarget {
+    readonly visibilityState?: string;
+    readonly pointerLockElement?: Element | null;
+}
+```
+
+### CaptureEnvironment
+
+The browser, for a test to stand in for. Read when `attach` runs, never at import.
+
+```ts
+export interface CaptureEnvironment {
+    /** Hears keys, `blur`, `deviceorientation`, and the pointer backstop. */
+    readonly window: EventTarget;
+    /** Hears `visibilitychange` and `pointerlockchange`. */
+    readonly document: CaptureDocument;
+    /** `navigator.getGamepads`. */
+    readonly gamepads: () => readonly (Gamepad | null)[];
+    /** How far the screen is turned from the device's natural orientation. */
+    readonly screenAngle: () => number | undefined;
+}
+```
+
+### CaptureMapping
+
+Which device drives which of the game's inputs. Every part is optional.
+
+```ts
+export interface CaptureMapping {
+    /** Presses, by `KeyboardEvent.code`. */
+    readonly keys?: {
+        readonly [code: string]: string;
+    };
+    /** Slot 0 is the first finger down, slot 1 the second, and so on. */
+    readonly pointers?: readonly PointerSlot[];
+    /** Levels: a mouse or pen moving with nothing pressed. */
+    readonly hover?: {
+        readonly x?: string;
+        readonly y?: string;
+    };
+    /** Amounts: mouse movement while it is locked to the game. */
+    readonly mouseLock?: {
+        readonly dx?: string;
+        readonly dy?: string;
+        /** CSS pixels per unit recorded. 1 by default. */
+        readonly pixelsPerUnit?: number;
+    };
+    /** Amounts: wheel notches. */
+    readonly wheel?: {
+        readonly x?: string;
+        readonly y?: string;
+        /** Notches per unit recorded. 1 by default. */
+        readonly notchesPerUnit?: number;
+    };
+    /** By `Gamepad.index`, "0" to "3", or "any" for whichever is connected first. */
+    readonly gamepads?: {
+        readonly [slot: string]: GamepadMapping;
+    };
+    /**
+     * Levels: which way gravity points across the screen, x to the right, y
+     * up, z out of the screen, each mapped onto its name's range. Ask for it
+     * with `requestMotion` first.
+     */
+    readonly tilt?: {
+        readonly x?: string;
+        readonly y?: string;
+        readonly z?: string;
+        /** The tilt in degrees that reads as the end of the range. 90 by default. */
+        readonly fullAt?: number;
+    };
+}
+```
+
+### DeviceNotice
+
+```ts
+export interface DeviceNotice {
+    readonly code: DeviceNoticeCode;
+    readonly detail: string;
 }
 ```
 
@@ -2185,21 +2468,43 @@ export interface GameHostOptions<TView = unknown, TContainer = unknown, TConfig 
 }
 ```
 
+### GamepadMapping
+
+```ts
+export interface GamepadMapping {
+    /** Presses, by button index. */
+    readonly buttons?: {
+        readonly [button: string]: string;
+    };
+    /** Levels: how far an analog button, such as a trigger, is pressed. */
+    readonly values?: {
+        readonly [button: string]: string;
+    };
+    /** Levels: a stick axis, centred at the middle of its range. */
+    readonly axes?: {
+        readonly [axis: string]: string;
+    };
+}
+```
+
 ### InputCaptureOptions
 
 ```ts
-export interface InputCaptureOptions {
+export interface InputCaptureOptions extends CaptureMapping {
     readonly manifest: Manifest;
-    readonly queue: LiveInputQueue;
-    /** Where key events are listened for. Defaults to the container's document. */
-    readonly keyTarget?: EventTarget;
-    /** Where pointer events are listened for. */
-    readonly pointerTarget?: HTMLElement;
-    /** The simulation's coordinate space, for mapping a pointer into it. */
-    readonly viewport?: {
-        readonly width: number;
-        readonly height: number;
-    };
+    /** Where inputs go: a session's live queue, or a worker's. */
+    readonly queue: InputSink;
+    /**
+     * The element the game is drawn on. A pointer's position is measured
+     * across it, on each axis separately, so it must be the element the
+     * playfield fills, stretched the same way. The wheel is heard on it.
+     * Required when pointers, hover, mouse lock or the wheel are mapped.
+     */
+    readonly element?: HTMLElement;
+    /** Required when a gamepad or mouse lock is mapped. */
+    readonly onNotice?: (notice: DeviceNotice) => void;
+    /** For a test. The browser's own by default. */
+    readonly environment?: CaptureEnvironment;
 }
 ```
 
@@ -2211,6 +2516,27 @@ export interface LoopStats {
     readonly ticksRun: number;
     readonly mostTicksInAFrame: number;
     readonly droppedMs: number;
+}
+```
+
+### MotionEnvironment
+
+The browser, for a test to stand in for.
+
+```ts
+export interface MotionEnvironment {
+    readonly window: EventTarget;
+    readonly isSecureContext: boolean;
+    /** `DeviceOrientationEvent`, and iOS's `requestPermission` on it. */
+    readonly orientation: {
+        readonly requestPermission?: () => Promise<string>;
+    } | undefined;
+    /** `screenAngleOf` the page, or undefined where the browser has neither. */
+    screenAngle(): number | undefined;
+    /** Whether the page's policy allows a sensor feature, where the browser can say. */
+    allowsFeature(feature: string): boolean | undefined;
+    setTimeout(run: () => void, ms: number): unknown;
+    clearTimeout(handle: unknown): void;
 }
 ```
 
@@ -2231,6 +2557,24 @@ export interface PackSupply {
 }
 ```
 
+### PointerSlot
+
+One finger's or the mouse's inputs, by slot.
+
+```ts
+export interface PointerSlot {
+    /** A press: the pointer is down. */
+    readonly down?: string;
+    /** Levels: where it is while down, across the element, in each name's range. */
+    readonly x?: string;
+    readonly y?: string;
+    /** Presses, by `PointerEvent.button`: 1 middle, 2 right, 3 back, 4 forward. */
+    readonly buttons?: {
+        readonly [button: string]: string;
+    };
+}
+```
+
 ### Scheduler
 
 Where the host's time comes from.
@@ -2243,80 +2587,27 @@ export interface Scheduler {
 }
 ```
 
-### ActionBinding
+### ScreenAngleSource
+
+The two places a browser says how far its screen is turned.
 
 ```ts
-export type ActionBinding = {
-    readonly action: string;
-    readonly device: InputDevice;
-};
+export interface ScreenAngleSource {
+    /** `window.orientation`, which iOS and Android browsers still have. */
+    readonly orientation?: unknown;
+    readonly screen?: {
+        readonly orientation?: {
+            readonly angle?: number;
+            readonly type?: string;
+        };
+    };
+}
 ```
 
-### GameToHost
+### DeviceNoticeCode
 
 ```ts
-export type GameToHost = {
-    readonly type: "ready";
-    readonly protocol: number;
-    readonly manifestHash: string;
-    readonly kernelVersion: string;
-} | {
-    readonly type: "started";
-} | {
-    readonly type: "progress";
-    readonly tick: number;
-    readonly counters: Counters;
-} | {
-    readonly type: "checkpoint";
-    readonly tick: number;
-    readonly hash: string;
-} | {
-    readonly type: "ended";
-    readonly tick: number;
-    readonly counters: Counters;
-    readonly reason: TerminalReason;
-    readonly finalSnapshot: Snapshot;
-} | {
-    /**
-     * A slice of the input log, sent while the run is still going.
-     *
-     * `ended` carries the whole recording, but it arrives once the player
-     * knows how they did. These arrive before that, so a host can keep what
-     * the log looked like at a moment it stamped itself. A submitted log
-     * whose past disagrees with a slice already sent is one the host can
-     * refuse without replaying anything.
-     */
-    readonly type: "log-chunk";
-    /** Where this slice starts in the whole log. */
-    readonly fromIndex: number;
-    readonly inputs: readonly InputEvent[];
-} | {
-    readonly type: "recording-chunk";
-    readonly index: number;
-    readonly total: number;
-    readonly data: string;
-} | {
-    readonly type: "error";
-    readonly code: string;
-    readonly detail: string;
-} | {
-    readonly type: "heartbeat";
-    readonly tick: number;
-};
-```
-
-### HandlerTable
-
-A handler for each message type, and nothing else.
-
-```ts
-export type HandlerTable<T extends {
-    readonly type: string;
-}> = {
-    readonly [K in MessageType<T>]: (message: Extract<T, {
-        type: K;
-    }>) => void;
-};
+export type DeviceNoticeCode = (typeof DEVICE_NOTICES)[keyof typeof DEVICE_NOTICES];
 ```
 
 ### HostState
@@ -2325,62 +2616,22 @@ export type HandlerTable<T extends {
 export type HostState = "idle" | "running" | "paused" | "ended";
 ```
 
-### HostToGame
+### MotionAccess
 
 ```ts
-export type HostToGame = {
-    readonly type: "hello";
-    readonly protocol: number;
+export type MotionAccess = {
+    readonly granted: true;
 } | {
-    readonly type: "init";
-    readonly seed: string;
-    readonly config: unknown;
-    readonly tickHz: TickRate;
-    readonly maxTicks: number;
-    /**
-     * A recorded log, which makes this session a replay rather than a run.
-     *
-     * The same loop plays it: a replay is not a second code path, it is a
-     * session whose inputs come from a log instead of from devices. Left
-     * out, the frame captures from real events as it always has.
-     *
-     * It is the one field here that could be mistaken for a way to feed a
-     * player's inputs into their own live run, so the frame refuses to
-     * capture device input for a session that carries one. A replay reads
-     * its log and nothing else.
-     */
-    readonly inputs?: readonly InputEvent[];
-    /**
-     * How fast a replay advances. Only with `inputs`.
-     *
-     * A live session may never carry one. Speed on a live run is a player
-     * slowing the game down to play it, which is the reason a frame does
-     * not expose `setSpeed` at all, and the frame refuses an `init` that
-     * asks for one without a log to replay.
-     */
-    readonly speed?: number;
-} | {
-    readonly type: "start";
-} | {
-    readonly type: "pause";
-} | {
-    readonly type: "resume";
-} | {
-    readonly type: "end";
-} | {
-    readonly type: "resize";
-    readonly width: number;
-    readonly height: number;
-    readonly devicePixelRatio: number;
-} | {
-    readonly type: "theme";
-    readonly theme: string;
-} | {
-    /** A host-drawn on-screen control. The only source of virtual inputs. */
-    readonly type: "virtual-input";
-    readonly action: string;
-    readonly value: number;
+    readonly granted: false;
+    readonly code: MotionRefusal;
+    readonly detail: string;
 };
+```
+
+### MotionRefusal
+
+```ts
+export type MotionRefusal = (typeof MOTION_REFUSALS)[keyof typeof MOTION_REFUSALS];
 ```
 
 ### PackLoader
@@ -2397,139 +2648,6 @@ export type PackLoader = (path: string) => Promise<PackBytes>;
 export type SoundRecipe = (sampleRate: number, write: (index: number, value: number) => void, samples: number) => void;
 ```
 
-## `@clockwork2/engine/frame`
-
-The game's half of the bridge, inside the sandboxed frame: where a frame fetches its start packs before it says ready.
-
-### FrameBridge
-
-```ts
-export declare class FrameBridge<TView> {
-    /** Settles when the start packs are here, or when fetching them failed. */
-    constructor(options: FrameBridgeOptions<TView>);
-    /** Call from the host's onCheckpoint. */
-    checkpoint(tick: number, hash: string): void;
-    /** Call from the host's onFrame. Rate-limited, so it cannot flood. */
-    progress(tick: number, counters: Counters, now: number): void;
-    /**
-     * Sends whatever the input log has grown since the last slice.
-     *
-     * Call it from the host's onFrame beside `progress`. It sends nothing when
-     * the log has not grown, and nothing at all for a replayed session, which
-     * has no live queue to read.
-     */
-    logChunk(now: number): void;
-    heartbeat(tick: number): void;
-    /**
-     * Call from the host's onEnded. Sends the result, the tail of the log, then
-     * the recording.
-     *
-     * The tail matters: without it the last inputs of a run would only ever
-     * reach the parent inside the recording, and the parent could not tell a log
-     * that grew normally from one rewritten at the end.
-     */
-    ended(result: SessionResult, recording: string): void;
-    /** Posts whatever the log has grown since the last slice. */
-    error(code: string, detail: string): void;
-    /**
-     * Stops listening, and stops the session.
-     *
-     * Removing the listener alone left the host running: its scheduler kept
-     * going and its onCheckpoint and onFrame callbacks kept calling back into
-     * this bridge, so a destroyed frame carried on posting checkpoints at a
-     * parent that was no longer there.
-     */
-    destroy(): void;
-}
-```
-
-### connectToParent
-
-Wires a host to a parent, including the callbacks it needs.
-
-```ts
-export declare function connectToParent<TView>(options: FrameBridgeOptions<TView>): FrameBridge<TView>;
-```
-
-### encodeRecording
-
-```ts
-export declare function encodeRecording(recording: Recording): string;
-```
-
-### FrameBridgeOptions
-
-```ts
-export interface FrameBridgeOptions<TView> {
-    /**
-     * Builds the session once the parent says what it is.
-     *
-     * Called at most once, from the `init` handler, with the bridge so the host's
-     * callbacks can post back through it. Anything it throws is reported to the
-     * parent as an error rather than left to a console nobody is reading.
-     */
-    readonly createHost: (init: FrameInit, bridge: FrameBridge<TView>) => GameHost<TView, HTMLElement>;
-    /**
-     * Read for the hash in `ready`, which the parent compares against the
-     * version it pinned. It is needed before a host exists, so it is given here
-     * rather than taken off one.
-     */
-    readonly manifest: Manifest;
-    /** The platform origin this frame will talk to, and no other. */
-    readonly parentOrigin: string;
-    /** Splitting the recording keeps one postMessage from being enormous. */
-    readonly chunkSize?: number;
-    readonly onResize?: (width: number, height: number, devicePixelRatio: number) => void;
-    readonly onTheme?: (theme: string) => void;
-    /**
-     * Fetches the game's data packs, usually a `fetchPackLoader` for the
-     * frame's own address.
-     *
-     * The start packs are fetched as soon as the bridge exists, because they
-     * belong to the game version rather than to a seed, and `ready` is not
-     * sent until they are here. The bridge listens from the start all the same:
-     * the parent says `hello` once, when the frame finishes loading, and a
-     * frame that only began listening after a download would never hear it. A
-     * parent sends `init` and `start` as soon as `ready` arrives, so holding
-     * `ready` back is what keeps `start` from reaching a frame with no host. A
-     * fetch that fails answers `hello` with an error instead.
-     */
-    readonly packs?: PackLoader;
-}
-```
-
-### FrameInit
-
-What the parent decided about this session, as `init` delivers it.
-
-```ts
-export interface FrameInit {
-    readonly seed: string;
-    readonly config: unknown;
-    readonly tickHz: TickRate;
-    readonly maxTicks: number;
-    /**
-     * A recorded log, present when this session is a replay.
-     *
-     * Pass it to `GameHost` as `inputs: new RecordedInputSource(init.inputs)`.
-     * The same loop plays it, which is the point: a replay is a session whose
-     * inputs come from a log instead of from devices.
-     *
-     * A game that receives one must not attach an `InputCapture`. `host.live`
-     * is null for a replay, so the capture has no queue to write to, and a
-     * device event reaching a replay would be an input nobody recorded.
-     */
-    readonly inputs?: readonly InputEvent[];
-    /** How fast a replay advances. Never present on a live session. */
-    readonly speed?: number;
-    /**
-     * The start packs, already fetched, and the loader for the rest. Present
-     * when the bridge was given a loader. Pass it to `GameHost` as `packs`.
-     */
-    readonly packs?: PackSupply;
-}
-```
-
 ## `@clockwork2/engine/worker`
 
 The simulation in a worker, and the page's side of it. Packs cross as transferred buffers.
@@ -2542,7 +2660,24 @@ The page side.
 export declare class WorkerSimulation {
     /** Packs sent to the worker, so a repeated hint does not send them again. */
     constructor(options: WorkerSimulationOptions);
-    send(inputs: readonly Omit<InputEvent, "tick">[]): void;
+    /**
+     * Where an `InputCapture` on the page records, for a simulation in a
+     * worker: inputs are collected and go to the worker's queue, which stamps
+     * them, in one message before each frame the page offers, and a polled
+     * device is read at the start of that frame.
+     */
+    readonly inputs: InputSink;
+    /** Inputs pushed since the last message to the worker. */
+    /** Sends `inputs`, and everything collected before them, to the worker. */
+    send(inputs: readonly PendingInput[]): void;
+    /**
+     * Pauses the run: whatever the page's capture holds is released and sent,
+     * then the worker's queue stops taking input and no frame is offered until
+     * `resume`. A press while paused would otherwise land on the tick the run
+     * resumes at, which is not when the player made it.
+     */
+    pause(): void;
+    resume(): void;
     /**
      * Offers a frame's elapsed time.
      *
@@ -2676,11 +2811,15 @@ export type ToWorker = {
     readonly packs: readonly PackTransfer[];
 } | {
     readonly type: "input";
-    readonly inputs: readonly Omit<InputEvent, "tick">[];
+    readonly inputs: readonly PendingInput[];
 } | {
     readonly type: "frame";
     readonly elapsedMs: number;
     readonly frameId: number;
+} | {
+    readonly type: "pause";
+} | {
+    readonly type: "resume";
 } | {
     readonly type: "stop";
 };

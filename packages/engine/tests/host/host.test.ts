@@ -132,6 +132,30 @@ describe("a stalled tab", () => {
     expect(host.stats.mostTicksInAFrame).toBeLessThanOrEqual(5)
   })
 
+  test("a polled device is read before the frame's ticks, so it lands on the first", () => {
+    const scheduler = new ManualScheduler()
+    const host = new GameHost({
+      module: createReferenceGame(),
+      manifest: REFERENCE_MANIFEST,
+      seed: "poll",
+      config: REFERENCE_CONFIG,
+      scheduler,
+    })
+    const reads: number[] = []
+    host.live?.addPoller(() => {
+      reads.push(host.tick)
+      if (reads.length === 2) {
+        host.live?.push({ code: "thrust", value: 1 })
+      }
+    })
+    host.start()
+    for (let i = 0; i < 3; i++) scheduler.advance(1000 / 60)
+    host.stop()
+    expect(reads.length).toBeGreaterThanOrEqual(2)
+    const pressed = host.recording().inputs[0]
+    expect(pressed?.tick).toBe(reads[1])
+  })
+
   test("a session that stalled still replays to the state it reached", () => {
     // Dropping time is only correct if the drop is recorded. A host that drops
     // ticks but reports a tick count as though it had not would produce a log
@@ -147,7 +171,7 @@ describe("a stalled tab", () => {
     })
     host.start()
     for (let i = 0; i < 30; i++) scheduler.advance(1000 / 60)
-    host.live?.push({ device: "key", code: "thrust", value: 1 })
+    host.live?.push({ code: "thrust", value: 1 })
     scheduler.advance(300_000)
     for (let i = 0; i < 120; i++) scheduler.advance(1000 / 60)
     host.stop()
@@ -187,7 +211,6 @@ describe("recording a live session", () => {
     for (let frame = 0; frame < 1200 && host.status !== "ended"; frame++) {
       if (frame % 17 === 0) {
         host.live?.push({
-          device: "key",
           code: presses[frame % presses.length] as string,
           value: frame % 34 === 0 ? 1 : 0,
         })
