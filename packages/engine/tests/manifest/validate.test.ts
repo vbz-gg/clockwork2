@@ -88,6 +88,25 @@ describe("manifest validation", () => {
     }
   })
 
+  test("a format that is not a number says only what it must be", () => {
+    // Read from a plain object, "constructor" and "toString" would find an
+    // inherited function and hand it back as the message. "2" is not 2 either.
+    for (const schemaVersion of [
+      "constructor",
+      "toString",
+      "__proto__",
+      "hasOwnProperty",
+      "2",
+      null,
+    ]) {
+      const issue = validateManifest({
+        ...REFERENCE_MANIFEST,
+        schemaVersion,
+      }).find((i) => i.at === "schemaVersion")
+      expect(issue?.message, String(schemaVersion)).toBe("must be 3")
+    }
+  })
+
   test("format 3 refuses each field it removed, by name", () => {
     const session = REFERENCE_MANIFEST.session
     for (const [changed, at] of [

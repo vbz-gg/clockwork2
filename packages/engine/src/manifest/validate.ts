@@ -441,12 +441,20 @@ const REMOVED =
 
 /**
  * What changed since each older format, so a manifest written for one says
- * what to change rather than only that its number is wrong.
+ * what to change rather than only that its number is wrong. A map keyed by the
+ * number, so a `schemaVersion` such as "constructor" finds nothing rather
+ * than something an object inherits.
  */
-const FORMAT_CHANGES: Readonly<Record<string, string>> = {
-  "1": "must be 3: format 1 bound device codes in inputs.map and declared inputs.controls, and since format 2 a game declares each input by name and range. Format 3 then removed session.maxTicks, session.maxWallSeconds and budgets.bundleBytes, and made rankBy and tiePolicy optional",
-  "2": "must be 3: format 3 removed session.maxTicks and session.maxWallSeconds, because no run has a step limit, and budgets.bundleBytes, which nothing read; rankBy and tiePolicy are optional, declared together or not at all",
-}
+const FORMAT_CHANGES: ReadonlyMap<unknown, string> = new Map([
+  [
+    1,
+    "must be 3: format 1 bound device codes in inputs.map and declared inputs.controls, and since format 2 a game declares each input by name and range. Format 3 then removed session.maxTicks, session.maxWallSeconds and budgets.bundleBytes, and made rankBy and tiePolicy optional",
+  ],
+  [
+    2,
+    "must be 3: format 3 removed session.maxTicks and session.maxWallSeconds, because no run has a step limit, and budgets.bundleBytes, which nothing read; rankBy and tiePolicy are optional, declared together or not at all",
+  ],
+])
 
 /** Every problem with a manifest, in document order. */
 export function validateManifest(value: unknown): Issue[] {
@@ -460,7 +468,7 @@ export function validateManifest(value: unknown): Issue[] {
     issues.push({
       at: "schemaVersion",
       message:
-        FORMAT_CHANGES[String(m.schemaVersion)] ?? `must be ${MANIFEST_FORMAT}`,
+        FORMAT_CHANGES.get(m.schemaVersion) ?? `must be ${MANIFEST_FORMAT}`,
     })
   }
   if (typeof m.id !== "string" || !ID_PATTERN.test(m.id)) {
