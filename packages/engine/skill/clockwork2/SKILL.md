@@ -150,7 +150,7 @@ to run all eleven checks; `--only=name` runs one.
 
 No rule says how long a run lasts. A session runs until `isOver()` turns true
 or its host stops it; there is no step limit, and `session.hasEnding` in the
-manifest describes the game without limiting it. The checks play each log to
+manifest describes the game and nothing reads or checks it. The checks play each log to
 its end or to 36,000 ticks (`CHECK_WINDOW_TICKS`), and the `determinism` line
 of the report says where every run stopped, which is how to see that a game
 meant to end by itself does.

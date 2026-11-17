@@ -138,9 +138,10 @@ export type Session = {
   /**
    * Whether the game ends by itself: true for one with a time limit, a life
    * count or a difficulty that eventually wins, false for one that runs
-   * until the player stops. It describes the game and limits nothing. No
-   * session has a step limit, and the conformance checks play each log to
-   * its end or to `CHECK_WINDOW_TICKS`, whichever comes first.
+   * until the player stops. It describes the game, for a reader of the
+   * manifest, and nothing in the engine reads or checks it: no session has a
+   * step limit, and the conformance checks play each log to its end or to
+   * `CHECK_WINDOW_TICKS` whatever it says.
    */
   readonly hasEnding: boolean
 }

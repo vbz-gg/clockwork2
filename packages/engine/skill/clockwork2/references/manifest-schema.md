@@ -23,7 +23,7 @@ in `kernel-api.md`, which is generated from the declarations.
 
   session: {
     tickHz: 60,               // 30, 60 or 120
-    hasEnding: true,          // the game ends itself; false if it runs until stopped
+    hasEnding: true,          // describes the game; nothing reads or checks it
   },
 
   inputs: {                   // what the game records, by name and range
@@ -85,7 +85,9 @@ down is not monotonic, and saying it is will fail rather than round.
 
 No run has a step limit. A session runs until `isOver()` is true or its host
 stops it, and the manifest has no field that caps it. `session.hasEnding` says
-whether the game ends by itself and limits nothing. The conformance checks
+whether the game ends by itself, true or false, and describes the game and
+nothing more: nothing in the engine reads it, and no check holds the game to
+it. The conformance checks
 play each log to its end or to `CHECK_WINDOW_TICKS`, 36,000 ticks, and report
 where each run stopped; a game is not refused for running the whole window.
 

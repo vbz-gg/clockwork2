@@ -223,6 +223,15 @@ export class PackSet {
    * then on. Everything happens inside the session's own synchronous steps,
    * so `runSession` replays with it as it does with any set.
    *
+   * A lazy set is for a replay that holds every byte up front, and a
+   * session treats its packs as held from the start, checked or not:
+   * `packsMissing()` never names one, `holds()` is true for it, and
+   * `deliver()` ignores bytes for it. So nothing can replace a pack that
+   * turns out wrong, and a wrong byte ends the session at the first tick
+   * that needs that pack, where a host that fetches its packs would hold the
+   * loop and try again. `GameHost` is given bytes and a loader for that
+   * reason, never a set.
+   *
    * The set holds the bytes it was given until a session needs them, so the
    * caller must not change them before then. What is checked is what is
    * read either way: the check copies the bytes and reads only the copy.

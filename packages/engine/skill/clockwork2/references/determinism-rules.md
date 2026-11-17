@@ -133,7 +133,7 @@ and the config.
 No run has a step limit, and nothing requires a game to end by itself. A run
 ends when `isOver()` turns true or when its host stops it, and a replay stops
 where the run it replays stopped. The manifest's `session.hasEnding` says
-which kind of game this is and limits nothing.
+which kind of game this is; nothing reads or checks it.
 
 The checks play the idle, chaos and bot logs to the end of the run or to
 `CHECK_WINDOW_TICKS`, 36,000 ticks, whichever comes first, and the report says

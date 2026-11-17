@@ -343,8 +343,9 @@ tick where the run it replays ended.
 A game that ends by itself says so in its manifest with `session.hasEnding:
 true`, and usually ends through a difficulty ramp that eventually beats anyone,
 a time limit, or a life count; the example above shrinks its spawn interval as
-the run goes on. A game that runs until its player stops says `false`. Neither
-value limits anything.
+the run goes on. A game that runs until its player stops says `false`. The
+field describes the game and nothing more: nothing in the engine reads it, and
+no check holds the game to it.
 
 "The player can quit" is not an ending for a game that is meant to have one.
 An idle player never quits, and the conformance suite plays an idle log and
@@ -974,6 +975,15 @@ hashed. Each pack is checked once however many sessions share the set, and
 the kernel's copy is kept from then on. Until a pack is first needed the set
 holds the bytes it was given, so the caller must leave them alone until then.
 
+A lazy set is for a replay that has every byte before it starts, and a session
+counts its packs as held from the start, checked or not: `packsMissing()`
+never names one and `deliver()` ignores bytes for one. Nothing can replace a
+pack that turns out wrong, so a wrong byte is fatal, `E_PACK_HASH_MISMATCH` at
+the first tick that needs the pack, and a check that fails changes none of the
+session's packs. A host that fetches its packs holds the loop and fetches
+again instead, which is why `GameHost` is given bytes and a loader rather than
+a set.
+
 ### Memory
 
 A demand pack a host delivered is dropped once the game has named it and then
@@ -1104,7 +1114,7 @@ not have to run it first.
 
   session: {
     tickHz: 60,                 // 30, 60 or 120
-    hasEnding: true,            // the game ends by itself; it limits nothing
+    hasEnding: true,            // describes the game; nothing reads or checks it
   },
 
   inputs: {                     // what the game records, by name and range
