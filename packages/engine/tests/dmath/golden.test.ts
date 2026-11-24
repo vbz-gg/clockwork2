@@ -22,6 +22,7 @@ const UNARY: Record<string, Unary> = {
   log: dmath.log,
   log2: dmath.log2,
   log10: dmath.log10,
+  cbrt: dmath.cbrt,
   wrapAngle: dmath.wrapAngle,
 }
 

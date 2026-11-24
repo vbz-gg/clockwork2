@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
+import * as dmath from "../../src/dmath/index"
+import { BANNED_MEMBERS } from "../../src/validate/scan/banned"
 import { scanImportGraph } from "../../src/validate/scan/import-graph"
 
 const FIXTURES = join(import.meta.dir, "../../fixtures")
@@ -87,5 +89,24 @@ describe("the import-graph scan", () => {
       (random as { line: number }).line - 1
     ] as string
     expect(line).toContain("Math.random")
+  })
+
+  test("a banned Math member points at its dmath routine when one exists", () => {
+    // The reason is what a developer reads next to the finding. Math.cbrt was
+    // listed as "not specified" with no replacement; once dmath.cbrt existed
+    // that sent people looking for an approximation of their own.
+    const routines = dmath as unknown as Record<string, unknown>
+    for (const [name, reason] of BANNED_MEMBERS) {
+      for (const [, routine] of reason.matchAll(/dmath\.(\w+)/g)) {
+        expect(typeof routines[routine as string], `${name}: ${reason}`).toBe(
+          "function",
+        )
+      }
+      if (!name.startsWith("Math.")) continue
+      const same = name.slice("Math.".length)
+      if (typeof routines[same] === "function") {
+        expect(reason, name).toContain(`dmath.${same}`)
+      }
+    }
   })
 })

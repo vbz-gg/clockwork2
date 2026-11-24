@@ -150,6 +150,20 @@ const CASES: readonly Case[] = [
     hi: 1e30,
     maxUlp: 4n,
   },
+  {
+    name: "cbrt",
+    ours: dmath.cbrt,
+    theirs: Math.cbrt,
+    lo: -1e6,
+    hi: 1e6,
+    // Measured at 1 ulp under both Bun (JavaScriptCore, glibc's cbrt) and Node
+    // (V8, FreeBSD msun's), over 800,000 inputs each, subnormals included.
+    // Every one of those differences is a pair of answers both under one ulp
+    // from the exact root: dmath's worst against a BigInt reference was 0.664
+    // ulp, inside the 0.667 fdlibm states. 2 matches the other routines and
+    // leaves room for a host whose own error reaches a full ulp the other way.
+    maxUlp: 2n,
+  },
 ]
 
 describe("dmath against the host Math", () => {
@@ -191,6 +205,33 @@ describe("dmath against the host Math", () => {
       if (d > worst) worst = d
     }
     expect(worst <= 8n, `worst ${worst} ulp`).toBe(true)
+  })
+
+  test("cbrt stays within 2 ulp of the host at every exponent", () => {
+    // The sweep above draws from one range of magnitudes. cbrt's first step
+    // works on the exponent bits, and a subnormal takes a branch of its own,
+    // so this draws the bit pattern instead: every exponent, both signs, and
+    // a subnormal in one draw of every 2048.
+    const random = lcg(0x3c3c3c3)
+    let worst = 0n
+    let worstAt = 0
+    let subnormals = 0
+    for (let i = 0; i < 50_000; i++) {
+      const hi = Math.floor(random() * 4294967296)
+      const lo = Math.floor(random() * 4294967296)
+      const x = fromBitsHex(
+        hi.toString(16).padStart(8, "0") + lo.toString(16).padStart(8, "0"),
+      )
+      if (!Number.isFinite(x)) continue
+      if ((hi & 0x7ff00000) === 0) subnormals++
+      const d = ulpDistance(dmath.cbrt(x), Math.cbrt(x))
+      if (d > worst) {
+        worst = d
+        worstAt = x
+      }
+    }
+    expect(subnormals).toBeGreaterThan(0)
+    expect(worst <= 2n, `worst ${worst} ulp at ${worstAt}`).toBe(true)
   })
 
   test("atan2 stays within 2 ulp of the host", () => {
@@ -261,6 +302,7 @@ describe("dmath special cases match ECMAScript exactly", () => {
     ["atan", dmath.atan, Math.atan, ZEROS_AND_EDGES],
     ["exp", dmath.exp, Math.exp, ZEROS_AND_EDGES],
     ["log", dmath.log, Math.log, [...ZEROS_AND_EDGES, 1, -1, -2]],
+    ["cbrt", dmath.cbrt, Math.cbrt, ZEROS_AND_EDGES],
   ] as const)("%s", (name, ours, theirs, inputs) => {
     for (const x of inputs) {
       if (isKnownException(name, x)) continue
