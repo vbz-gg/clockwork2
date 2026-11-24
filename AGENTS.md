@@ -446,8 +446,8 @@ tools can install it from `node_modules`. What has to hold because of that:
   Every command it shows runs from the game's own root and names its own
   scripts as `<guide>/scripts/...`; the tests refuse a bare `scripts/` command.
 - It is true for a game on the engine alone and for the simulation of a game
-  built with the vbz kit. Its `scripts/new.ts` and templates are for the first
-  and are never copied into the second, and `scripts/validate.sh` is the
+  built with the vbz.gg SDK. Its `scripts/new.ts` and templates are for the
+  first and are never copied into the second, and `scripts/validate.sh` is the
   engine's eleven checks every game needs, or all thirteen of the ranked set
   with `--ranked`, not everything a platform runs.
 

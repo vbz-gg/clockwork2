@@ -111,8 +111,8 @@ player: one the browser marks with `isTrusted: false`, from `dispatchEvent` or
 treats it like any other. It is required, so every page decides. A page
 playing a ranked or practice run on a platform sets `"ignore"`, because there
 an input has to come from the player's own devices and any script on the page
-could otherwise press for them; the vbz kit's pages do. A game played only on
-its own page may set `"record"`, to drive itself from a test or a tool. The
+could otherwise press for them; the vbz.gg SDK's pages do. A game played only
+on its own page may set `"record"`, to drive itself from a test or a tool. The
 setting covers keys, pointers (presses, positions, buttons and movement under
 mouse lock), hover, the wheel, and the blur, visibility and lock changes that
 release what is held. Gamepads are polled through `navigator.getGamepads()`,
@@ -144,7 +144,7 @@ permissions policy) or `E_MOTION_NO_SENSOR`. Show the player the reason.
 iOS remembers a refusal for the site until its website data is cleared, so
 asking again on the next tap gets the same answer. A run started anyway
 records no tilt, so a game that reads tilt should start no run without it;
-a page built with the vbz kit starts none.
+a page built with the vbz.gg SDK starts none.
 
 ## What recordings cost
 

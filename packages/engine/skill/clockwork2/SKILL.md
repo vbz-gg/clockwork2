@@ -1,6 +1,6 @@
 ---
 name: clockwork2
-description: Build a browser game on Clockwork 2 that a platform can verify - fixed-step ticks, seeded randomness, an input log that replays to the same state on a server. Use when writing or reviewing a game module, a manifest, a renderer or a recording; when a conformance check fails with an E_ code; or when porting a variable-step game onto the fixed-step contract. Covers the simulation and renderer boundary, deterministic maths, snapshots and restore, counters and objectives, declared inputs and what to record, data packs, budgets, and the conformance checks in @clockwork2/engine/validate. Holds for a game on the engine alone and for the simulation of one built with the vbz kit.
+description: Build a browser game on Clockwork 2 that a platform can verify - fixed-step ticks, seeded randomness, an input log that replays to the same state on a server. Use when writing or reviewing a game module, a manifest, a renderer or a recording; when a conformance check fails with an E_ code; or when porting a variable-step game onto the fixed-step contract. Covers the simulation and renderer boundary, deterministic maths, snapshots and restore, counters and objectives, declared inputs and what to record, data packs, budgets, and the conformance checks in @clockwork2/engine/validate. Holds for a game on the engine alone and for the simulation of one built with the vbz.gg SDK.
 ---
 
 # Building a verifiable game
@@ -35,7 +35,7 @@ which finds the game's `clockwork2-validate` only from there.
 Where a command says `./src`, give it the directory holding the simulation's
 entry, the `index.ts` with the default export and `MANIFEST`. That is `./src`
 in a game made from this guide's templates and `./src/sim` in one built with
-the vbz kit.
+the vbz.gg SDK.
 
 ## Start here
 
@@ -54,9 +54,9 @@ conforms on its first run, so any failure after that is something you just
 did, which is a far shorter thing to debug than a game that has never passed.
 
 `scripts/new.ts` and the two templates exist for a game on the engine alone,
-and are not copied into a vbz game. A game built with the vbz kit starts from
-the kit's own scaffold, as the kit's guide describes, and everything else here
-applies to its simulation unchanged. It has no `bun run validate`; where this
+and are not copied into a vbz game. A game built with the vbz.gg SDK starts
+from the SDK's own scaffold, as the SDK's guide describes, and everything else
+here applies to its simulation unchanged. It has no `bun run validate`; where this
 guide says that, run `<guide>/scripts/validate.sh ./src/sim` from the game's
 root.
 
@@ -73,7 +73,7 @@ src/main.ts       the page: runs the host, and decides which keys and fingers
                   drive the declared inputs
 ```
 
-A vbz game has the same parts under the names its kit gives them, with the
+A vbz game has the same parts under the names the SDK gives them, with the
 entry at `src/sim/index.ts` and the renderer under `src/present/`.
 
 `index.ts` must not import `present.ts`, and in a vbz game the entry must not
@@ -187,7 +187,7 @@ them: the nine rules above bind every session, wherever it runs.
   `scripted: "ignore"`, so an event a script dispatches on the page is never
   recorded as the player's. A game played on its own page may record its
   inputs itself, or set `scripted: "record"`.
-  *Held by the page a platform's kit builds, which sets it.*
+  *Held by the page a platform's SDK builds, which sets it.*
 
 ## What the renderer may do
 
@@ -208,7 +208,7 @@ the sound twice, and a headless replay would have to stub the call.
 Each command runs from the game's own root.
 
 1. `<guide>/scripts/new.ts ./my-game` - a conforming starting point for a game
-   on the engine alone. A vbz game starts from its kit's scaffold instead.
+   on the engine alone. A vbz game starts from the SDK's scaffold instead.
 2. Write the simulation, in `src/sim.ts` in a game made from the templates.
    Read `references/determinism-rules.md` first; it is the whole rulebook and
    it is short. Declare the inputs `tick` reads in the manifest as you go;

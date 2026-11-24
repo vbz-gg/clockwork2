@@ -89,7 +89,7 @@ this is the check that catches it.
 
 From the game's own root, with `<guide>` the directory `SKILL.md` is in and
 `./src` the directory holding the simulation's entry (`./src/sim` in a game
-built with the vbz kit):
+built with the vbz.gg SDK):
 
 ```
 <guide>/scripts/validate.sh ./src --ranked # every check, the ranked set's two included

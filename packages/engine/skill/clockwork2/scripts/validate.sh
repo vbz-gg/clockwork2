@@ -15,7 +15,8 @@
 #   <guide>/scripts/validate.sh ./src --json          machine-readable, for a CI job
 #
 # The path is the directory holding the simulation's entry: ./src in a game
-# made from this guide's templates, ./src/sim in one built with the vbz kit.
+# made from this guide's templates, ./src/sim in one built with the vbz.gg
+# SDK.
 #
 # Exit codes: 0 all checks passed, 1 a check failed, 2 bad arguments,
 # 3 the suite itself threw. An argument the CLI does not take, such as a

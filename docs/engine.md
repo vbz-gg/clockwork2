@@ -1635,8 +1635,8 @@ cd ./my-game && bun install && bun run validate
 ```
 
 The scaffold and the templates are for a game on the engine alone. A game built
-with the vbz kit starts from that kit's own scaffold, and the guide covers its
-simulation with nothing copied in.
+with the vbz.gg SDK starts from the SDK's own scaffold, and the guide covers
+its simulation with nothing copied in.
 
 Its first line says that where its prose and `scripts/validate.sh` disagree, the
 script is right. That script runs the engine's eleven checks every game needs,

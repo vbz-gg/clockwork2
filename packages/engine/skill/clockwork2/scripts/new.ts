@@ -9,8 +9,8 @@
  * point: start from something that conforms and keep it conforming, rather
  * than writing a game and finding out at submission time.
  *
- * The templates are games on the engine alone. A game built with the vbz kit
- * starts from that kit's own scaffold, and nothing here is copied into one.
+ * The templates are games on the engine alone. A game built with the vbz.gg
+ * SDK starts from the SDK's own scaffold, and nothing here is copied into one.
  */
 
 import { cpSync, existsSync, readFileSync, writeFileSync } from "node:fs"
