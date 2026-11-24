@@ -18,7 +18,7 @@ export type {
   StringParam,
   TickRate,
 } from "./types.js"
-export { MANIFEST_FORMAT, TICK_RATES } from "./types.js"
+export { MANIFEST_FORMAT, MAX_SEATS, seatsOf, TICK_RATES } from "./types.js"
 export {
   assertManifest,
   type Issue,

@@ -105,6 +105,15 @@ export declare class LiveInputQueue implements InputSource, InputSink {
     get paused(): boolean;
     onResume(listener: () => void): () => void;
     resume(): void;
+    /**
+     * Stops taking input because another seat's turn begins. It pauses as
+     * `pause` does, so the device helpers let go of what they hold, and then
+     * drops those releases, everything else pending and any amount carried.
+     * A turn's held inputs end with it: the game treats them as released when
+     * the acting seat changes, so a release recorded here would land on the
+     * other seat's tick. `resume` starts taking input again.
+     */
+    endTurn(): void;
     take(tick: number): readonly InputEvent[];
     /**
      * Holds each summed amount to its declared range. The excess is carried
@@ -246,6 +255,52 @@ export declare class RecordedInputSource implements InputSource {
 }
 ```
 
+### RemoteInputFeed
+
+Inputs that arrive over a network, from the page of a seat this page does not play, or from a server relaying a whole run to somebody watching it.
+
+```ts
+export declare class RemoteInputFeed implements InputSource {
+    /** @param inputs the manifest's declared inputs */
+    constructor(inputs: Inputs);
+    /**
+     * Adds inputs the sender sent. All of them are checked before any is kept,
+     * so a refused append leaves the feed as it was.
+     *
+     * @throws E_INPUT_UNSORTED, E_INPUT_RANGE or E_INPUT_UNDECLARED
+     */
+    append(events: readonly InputEvent[]): void;
+    /**
+     * Records that the sender has sent every input up to and including
+     * `throughTick`. Confirming a tick already confirmed changes nothing.
+     *
+     * @throws E_ARG_INVALID for a tick that is not a whole number, or one
+     *   before what was already confirmed
+     */
+    confirm(throughTick: number): void;
+    /** The last tick the sender has confirmed, or -1 before the first. */
+    get confirmedThrough(): number;
+    take(tick: number): readonly InputEvent[];
+    /** Skips everything before `tick`, for a session resumed from a snapshot. */
+    seek(tick: number): void;
+}
+```
+
+### SeatedInputSource
+
+The inputs of a run several seats take turns in, each seat's from its own source: one `InputSource` per seat, indexed by seat.
+
+```ts
+export declare class SeatedInputSource implements InputSource {
+    constructor(seats: readonly InputSource[]);
+    take(tick: number, seat: number): readonly InputEvent[];
+    /** Moves every seat's source past everything before `tick`. */
+    seek(tick: number): void;
+    /** The merged log: every input handed to the session, in order. */
+    recorded(): readonly InputEvent[];
+}
+```
+
 ### Session
 
 One run of one game.
@@ -263,12 +318,21 @@ export declare class Session<TView = unknown, TConfig = PlainValue> {
     /** Demand packs `packsNeeded()` has named since they were last released. */
     /** What `packsNeeded()` said for the next tick. */
     /** Which of the game's calls is running, while one that may read is. */
+    /** How many seats take turns in this run. */
+    /** What `seat()` said for the next tick, or 0 for a game without it. */
     /**
      * What the game reads its packs through. `init` receives it; the same
      * object serves the whole session.
      */
     readonly packs: PackReader;
     constructor(options: SessionOptions<TView, TConfig>);
+    /**
+     * Asks the game what the next tick needs: the packs it will read and the
+     * seat whose inputs it reads. Both are asked once here and nowhere else,
+     * after `init`, after `restore` and after every tick, so how often a game
+     * is asked never depends on the host.
+     */
+    /** Asks the game whose turn the next tick is. */
     /**
      * The packs a set holds, after making sure they were checked against the
      * same entries this session declares. A set checked against another version
@@ -297,6 +361,11 @@ export declare class Session<TView = unknown, TConfig = PlainValue> {
     deliver(path: string, bytes: PackBytes): void;
     get tick(): number;
     get running(): boolean;
+    /**
+     * The seat whose inputs the next tick reads: what the game's `seat()`
+     * answered after the last tick, or 0 for a game without one.
+     */
+    get seat(): number;
     get checkpoints(): readonly Checkpoint[];
     /**
      * Runs exactly one tick.
@@ -589,6 +658,14 @@ Drives a session to its end, or to `maxTicks`. This is what a validator runs, wi
 export declare function runSession<TView = unknown, TConfig = PlainValue>(options: RunSessionOptions<TView, TConfig>): SessionResult;
 ```
 
+### seatsOf
+
+How many seats a manifest declares: `session.seats`, or 1 when it says none.
+
+```ts
+export declare function seatsOf(manifest: Manifest): number;
+```
+
 ### servedConfig
 
 The config a platform serves a ranked or practice run: every parameter the manifest declares, at its default. A player never supplies one, because a replay plays the recording's config, so a config the player chose would be replayed and agree with itself. The conformance checks play this too, so what they check is what a session plays.
@@ -732,6 +809,15 @@ ERROR_CODES: {
     readonly E_INPUT_UNDECLARED: "an input is not one the manifest declares, or is out of its range";
     /** A log holding more inputs than the budget allows (`checkInputs`). */
     readonly E_INPUT_BUDGET: "a log holds more inputs than any player makes";
+    /**
+     * A game with several seats has no `seat()`, or `seat()` answered something
+     * other than a whole number below the seat count.
+     */
+    readonly E_SEAT_INVALID: "seat() is missing on a game with several seats, or named a seat the run does not have";
+    /** A seat's inputs landed on a tick that was another seat's turn. */
+    readonly E_INPUT_SEAT: "an input landed on a tick that was another seat's turn";
+    /** A tick's inputs were read from a feed before its sender confirmed them. */
+    readonly E_INPUT_NOT_CONFIRMED: "a tick's inputs were read from a network feed before the sender confirmed that tick";
     /** A manifest failed validation. */
     readonly E_MANIFEST_INVALID: "manifest is invalid";
     /** An argument the caller controls was outside the range the API accepts. */
@@ -837,6 +923,14 @@ ECMAScript fixes the value of a number with at most 20 significant digits and le
 
 ```ts
 MAX_JSON_SIGNIFICANT_DIGITS = 20
+```
+
+### MAX_SEATS
+
+The most seats a run can have.
+
+```ts
+MAX_SEATS = 8
 ```
 
 ### PREFETCH_EFFECT
@@ -949,6 +1043,20 @@ export interface GameModule<TView = unknown, TConfig = PlainValue> {
      * demand packs.
      */
     packsNeeded?(): readonly string[];
+    /**
+     * The seat whose inputs the next tick reads, as a pure function of state:
+     * a whole number from 0 to one below the manifest's `session.seats`.
+     *
+     * The kernel calls it exactly when it calls `packsNeeded()`: once after
+     * `init`, once after `restore` and once after every tick, in every host.
+     * One tick reads one seat's inputs, and an input carries no seat, so a log
+     * merged from every seat replays as any other log does. When the answer
+     * changes, every input the seat that stopped was holding counts as
+     * released: the host records no release for it, so `tick` lets go of it
+     * itself. Required when `session.seats` is above 1; a one-seat game leaves
+     * it out.
+     */
+    seat?(): number;
 }
 ```
 
@@ -986,8 +1094,14 @@ Where a running simulation gets its inputs, live or recorded.
 
 ```ts
 export interface InputSource {
-    /** Everything that applies to `tick`, in order. */
-    take(tick: number): readonly InputEvent[];
+    /**
+     * Everything that applies to `tick`, in order.
+     *
+     * `seat` is the seat whose turn `tick` is, from `GameModule.seat()`, and 0
+     * in a game with one seat. A source that feeds a single seat, or a log
+     * merged from every seat, ignores it.
+     */
+    take(tick: number, seat: number): readonly InputEvent[];
     /**
      * Moves past everything before `tick`, for a session resumed from a
      * snapshot. A live source has nothing to skip and may leave this out.
@@ -1097,6 +1211,12 @@ export interface SessionOptions<TView = unknown, TConfig = PlainValue> {
     readonly checkpointEvery?: number;
     /** Declared counters, checked as the run goes. */
     readonly counters?: readonly CounterDeclaration[];
+    /**
+     * The manifest's `session.seats`, which `seatsOf(manifest)` reads: how many
+     * seats take turns in this run. Left out, 1. With more than one, the game
+     * must implement `seat()`, and every answer it gives must be below this.
+     */
+    readonly seats?: number;
     /** Set false only in a test that is measuring the cost of the traps. */
     readonly shims?: boolean;
     readonly onCheckpoint?: (checkpoint: Checkpoint) => void;
@@ -2114,8 +2234,14 @@ export declare class AudioSink {
 
 ```ts
 export declare class GameHost<TView = unknown, TContainer = unknown, TConfig = PlainValue> {
-    /** Present only for a live session; a replay reads its recorded source. */
+    /**
+     * Present only for a live session that plays a seat; a replay reads its
+     * recorded source and a watching page its remote feed.
+     */
     readonly live: LiveInputQueue | null;
+    /** A seated session's inputs, or null for a session without seats. */
+    /** Whether the live queue is paused because another seat's turn began. */
+    /** The last tick handed to `onLocalInputs`. */
     /** While a presentation's `prepare` runs: what `start` hands every caller. */
     /** `pause` was called while `prepare` ran: the host is paused when it is ready. */
     /**
@@ -2138,14 +2264,35 @@ export declare class GameHost<TView = unknown, TContainer = unknown, TConfig = P
     get manifest(): Manifest;
     get seed(): string;
     get status(): HostState;
+    /** The seat whose inputs the next tick reads, from the game's `seat()`. */
+    get seat(): number;
     /**
      * What the loop did. `droppedMs` counts the time it held for a pack as well
      * as the time it dropped, because both are real time that produced no
      * ticks, and a platform deciding whether a run was slow needs to see both.
+     * Time spent waiting for another seat's turn is not in it: in a game of
+     * turns that is most of a run, and it says nothing about this device.
      */
     get stats(): LoopStats;
     /** The packs the loop is holding for right now. */
     get waitingFor(): readonly string[];
+    /**
+     * The seat the loop is holding for right now: its turn has come and the
+     * remote feed is not confirmed through the next tick. Null otherwise.
+     */
+    get waitingForSeat(): number | null;
+    /**
+     * Whether the next tick is another seat's and its inputs are already
+     * confirmed, so a page following the run may run it ahead of its clock.
+     */
+    /**
+     * Keeps the live queue taking input exactly while the next tick is the
+     * local seat's. At the end of the local seat's turn the queue drops what
+     * the helpers release and whatever is pending, so nothing it records lands
+     * on another seat's tick; at the start of the next it takes input again,
+     * unless the page or a pause of this host paused it.
+     */
+    /** Hands the page the local inputs since the last call, after a frame. */
     /** How far between the last tick and the next, for the renderer. */
     get alpha(): number;
     setSpeed(speed: number): void;
@@ -2170,7 +2317,10 @@ export declare class GameHost<TView = unknown, TContainer = unknown, TConfig = P
      */
     start(): Promise<boolean>;
     /** Pauses the live queue, unless something else already has. */
-    /** Resumes the live queue if this host was the one that paused it. */
+    /**
+     * Resumes the live queue if this host was the one that paused it, unless
+     * another seat's turn is holding it.
+     */
     /** Starts the clock now. */
     /**
      * Pauses the clock. While `prepare` runs it is remembered, and the host is
@@ -2182,11 +2332,14 @@ export declare class GameHost<TView = unknown, TContainer = unknown, TConfig = P
     /** Ends the session without finishing it, for a player who walked away. */
     stop(reason?: TerminalReason): void;
     /**
-     * Holds the loop for packs the next tick needs.
+     * Holds the loop for packs the next tick needs, or for another seat's
+     * inputs.
      *
      * The time is not fed to the accumulator, so nothing is banked and no burst
-     * of ticks follows the arrival; it is counted in `droppedMs` instead.
+     * of ticks follows the arrival. Time held for a pack is counted in
+     * `droppedMs`; time held for a seat is not.
      */
+    /** Whether the next tick cannot run yet: a pack or a seat's inputs. */
     /**
      * Runs one tick by hand, for a test that wants no frame pacing at all.
      *
@@ -2204,7 +2357,10 @@ export declare class GameHost<TView = unknown, TContainer = unknown, TConfig = P
      * The recording this session produced, ready to submit or replay.
      *
      * A replayed session has no live queue, so it reports the log it was given
-     * rather than an empty one; `recordingFrom` is how a caller passes it.
+     * rather than an empty one; `recordingFrom` is how a caller passes it. A
+     * seated session records the merged log: every input every tick took, the
+     * local seat's and the feed's, which replays through a
+     * `RecordedInputSource` to the same checkpoints.
      */
     recording(inputs?: readonly InputEvent[]): Recording;
     destroy(): void;
@@ -2555,6 +2711,11 @@ export interface FrameInfo {
     readonly elapsedMs: number;
     /** The packs the loop is holding for. Empty while it runs. */
     readonly waitingFor: readonly string[];
+    /**
+     * The seat the loop is holding for: its turn has come and its inputs for
+     * the next tick are not confirmed yet. Null while it runs.
+     */
+    readonly waitingForSeat: number | null;
 }
 ```
 
@@ -2619,6 +2780,12 @@ export interface GameHostOptions<TView = unknown, TContainer = unknown, TConfig 
      * named is missing, the host holds the loop.
      */
     readonly packs?: PackSupply;
+    /**
+     * Required for a live session of a game whose manifest declares more than
+     * one seat, and refused for any other. A replay of such a game takes the
+     * recording's merged log as `inputs` instead, as any replay does.
+     */
+    readonly seats?: SeatOptions;
 }
 ```
 
@@ -2775,6 +2942,37 @@ export interface ScreenAngleSource {
             readonly type?: string;
         };
     };
+}
+```
+
+### SeatOptions
+
+A live session of a game whose manifest declares more than one seat: which seat this page plays, and where every other seat's inputs come from.
+
+```ts
+export interface SeatOptions {
+    /**
+     * The seat this page plays, from 0 to one below the manifest's
+     * `session.seats`, or null for a page that only watches. A watching page
+     * has no live queue and reads every tick from `remote`.
+     */
+    readonly local: number | null;
+    /**
+     * The inputs of every seat this page does not play, as they arrive. On a
+     * tick that is another seat's turn the loop holds, as it holds for a
+     * missing pack, until the feed is confirmed through that tick. It carries
+     * no input for a tick of the local seat's turn.
+     */
+    readonly remote: RemoteInputFeed;
+    /**
+     * Called after each frame that ran a tick, for a page that plays a seat:
+     * the local seat's inputs recorded since the last call, and the last tick
+     * this page has run. That tick is final for the local seat, whoever's turn
+     * it was, because the local seat records nothing on another seat's ticks.
+     * The page sends both to the other seats' pages, which `append` the inputs
+     * to their feed and `confirm` the tick.
+     */
+    readonly onLocalInputs?: (events: readonly InputEvent[], throughTick: number) => void;
 }
 ```
 

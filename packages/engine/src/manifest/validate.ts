@@ -23,7 +23,7 @@ import type {
   ParamSchema,
   ParamValues,
 } from "./types.js"
-import { MANIFEST_FORMAT, TICK_RATES } from "./types.js"
+import { MANIFEST_FORMAT, MAX_SEATS, TICK_RATES } from "./types.js"
 
 export type Issue = {
   /** Dotted path into the document, for example `counters[1].direction`. */
@@ -537,6 +537,17 @@ export function validateManifest(value: unknown): Issue[] {
     if (typeof session.hasEnding !== "boolean") {
       issues.push({ at: "session.hasEnding", message: "must be true or false" })
     }
+    if (
+      session.seats !== undefined &&
+      (!Number.isInteger(session.seats) ||
+        (session.seats as number) < 1 ||
+        (session.seats as number) > MAX_SEATS)
+    ) {
+      issues.push({
+        at: "session.seats",
+        message: `must be a whole number from 1 to ${MAX_SEATS}`,
+      })
+    }
     for (const field of ["maxTicks", "maxWallSeconds"]) {
       if (session[field] !== undefined) {
         issues.push({ at: `session.${field}`, message: REMOVED })
@@ -629,7 +640,8 @@ export function validateManifest(value: unknown): Issue[] {
     if (capabilities.multiplayer !== false) {
       issues.push({
         at: "capabilities.multiplayer",
-        message: "must be false in this release",
+        message:
+          "must be false: no two players act at the same time, and players who take turns are session.seats",
       })
     }
     if (typeof capabilities.renderer !== "string") {

@@ -118,10 +118,10 @@ import and drops the rest.
 
 | Import | What it is |
 | --- | --- |
-| `@clockwork2/engine` | The simulation kernel: loop, PRNG, timers, hashing, `dmath`, manifest, recording. |
+| `@clockwork2/engine` | The simulation kernel: loop, PRNG, timers, hashing, `dmath`, manifest, recording, and the seated input sources that merge the inputs of players taking turns. |
 | `@clockwork2/engine/validate` | The conformance checks and their CLI. |
-| `@clockwork2/engine/host` | The frame loop, pack loading, audio, and optional device helpers that turn keys, pointers, the wheel, gamepads and tilt into a game's own inputs. |
-| `@clockwork2/engine/worker` | The simulation in a worker, with the clock on the page. |
+| `@clockwork2/engine/host` | The frame loop, pack loading, audio, and optional device helpers that turn keys, pointers, the wheel, gamepads and tilt into a game's own inputs. A page playing one seat of a game of turns holds the loop on the other seats' turns until a network feed delivers their inputs. |
+| `@clockwork2/engine/worker` | The simulation in a worker, with the clock on the page, for a game with one seat. |
 | `@clockwork2/engine/adapter-canvas2d` | Read-only presentation on a 2D canvas. |
 | `@clockwork2/engine/adapter-three` | Read-only presentation on Three.js. |
 | `@clockwork2/engine/adapter-pixi` | Read-only presentation on PIXI 8. |

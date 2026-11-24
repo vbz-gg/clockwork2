@@ -135,6 +135,48 @@ reading, every frame of a stick. Record what changed, in the coarsest range the
 game needs, and merge levels and amounts to one input per tick, which the
 device helpers do for you.
 
+### E_SEAT_INVALID
+
+A game whose manifest declares more than one seat has no `seat()`, or `seat()`
+answered something other than a whole number from 0 to one below
+`session.seats`. The first is refused when the session is built, before
+`init` runs; the second at the tick the answer was given for.
+
+Implement `seat()` to return the turn from the game's state, and keep the
+turn in the snapshot. When the turn is right and the answer still is not,
+look at the caller: a session built without `seats: seatsOf(manifest)` has
+one seat, so the first time `seat()` answers 1 it is out of range. A replay
+of a seated run needs the option as much as the page that played it.
+
+### E_INPUT_SEAT
+
+An input landed on a tick that was another seat's turn. Two places report it,
+both at the tick of the input. `SeatedInputSource` reports an input any seat
+but the acting one sent for the tick it is taking; a match server playing
+each seat's own inputs through it refuses that seat's log there. A
+`RemoteInputFeed` reports an input it holds for a tick its reader ran without
+it, which a page does on its own turn.
+
+Whose turn a tick is comes from the game's `seat()`, so a page that follows
+the host's rules never sends one: its live queue takes nothing on another
+seat's turn and drops what the device helpers release when a turn ends. A
+page that records its own inputs outside the queue, or a sender that is not
+a page, is where to look. In the conformance suite it means `seat()` answers
+differently from one run to the next on the same state: it reads something
+other than the state.
+
+### E_INPUT_NOT_CONFIRMED
+
+A tick's inputs were taken from a `RemoteInputFeed` before the sender
+confirmed that tick. The inputs for it may still be on their way, and running
+the tick without them would compute something the sender's page did not.
+
+`GameHost` never does this: it holds its loop until the feed is confirmed.
+Code that steps a session itself, `stepOnce` included, has to wait for
+`confirmedThrough` to reach the tick first. A sender that never confirms
+leaves every page that follows it holding, so the page sends its last tick
+with every batch of inputs, as `onLocalInputs` hands it over.
+
 ### E_RECORDING_VERSION
 
 A recording's `format` or `version` is not one this kernel reads. It is
@@ -171,7 +213,12 @@ that field: delete it.
 
 An argument the caller controls was outside the range the API accepts, and the
 detail names the value and the range. The APIs that report it are `maxTicks`
-and `tickHz` on a session, `runSession` called without `maxTicks`, an
+and `tickHz` on a session, `seats` on a session outside 1 to 8, `GameHost`'s
+`seats` given for a one-seat game or a replay, missing for a live run of a
+game with several, or naming a seat the run does not have, the worker host
+given a game with several seats, a `SeatedInputSource` given no source for a
+seat, a `RemoteInputFeed` confirmation that goes back, `runSession` called
+without `maxTicks`, an
 `InputCapture` whose `scripted` is not `"record"` or `"ignore"`, the tick
 counts `Timer.every()` and `Timer.after()`
 take, the replay speed on a host, `fixed.div()` by zero, `fixed.sqrt()` of a

@@ -15,6 +15,7 @@ export {
   type GameHostOptions,
   type HostState,
   type LoopStats,
+  type SeatOptions,
 } from "./host.js"
 export {
   type CaptureDocument,

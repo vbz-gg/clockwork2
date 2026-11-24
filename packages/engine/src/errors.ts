@@ -41,6 +41,19 @@ export const ERROR_CODES = {
     "an input is not one the manifest declares, or is out of its range",
   /** A log holding more inputs than the budget allows (`checkInputs`). */
   E_INPUT_BUDGET: "a log holds more inputs than any player makes",
+
+  // --- seats --------------------------------------------------------------
+  /**
+   * A game with several seats has no `seat()`, or `seat()` answered something
+   * other than a whole number below the seat count.
+   */
+  E_SEAT_INVALID:
+    "seat() is missing on a game with several seats, or named a seat the run does not have",
+  /** A seat's inputs landed on a tick that was another seat's turn. */
+  E_INPUT_SEAT: "an input landed on a tick that was another seat's turn",
+  /** A tick's inputs were read from a feed before its sender confirmed them. */
+  E_INPUT_NOT_CONFIRMED:
+    "a tick's inputs were read from a network feed before the sender confirmed that tick",
   /** A manifest failed validation. */
   E_MANIFEST_INVALID: "manifest is invalid",
   /** An argument the caller controls was outside the range the API accepts. */

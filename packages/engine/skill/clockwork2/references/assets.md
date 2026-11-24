@@ -94,7 +94,7 @@ packsNeeded(): readonly string[] {
 | `init` | yes | no |
 | `restore` | yes | no |
 | a tick | yes | only those `packsNeeded()` named before it |
-| `view`, `snapshot`, `score`, `isOver`, `packsNeeded` | no | no |
+| `view`, `snapshot`, `score`, `isOver`, `packsNeeded`, `seat` | no | no |
 
 A read outside the table is `E_PACK_NOT_REQUESTED`. Copy what the renderer
 needs into the state `view()` returns rather than reading a pack there.

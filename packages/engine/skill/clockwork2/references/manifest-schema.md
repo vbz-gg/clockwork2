@@ -24,6 +24,7 @@ in `kernel-api.md`, which is generated from the declarations.
   session: {
     tickHz: 60,               // 30, 60 or 120
     hasEnding: true,          // describes the game; nothing reads or checks it
+    seats: 2,                 // optional: players taking turns, 1 to 8; 1 if left out
   },
 
   inputs: {                   // what the game records, by name and range
@@ -57,7 +58,7 @@ in `kernel-api.md`, which is generated from the declarations.
     deterministic: true,      // always; a manifest saying otherwise is refused
     physics: "none",
     renderer: "canvas2d",     // or "three", "pixi", "dom"
-    multiplayer: false,       // always, in this release
+    multiplayer: false,       // always: nobody plays at the same time as anyone else
   },
 }
 ```
@@ -90,6 +91,12 @@ nothing more: nothing in the engine reads it, and no check holds the game to
 it. The conformance checks
 play each log to its end or to `CHECK_WINDOW_TICKS`, 36,000 ticks, and report
 where each run stopped; a game is not refused for running the whole window.
+
+`session.seats` is how many players take turns in one run, from 1 to 8, and
+1 when it is left out. A game with more than one implements `seat()`, which
+says whose turn each tick is, and `references/seats.md` covers the rest. It
+leaves `capabilities.multiplayer` false: seats take turns, and nobody acts at
+the same time as anyone else.
 
 `params` are typed (`color`, `string`, `enum`, `int`, `bool`) with ranges
 and defaults, and `validateParams` checks a supplied value against them before

@@ -24,6 +24,7 @@ import {
   Session,
   type SessionResult,
   type Snapshot,
+  seatsOf,
   validateManifest,
 } from "../../index.js"
 import { compareCounters } from "../../testing/index.js"
@@ -40,6 +41,7 @@ import {
   logsFor,
   runOnce,
   runOnDemand,
+  runSeated,
   sessionPacks,
   tryRun,
 } from "./support.js"
@@ -156,6 +158,46 @@ const determinism: Check = {
         })
       }
     }
+    // A game that says whose turn each tick is runs twice more, as a match
+    // server runs it: the log split by seat, seat() asked an extra time with
+    // the state hashed around it, and each seat's share played back through
+    // a seated source that refuses an input on another seat's tick.
+    const takesTurns = typeof (await subject.load()).seat === "function"
+    if (takesTurns && baseline !== null) {
+      runs += 2
+      const inputs = logsFor(subject.manifest, seed).get("bot") ?? []
+      const where = `seed ${seed}, bot log, with each seat's inputs played through a seated source`
+      try {
+        const turns = await runSeated(subject, { seed, inputs })
+        if (turns.impure !== null) {
+          findings.push({
+            code: "E_DETERMINISM_DIVERGED",
+            check: "determinism",
+            tick: turns.impure,
+            detail: `seat() changed the state when it was called at tick ${turns.impure}; it must be a pure function of state, because every host calls it as often as packsNeeded() and nothing else may depend on how often that is`,
+          })
+        }
+        for (const result of [turns.merged, turns.seated]) {
+          const diverged =
+            firstDivergence(baseline.checkpoints, result.checkpoints) ??
+            compareCounters(baseline.counters, result.counters).join("; ")
+          if (diverged !== "") {
+            findings.push({
+              code: "E_DETERMINISM_DIVERGED",
+              check: "determinism",
+              detail: `${where}: ${diverged}`,
+            })
+            break
+          }
+        }
+      } catch (error) {
+        findings.push({
+          code: codeFromError(error, "E_DETERMINISM_DIVERGED"),
+          check: "determinism",
+          detail: `${where}: the run threw: ${String(error)}`,
+        })
+      }
+    }
     return {
       ok: findings.length === 0,
       findings,
@@ -194,6 +236,7 @@ const headless: Check = {
         maxTicks: Math.max(600, 1),
         checkpointEvery: 0,
         counters: countersOf(subject.manifest),
+        seats: seatsOf(subject.manifest),
         ...sessionPacks(subject),
       })
       for (let i = 0; i < 600 && session.step(); i++) {
@@ -277,6 +320,7 @@ const noAsync: Check = {
         maxTicks: 120,
         checkpointEvery: 0,
         counters: countersOf(subject.manifest),
+        seats: seatsOf(subject.manifest),
         ...sessionPacks(subject),
       })
       for (let i = 0; i < 60 && session.step(); i++) {
@@ -338,6 +382,7 @@ const restore: Check = {
         maxTicks: CHECK_WINDOW_TICKS,
         checkpointEvery: CHECKPOINT_EVERY,
         counters: countersOf(subject.manifest),
+        seats: seatsOf(subject.manifest),
         ...sessionPacks(subject),
       })
       for (let i = 0; i < at; i++) partial.step()
@@ -354,6 +399,7 @@ const restore: Check = {
         maxTicks: CHECK_WINDOW_TICKS,
         checkpointEvery: CHECKPOINT_EVERY,
         counters: countersOf(subject.manifest),
+        seats: seatsOf(subject.manifest),
         ...sessionPacks(subject),
         resumeFrom: { snapshot, tick: at },
       })
@@ -499,6 +545,7 @@ const performance_: Check = {
         maxTicks: CHECK_WINDOW_TICKS,
         checkpointEvery: CHECKPOINT_EVERY,
         counters: countersOf(subject.manifest),
+        seats: seatsOf(subject.manifest),
         ...sessionPacks(subject),
         ...(onTick === undefined ? {} : { onTick }),
       })

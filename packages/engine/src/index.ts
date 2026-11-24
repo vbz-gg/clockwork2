@@ -79,6 +79,8 @@ export {
   quantiseAxis,
   quantisePoint,
   RecordedInputSource,
+  RemoteInputFeed,
+  SeatedInputSource,
   validateInputLog,
 } from "./inputs.js"
 export { KEY_CODES } from "./key-codes.js"
@@ -107,7 +109,9 @@ export type {
 export {
   assertManifest,
   MANIFEST_FORMAT,
+  MAX_SEATS,
   mergeParamDefaults,
+  seatsOf,
   servedConfig,
   validateManifest,
   validateParams,
