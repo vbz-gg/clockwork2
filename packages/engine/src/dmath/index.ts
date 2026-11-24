@@ -33,7 +33,7 @@
  *
  * A NaN that *arrives* as an argument is propagated with its sign intact, so
  * only a freshly generated one differs. Measured across the golden vectors:
- * 1074 of 1212 NaN results.
+ * 1074 of 1213 NaN results.
  *
  * This is safe, because a NaN cannot reach anything that decides a score.
  * `hashCanonical` refuses one rather than encoding it, counters must be whole
@@ -47,6 +47,7 @@
  */
 
 export { acos, asin, atan, atan2 } from "./atan.js"
+export { cbrt } from "./cbrt.js"
 export { PI, PI_2, PI_4, TWO_PI } from "./constants.js"
 export { exp } from "./exp.js"
 export { copysign, scalbn } from "./helpers.js"

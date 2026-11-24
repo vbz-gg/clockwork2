@@ -27,8 +27,11 @@ import {
   REFERENCE_COUNTERS,
 } from "../testing/reference-game.js"
 
-/** 2 added the data pack vectors: SHA-256, UTF-8 decoding and pack JSON. */
-export const PROBE_VERSION = 2
+/**
+ * 2 added the data pack vectors: SHA-256, UTF-8 decoding and pack JSON.
+ * 3 added dmath/cbrt.
+ */
+export const PROBE_VERSION = 3
 
 export type ProbeItem = {
   /** The input, in a form a person can read in a divergence report. */
@@ -202,6 +205,7 @@ function buildDefinitions(): readonly VectorDefinition[] {
     ["log", dmath.log, 1e-300, 1e300],
     ["log2", dmath.log2, 1e-300, 1e300],
     ["log10", dmath.log10, 1e-300, 1e300],
+    ["cbrt", dmath.cbrt, -1e6, 1e6],
     ["wrapAngle", dmath.wrapAngle, -1e9, 1e9],
   ]
   for (const [name, fn, lo, hi] of unary) {

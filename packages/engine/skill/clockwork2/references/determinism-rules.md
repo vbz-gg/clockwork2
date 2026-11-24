@@ -26,8 +26,11 @@ comparisons, `Math.sqrt`, `Math.floor`, `Math.ceil`, `Math.round`,
 Banned outright: `Math.pow` and the `**` operator. Use `dmath.pow`, or
 better `dmath.ipow` for an integer exponent, which is exact.
 
-Banned, with `dmath` in their place: `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`,
-`exp`, `log`, `log2`, `log10`, `cbrt`, `hypot`, `sinh`, `cosh`, `tanh`.
+Banned, with `dmath` in their place: `sin`, `cos`, `tan`, `asin`, `acos`,
+`atan`, `atan2`, `exp`, `log`, `log2`, `log10`, `cbrt`, `hypot`.
+
+Banned with no `dmath` routine yet: `expm1`, `log1p`, `sinh`, `cosh`, `tanh`,
+`asinh`, `acosh`, `atanh`. Build what you need from the routines above.
 
 These are not theoretical differences. `Math.cos(0.1)` is
 `0x3FEFD712F9A817C1` on JavaScriptCore and `0x3FEFD712F9A817C0` on V8. One bit

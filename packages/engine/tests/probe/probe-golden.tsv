@@ -14,6 +14,7 @@ dmath/exp	d93ae0810ce61333
 dmath/log	6d25bd8da1b5de13
 dmath/log2	563a7301e0a79a74
 dmath/log10	40a398ca974246ae
+dmath/cbrt	2aa16d635054b755
 dmath/wrapAngle	f601c763eb87eca3
 dmath/atan2	cc9ad8ca8cfbfcb0
 dmath/hypot	cfce8b8fc7618fcd

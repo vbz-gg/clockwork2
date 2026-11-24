@@ -1657,6 +1657,14 @@ export declare function atan(xIn: number): number;
 export declare function atan2(y: number, x: number): number;
 ```
 
+### cbrt
+
+cbrt, from netlib fdlibm s_cbrt.c (`@(#)s_cbrt.c 1.3 95/01/18`). See NOTICE.
+
+```ts
+export declare function cbrt(x: number): number;
+```
+
 ### copysign
 
 `x` with the sign of `y`. Refuses a NaN in either argument with `E_ARG_INVALID`.
