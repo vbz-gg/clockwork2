@@ -105,8 +105,8 @@ The guide lives at `packages/engine/skill/clockwork2/` and ships inside the npm
 package, so a game that installs the engine has a copy at
 `node_modules/@clockwork2/engine/skill/clockwork2/` for an agent's tools to
 install. Its scripts run from the game's own root. The templates are for a game
-on the engine alone; a game built with the vbz kit starts from that kit's own
-scaffold and follows the guide for its simulation.
+on the engine alone; a game built with the vbz.gg SDK starts from the SDK's
+own scaffold and follows the guide for its simulation.
 
 ## One package, several entry points
 

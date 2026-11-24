@@ -109,8 +109,9 @@ describe("SKILL.md", () => {
   })
 
   test("it says its scaffold is for a game on the engine alone", () => {
-    // A game built with the vbz kit starts from that kit's scaffold. Copying
-    // this guide's templates into one would lay a second game over it.
+    // A game built with the vbz.gg SDK starts from the SDK's scaffold.
+    // Copying this guide's templates into one would lay a second game over
+    // it.
     expect(source).toContain("are not copied into a vbz game")
   })
 
@@ -200,7 +201,7 @@ describe("every file the guide ships", () => {
 
   test("says nothing about the arcade", () => {
     // The arcade is archived. A game on the engine alone has no platform at
-    // all, and one built with the vbz kit is checked by vbz's platform.
+    // all, and one built with the vbz.gg SDK is checked by vbz's platform.
     const stale = files.filter((file) =>
       /\bthe arcade\b/i.test(readFileSync(join(SKILL, file), "utf8")),
     )

@@ -68,7 +68,7 @@ in `kernel-api.md`, which is generated from the declarations.
 `id` is immutable. Change it and it is a different game with a different
 leaderboard. This guide's `scripts/new.ts` sets it from the directory name
 once, at creation, rather than leaving it to be edited later and forgotten,
-and the vbz kit's scaffold does the same for a vbz game.
+and the vbz.gg SDK's scaffold does the same for a vbz game.
 
 `counters` and `rankBy` replace an objective system. An objective is `counters[name] >= threshold`,
 computed by the platform, not by the game. A game that wants a new kind of
