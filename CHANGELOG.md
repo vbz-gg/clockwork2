@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.11.0](https://github.com/vbz-gg/clockwork2/compare/v0.10.0...v0.11.0) (2026-11-24)
+
+
+### Features
+
+* **dmath:** add cbrt, transcribed from netlib fdlibm s_cbrt.c ([#31](https://github.com/vbz-gg/clockwork2/issues/31)) ([513a248](https://github.com/vbz-gg/clockwork2/commit/513a248177bb119e7cda6941118454d91f7f1446))
+* **engine:** seats, for games whose players take turns in one run ([#32](https://github.com/vbz-gg/clockwork2/issues/32)) ([8cd8af3](https://github.com/vbz-gg/clockwork2/commit/8cd8af3db91e4168d4dcc8047cd469a73bcc339c))
+
 ## [0.10.0](https://github.com/vbz-gg/clockwork2/compare/v0.9.0...v0.10.0) (2026-11-17)
 
 
