@@ -127,7 +127,10 @@ export type Capabilities = {
   readonly deterministic: true
   readonly physics: "none" | string
   readonly renderer: "canvas2d" | "pixi" | "three" | "dom" | string
-  /** Always false in the first release. */
+  /**
+   * Always false: no two players act at the same time. Players taking turns
+   * in one run are `session.seats`, which leaves this false.
+   */
   readonly multiplayer: false
   readonly webgpu?: boolean
   readonly pointerLock?: boolean
@@ -144,7 +147,18 @@ export type Session = {
    * `CHECK_WINDOW_TICKS` whatever it says.
    */
   readonly hasEnding: boolean
+  /**
+   * How many players take turns in one run, from 1 to `MAX_SEATS`. Left out,
+   * 1: a one-seat game is a game with no turns at all. A game with more
+   * implements `GameModule.seat()`, which names the seat whose inputs each
+   * tick reads. Seats take turns; nobody plays at the same time as anybody
+   * else, so `capabilities.multiplayer` stays false.
+   */
+  readonly seats?: number
 }
+
+/** The most seats a run can have. */
+export const MAX_SEATS = 8
 
 /**
  * How a ranked run is ordered, declared together or not at all.
@@ -185,6 +199,11 @@ export type Manifest = {
   readonly display?: Display
   readonly capabilities: Capabilities
 } & Ranking
+
+/** How many seats a manifest declares: `session.seats`, or 1 when it says none. */
+export function seatsOf(manifest: Manifest): number {
+  return manifest.session.seats ?? 1
+}
 
 type AssertPlain<T extends PlainValue> = T
 export type ManifestIsPlain = AssertPlain<Manifest>

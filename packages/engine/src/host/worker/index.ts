@@ -32,10 +32,12 @@ import type {
 import {
   Accumulator,
   type Effect,
+  fail,
   isClockworkError,
   LiveInputQueue,
   PackSet,
   Session,
+  seatsOf,
   servedConfig,
 } from "../../index.js"
 import { ownedBuffer, PackRequests, type PackSupply } from "../packs.js"
@@ -166,6 +168,13 @@ export function runSimulationWorker(
     try {
       switch (message.type) {
         case "init": {
+          // Seats take turns through GameHost, which holds its loop for the
+          // other seats' inputs; this host has no feed to read them from.
+          if (seatsOf(manifest) > 1) {
+            fail("E_ARG_INVALID", {
+              detail: `the manifest declares ${seatsOf(manifest)} seats, and the worker host runs a game with one; run it in GameHost`,
+            })
+          }
           module = create()
           session = new Session({
             module,

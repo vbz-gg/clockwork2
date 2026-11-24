@@ -131,3 +131,7 @@ The one thing a game must do to work in both modes is return a
 structured-cloneable `view()`: plain data, no class instances, no functions.
 A view full of class instances cannot be sent anywhere, so this is worth doing
 regardless.
+
+Worker mode runs a game with one seat. A game whose players take turns runs
+in `GameHost`, which holds its loop for the other seats' inputs;
+`seats.md` says how.

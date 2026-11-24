@@ -18,6 +18,7 @@ import {
   type Checkpoint,
   ClockworkError,
   type Counters,
+  DEFAULT_MAX_CATCHUP_TICKS,
   type Effect,
   fail,
   type GameModule,
@@ -34,9 +35,11 @@ import {
   RECORDING_FORMAT,
   RECORDING_VERSION,
   type Recording,
+  type RemoteInputFeed,
   Session,
   type SessionResult,
   type Snapshot,
+  seatsOf,
   servedConfig,
   type TerminalReason,
 } from "../index.js"
@@ -48,6 +51,38 @@ import { PackRequests, type PackSupply } from "./packs.js"
  * starting, while a presentation's `prepare` runs.
  */
 export type HostState = "idle" | "preparing" | "running" | "paused" | "ended"
+
+/**
+ * A live session of a game whose manifest declares more than one seat: which
+ * seat this page plays, and where every other seat's inputs come from.
+ */
+export interface SeatOptions {
+  /**
+   * The seat this page plays, from 0 to one below the manifest's
+   * `session.seats`, or null for a page that only watches. A watching page
+   * has no live queue and reads every tick from `remote`.
+   */
+  readonly local: number | null
+  /**
+   * The inputs of every seat this page does not play, as they arrive. On a
+   * tick that is another seat's turn the loop holds, as it holds for a
+   * missing pack, until the feed is confirmed through that tick. It carries
+   * no input for a tick of the local seat's turn.
+   */
+  readonly remote: RemoteInputFeed
+  /**
+   * Called after each frame that ran a tick, for a page that plays a seat:
+   * the local seat's inputs recorded since the last call, and the last tick
+   * this page has run. That tick is final for the local seat, whoever's turn
+   * it was, because the local seat records nothing on another seat's ticks.
+   * The page sends both to the other seats' pages, which `append` the inputs
+   * to their feed and `confirm` the tick.
+   */
+  readonly onLocalInputs?: (
+    events: readonly InputEvent[],
+    throughTick: number,
+  ) => void
+}
 
 export interface GameHostOptions<
   TView = unknown,
@@ -111,6 +146,12 @@ export interface GameHostOptions<
    * named is missing, the host holds the loop.
    */
   readonly packs?: PackSupply
+  /**
+   * Required for a live session of a game whose manifest declares more than
+   * one seat, and refused for any other. A replay of such a game takes the
+   * recording's merged log as `inputs` instead, as any replay does.
+   */
+  readonly seats?: SeatOptions
 }
 
 export interface FrameInfo {
@@ -120,6 +161,11 @@ export interface FrameInfo {
   readonly elapsedMs: number
   /** The packs the loop is holding for. Empty while it runs. */
   readonly waitingFor: readonly string[]
+  /**
+   * The seat the loop is holding for: its turn has come and its inputs for
+   * the next tick are not confirmed yet. Null while it runs.
+   */
+  readonly waitingForSeat: number | null
 }
 
 export interface LoopStats {
@@ -129,14 +175,64 @@ export interface LoopStats {
   readonly droppedMs: number
 }
 
+/**
+ * Where a seated session's ticks read: the live queue on the local seat's
+ * turn, the remote feed on every other. It keeps the merged log, which is
+ * the recording, and the local inputs not yet handed to `onLocalInputs`.
+ */
+class TurnInputs implements InputSource {
+  private readonly log: InputEvent[] = []
+  private readonly unsent: InputEvent[] = []
+
+  constructor(
+    private readonly live: LiveInputQueue | null,
+    private readonly local: number | null,
+    private readonly remote: RemoteInputFeed,
+  ) {}
+
+  take(tick: number, seat: number): readonly InputEvent[] {
+    const mine = this.live !== null && seat === this.local
+    const events = mine
+      ? (this.live as LiveInputQueue).take(tick)
+      : this.remote.take(tick)
+    for (const event of events) {
+      this.log.push(event)
+      if (mine) this.unsent.push(event)
+    }
+    return events
+  }
+
+  seek(tick: number): void {
+    this.remote.seek(tick)
+  }
+
+  recorded(): readonly InputEvent[] {
+    return this.log
+  }
+
+  /** The local inputs recorded since the last call. */
+  drainLocal(): readonly InputEvent[] {
+    return this.unsent.splice(0)
+  }
+}
+
 export class GameHost<
   TView = unknown,
   TContainer = unknown,
   TConfig = PlainValue,
 > {
-  /** Present only for a live session; a replay reads its recorded source. */
+  /**
+   * Present only for a live session that plays a seat; a replay reads its
+   * recorded source and a watching page its remote feed.
+   */
   readonly live: LiveInputQueue | null
   private readonly source: InputSource
+  /** A seated session's inputs, or null for a session without seats. */
+  private readonly turns: TurnInputs | null
+  /** Whether the live queue is paused because another seat's turn began. */
+  private turnHeld = false
+  /** The last tick handed to `onLocalInputs`. */
+  private sentThrough = -1
   private readonly accumulator: Accumulator
   private readonly scheduler: Scheduler
   private session: Session<TView, TConfig>
@@ -176,6 +272,35 @@ export class GameHost<
           "config is required for a replay: pass the recording's config, which is what the run it replays played",
       })
     }
+    const seats = seatsOf(options.manifest)
+    const seated = options.seats
+    if (seated !== undefined) {
+      if (seats === 1) {
+        fail("E_ARG_INVALID", {
+          detail:
+            "seats is for a game whose manifest declares more than one seat, and this one declares one",
+        })
+      }
+      if (options.inputs !== undefined) {
+        fail("E_ARG_INVALID", {
+          detail:
+            "a replay reads the recording's merged log as inputs and takes no seats",
+        })
+      }
+      const local = seated.local
+      if (
+        local !== null &&
+        (!Number.isInteger(local) || local < 0 || local >= seats)
+      ) {
+        fail("E_ARG_INVALID", {
+          detail: `seats.local must be null or a seat from 0 to ${seats - 1}, got ${String(local)}`,
+        })
+      }
+    } else if (seats > 1 && options.inputs === undefined) {
+      fail("E_ARG_INVALID", {
+        detail: `the manifest declares ${seats} seats, so a live session needs seats: the seat this page plays and a feed for the others`,
+      })
+    }
     this.config =
       options.config ?? (servedConfig(options.manifest) as unknown as TConfig)
     this.context = options.presentationContext ?? {
@@ -203,15 +328,26 @@ export class GameHost<
       tickHz: options.manifest.session.tickHz,
     })
     this.speed = options.speed ?? 1
-    if (options.inputs === undefined) {
+    if (options.inputs !== undefined) {
+      this.live = null
+      this.turns = null
+      this.source = options.inputs
+    } else if (seated !== undefined) {
+      this.live =
+        seated.local === null
+          ? null
+          : new LiveInputQueue(options.manifest.inputs)
+      this.turns = new TurnInputs(this.live, seated.local, seated.remote)
+      this.source = this.turns
+    } else {
       const queue = new LiveInputQueue(options.manifest.inputs)
       this.live = queue
+      this.turns = null
       this.source = queue
-    } else {
-      this.live = null
-      this.source = options.inputs
     }
     this.session = this.createSession()
+    // On another seat's turn the queue takes nothing, from before tick 0 on.
+    this.syncTurn()
   }
 
   private createSession(): Session<TView, TConfig> {
@@ -226,6 +362,7 @@ export class GameHost<
       checkpointEvery:
         this.options.checkpointEvery ?? this.options.manifest.session.tickHz,
       counters: this.options.manifest.counters,
+      seats: seatsOf(this.options.manifest),
       assets: this.options.manifest.assets ?? [],
       packs: this.packs,
       ...(this.options.onCheckpoint === undefined
@@ -264,10 +401,17 @@ export class GameHost<
     return this.state
   }
 
+  /** The seat whose inputs the next tick reads, from the game's `seat()`. */
+  get seat(): number {
+    return this.session.seat
+  }
+
   /**
    * What the loop did. `droppedMs` counts the time it held for a pack as well
    * as the time it dropped, because both are real time that produced no
    * ticks, and a platform deciding whether a run was slow needs to see both.
+   * Time spent waiting for another seat's turn is not in it: in a game of
+   * turns that is most of a run, and it says nothing about this device.
    */
   get stats(): LoopStats {
     const accumulator = this.accumulator.stats
@@ -282,6 +426,71 @@ export class GameHost<
   /** The packs the loop is holding for right now. */
   get waitingFor(): readonly string[] {
     return this.session.packsMissing()
+  }
+
+  /**
+   * The seat the loop is holding for right now: its turn has come and the
+   * remote feed is not confirmed through the next tick. Null otherwise.
+   */
+  get waitingForSeat(): number | null {
+    const seated = this.options.seats
+    if (seated === undefined || !this.session.running) return null
+    const seat = this.session.seat
+    if (seat === seated.local) return null
+    return seated.remote.confirmedThrough >= this.session.tick ? null : seat
+  }
+
+  /**
+   * Whether the next tick is another seat's and its inputs are already
+   * confirmed, so a page following the run may run it ahead of its clock.
+   */
+  private get canFollow(): boolean {
+    const seated = this.options.seats
+    return (
+      seated !== undefined &&
+      this.session.running &&
+      this.session.seat !== seated.local &&
+      seated.remote.confirmedThrough >= this.session.tick
+    )
+  }
+
+  /**
+   * Keeps the live queue taking input exactly while the next tick is the
+   * local seat's. At the end of the local seat's turn the queue drops what
+   * the helpers release and whatever is pending, so nothing it records lands
+   * on another seat's tick; at the start of the next it takes input again,
+   * unless the page or a pause of this host paused it.
+   */
+  private syncTurn(): void {
+    const seated = this.options.seats
+    const live = this.live
+    if (seated === undefined || live === null) return
+    if (this.session.seat !== seated.local) {
+      if (this.turnHeld) return
+      const pausedBefore = live.paused
+      live.endTurn()
+      this.turnHeld = !pausedBefore
+    } else if (this.turnHeld) {
+      this.turnHeld = false
+      if (!this.holdingQueue) live.resume()
+    }
+  }
+
+  /** Hands the page the local inputs since the last call, after a frame. */
+  private sendLocal(): void {
+    const seated = this.options.seats
+    const turns = this.turns
+    if (
+      seated?.onLocalInputs === undefined ||
+      seated.local === null ||
+      turns === null
+    ) {
+      return
+    }
+    const through = this.session.tick - 1
+    if (through <= this.sentThrough) return
+    this.sentThrough = through
+    seated.onLocalInputs(turns.drainLocal(), through)
   }
 
   /** How far between the last tick and the next, for the renderer. */
@@ -399,11 +608,14 @@ export class GameHost<
     this.holdingQueue = true
   }
 
-  /** Resumes the live queue if this host was the one that paused it. */
+  /**
+   * Resumes the live queue if this host was the one that paused it, unless
+   * another seat's turn is holding it.
+   */
   private releaseQueue(): void {
     if (!this.holdingQueue) return
     this.holdingQueue = false
-    this.live?.resume()
+    if (!this.turnHeld) this.live?.resume()
   }
 
   /** Starts the clock now. */
@@ -470,14 +682,23 @@ export class GameHost<
   }
 
   /**
-   * Holds the loop for packs the next tick needs.
+   * Holds the loop for packs the next tick needs, or for another seat's
+   * inputs.
    *
    * The time is not fed to the accumulator, so nothing is banked and no burst
-   * of ticks follows the arrival; it is counted in `droppedMs` instead.
+   * of ticks follows the arrival. Time held for a pack is counted in
+   * `droppedMs`; time held for a seat is not.
    */
   private hold(missing: readonly string[], ms: number): void {
+    if (missing.length === 0) return
     this.heldMs += ms
     for (const path of missing) this.requests.request(path, true)
+  }
+
+  /** Whether the next tick cannot run yet: a pack or a seat's inputs. */
+  private held(): readonly string[] | null {
+    const missing = this.session.packsMissing()
+    return missing.length > 0 || this.waitingForSeat !== null ? missing : null
   }
 
   private fail(error: unknown): void {
@@ -498,8 +719,8 @@ export class GameHost<
     this.live?.poll()
 
     let ticksThisFrame = 0
-    const waiting = this.session.packsMissing()
-    if (waiting.length > 0) {
+    const waiting = this.held()
+    if (waiting !== null) {
       // The accumulator never sees this frame, so it is counted here.
       this.heldFrames++
       this.hold(waiting, elapsed)
@@ -511,27 +732,38 @@ export class GameHost<
     }
     try {
       const steps = this.accumulator.frame(elapsed)
-      for (let i = 0; i < steps; i++) {
-        const missing = this.session.packsMissing()
-        if (missing.length > 0) {
+      // The ticks the clock owes run first. Past them, a page following
+      // another seat's turn runs the ticks its feed has confirmed, up to the
+      // catch-up limit, so one that fell behind the sender gains on it.
+      while (
+        ticksThisFrame < steps ||
+        (ticksThisFrame < DEFAULT_MAX_CATCHUP_TICKS && this.canFollow)
+      ) {
+        const missing = this.held()
+        if (missing !== null) {
           // The accumulator already took this frame's time for the steps
           // that will not run now.
-          this.hold(missing, (steps - i) * this.accumulator.stepMs)
+          this.hold(
+            missing,
+            Math.max(steps - ticksThisFrame, 0) * this.accumulator.stepMs,
+          )
           if (this.state !== "running") return
           break
         }
+        this.syncTurn()
         const previous = this.options.module.view()
-        if (!this.session.step()) {
-          ticksThisFrame++
-          this.ticksRun++
-          this.previousView = previous
-          this.finish()
-          return
-        }
+        const running = this.session.step()
         ticksThisFrame++
         this.ticksRun++
         this.previousView = previous
+        if (!running) {
+          this.sendLocal()
+          this.finish()
+          return
+        }
+        this.syncTurn()
       }
+      this.sendLocal()
     } catch (error) {
       this.fail(error)
       return
@@ -549,6 +781,7 @@ export class GameHost<
       alpha: this.accumulator.alpha,
       elapsedMs,
       waitingFor: this.session.packsMissing(),
+      waitingForSeat: this.waitingForSeat,
     })
   }
 
@@ -579,8 +812,11 @@ export class GameHost<
    * packs preloads them all, with `loadPacks(manifest, loader, "all")`.
    */
   stepOnce(): boolean {
+    this.syncTurn()
     const running = this.session.step()
     this.ticksRun++
+    this.syncTurn()
+    this.sendLocal()
     if (!running) {
       this.requests.close()
       this.state = "ended"
@@ -610,10 +846,15 @@ export class GameHost<
    * The recording this session produced, ready to submit or replay.
    *
    * A replayed session has no live queue, so it reports the log it was given
-   * rather than an empty one; `recordingFrom` is how a caller passes it.
+   * rather than an empty one; `recordingFrom` is how a caller passes it. A
+   * seated session records the merged log: every input every tick took, the
+   * local seat's and the feed's, which replays through a
+   * `RecordedInputSource` to the same checkpoints.
    */
   recording(
-    inputs: readonly InputEvent[] = this.live?.recorded() ?? [],
+    inputs: readonly InputEvent[] = this.turns?.recorded() ??
+      this.live?.recorded() ??
+      [],
   ): Recording {
     const result = this.session.result()
     return {

@@ -22,6 +22,9 @@ import { createHash } from "node:crypto"
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import createTurnsGame, {
+  MANIFEST as SEATS_MANIFEST,
+} from "../../fixtures/seats/index"
 import {
   type Counters,
   type Effect,
@@ -658,5 +661,35 @@ describe("determinism with demand packs", () => {
     expect(new Set(outcome.findings.map((f) => f.code))).toEqual(
       new Set(["E_PACK_NOT_DELIVERED"]),
     )
+  })
+})
+
+describe("determinism with seats", () => {
+  /**
+   * A seat() that reads something other than the state: here, which
+   * instance it is. Each instance agrees with itself, so a run never refuses
+   * its own log, but the seated replay plays a fresh instance whose turns
+   * fall on other ticks, and the seated source refuses the first input that
+   * lands on the wrong seat's turn.
+   */
+  test("a seat() that is not a function of state is refused by the seated replay", async () => {
+    let made = 0
+    const outcome = await runCheck(
+      "determinism",
+      subjectFor(
+        () => {
+          const game = createTurnsGame()
+          const flip = made++ % 2
+          return Object.assign(game, {
+            seat: () => ((game.snapshot().turn as number) + flip) % 2,
+          })
+        },
+        { manifest: SEATS_MANIFEST },
+      ),
+    )
+    const seated = outcome.findings.filter((finding) =>
+      finding.detail.includes("seated source"),
+    )
+    expect(seated.map((finding) => finding.code)).toEqual(["E_INPUT_SEAT"])
   })
 })

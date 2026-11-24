@@ -13,6 +13,7 @@ import {
   type InputEvent,
   RecordedInputSource,
   runSession,
+  seatsOf,
 } from "../../index.js"
 import { botInputs, chaosInputs, idleLog } from "../../testing/index.js"
 import type { Check, Subject } from "../types.js"
@@ -56,6 +57,7 @@ function outcomeOf(
     maxTicks: SENSITIVITY_TICKS,
     checkpointEvery: subject.manifest.session.tickHz,
     counters: countersOf(subject.manifest),
+    seats: seatsOf(subject.manifest),
     ...sessionPacks(subject),
   })
   const counters = Object.keys(result.counters)

@@ -16,7 +16,11 @@
 
 import type { InputEvent } from "./contract.js"
 import { fail } from "./errors.js"
-import type { InputDeclaration, Inputs } from "./manifest/types.js"
+import {
+  type InputDeclaration,
+  type Inputs,
+  MAX_SEATS,
+} from "./manifest/types.js"
 
 /**
  * The most inputs any single tick may hold. A safety net under the budget
@@ -54,10 +58,61 @@ function declared(inputs: Inputs, code: string): InputDeclaration | undefined {
   return Object.hasOwn(inputs, code) ? inputs[code] : undefined
 }
 
+/**
+ * The declaration an input's name refers to, or `E_INPUT_UNDECLARED` when
+ * the manifest declares no input of that name. `prefix` begins the detail,
+ * and `tick` is where the input lands, when that is known.
+ */
+function declarationOf(
+  inputs: Inputs,
+  code: string,
+  prefix: string,
+  tick?: number,
+): InputDeclaration {
+  const declaration = declared(inputs, code)
+  if (declaration === undefined) {
+    fail("E_INPUT_UNDECLARED", {
+      ...(tick === undefined ? {} : { tick }),
+      detail: `${prefix}${JSON.stringify(code)} is not an input the manifest declares`,
+    })
+  }
+  return declaration
+}
+
+/**
+ * The one check of a single input against the manifest's declarations: a
+ * name it declares, carrying a whole number inside that input's range, or
+ * `E_INPUT_UNDECLARED`. The live queue runs it where an input is pushed, a
+ * `RemoteInputFeed` where one arrives, and `checkInputs` over a whole log,
+ * so the three cannot drift apart.
+ */
+function checkDeclaredInput(
+  inputs: Inputs,
+  code: string,
+  value: number,
+  prefix: string,
+  tick?: number,
+): void {
+  const declaration = declarationOf(inputs, code, prefix, tick)
+  const outside = outsideDeclaration(declaration, value)
+  if (outside !== null) {
+    fail("E_INPUT_UNDECLARED", {
+      ...(tick === undefined ? {} : { tick }),
+      detail: `${prefix}${code}: ${outside}`,
+    })
+  }
+}
+
 /** Where a running simulation gets its inputs, live or recorded. */
 export interface InputSource {
-  /** Everything that applies to `tick`, in order. */
-  take(tick: number): readonly InputEvent[]
+  /**
+   * Everything that applies to `tick`, in order.
+   *
+   * `seat` is the seat whose turn `tick` is, from `GameModule.seat()`, and 0
+   * in a game with one seat. A source that feeds a single seat, or a log
+   * merged from every seat, ignores it.
+   */
+  take(tick: number, seat: number): readonly InputEvent[]
   /**
    * Moves past everything before `tick`, for a session resumed from a
    * snapshot. A live source has nothing to skip and may leave this out.
@@ -252,12 +307,7 @@ export class LiveInputQueue implements InputSource, InputSink {
     // -0 would be recorded as 0 by JSON and replayed differently.
     const input = Object.is(pushed.value, -0) ? { ...pushed, value: 0 } : pushed
     if (this.pausedNow) return
-    const declaration = declared(this.inputs, input.code)
-    if (declaration === undefined) {
-      fail("E_INPUT_UNDECLARED", {
-        detail: `${JSON.stringify(input.code)} is not an input the manifest declares`,
-      })
-    }
+    const declaration = declarationOf(this.inputs, input.code, "")
     if (!Number.isInteger(input.value)) {
       fail("E_INPUT_RANGE", {
         detail: `input value must be a whole number, got ${String(input.value)}`,
@@ -270,14 +320,8 @@ export class LiveInputQueue implements InputSource, InputSink {
         detail: `${input.code} is summed, so its range must hold 0, and it is ${declaration.min} to ${declaration.max}`,
       })
     }
-    const outside =
-      input.merge === "sum"
-        ? null
-        : outsideDeclaration(declaration, input.value)
-    if (outside !== null) {
-      fail("E_INPUT_UNDECLARED", {
-        detail: `${input.code}: ${outside}`,
-      })
+    if (input.merge !== "sum") {
+      checkDeclaredInput(this.inputs, input.code, input.value, "")
     }
     if (input.merge !== undefined) {
       let at = -1
@@ -357,6 +401,20 @@ export class LiveInputQueue implements InputSource, InputSink {
     if (!this.pausedNow) return
     this.pausedNow = false
     for (const listener of this.resumeListeners) listener()
+  }
+
+  /**
+   * Stops taking input because another seat's turn begins. It pauses as
+   * `pause` does, so the device helpers let go of what they hold, and then
+   * drops those releases, everything else pending and any amount carried.
+   * A turn's held inputs end with it: the game treats them as released when
+   * the acting seat changes, so a release recorded here would land on the
+   * other seat's tick. `resume` starts taking input again.
+   */
+  endTurn(): void {
+    this.pause()
+    this.pending.length = 0
+    this.carried.clear()
   }
 
   take(tick: number): readonly InputEvent[] {
@@ -488,20 +546,7 @@ function checkDeclared(events: readonly InputEvent[], inputs: Inputs): void {
         detail: `more than ${MAX_INPUTS_PER_TICK} inputs in one tick`,
       })
     }
-    const declaration = declared(inputs, event.code)
-    if (declaration === undefined) {
-      fail("E_INPUT_UNDECLARED", {
-        tick,
-        detail: `input ${i}: ${JSON.stringify(event.code)} is not an input the manifest declares`,
-      })
-    }
-    const outside = outsideDeclaration(declaration, event.value)
-    if (outside !== null) {
-      fail("E_INPUT_UNDECLARED", {
-        tick,
-        detail: `input ${i}: ${event.code}: ${outside}`,
-      })
-    }
+    checkDeclaredInput(inputs, event.code, event.value, `input ${i}: `, tick)
   }
 }
 
@@ -523,6 +568,187 @@ function checkBudget(count: number, ticks: number): void {
     fail("E_INPUT_BUDGET", {
       detail: `${count} inputs over ${ticks} ticks, past the budget of ${budget}`,
     })
+  }
+}
+
+/**
+ * The inputs of a run several seats take turns in, each seat's from its own
+ * source: one `InputSource` per seat, indexed by seat.
+ *
+ * Each tick it takes from every seat's source, hands the session what the
+ * acting seat's source holds, and refuses with `E_INPUT_SEAT` an input any
+ * other seat's source holds for that tick, at that tick. A match server
+ * replays each seat's own log through it to build the merged log and to
+ * trust it: a seat cannot act on another seat's turn, because whose turn a
+ * tick is comes from the game's `seat()` and not from the sender. Every
+ * source must answer every tick, so a seat's `RemoteInputFeed` has to be
+ * confirmed through a tick before the session runs it.
+ *
+ * `recorded()` is the merged log, everything it handed the session, in
+ * order. An input carries no seat, so that log replays through a
+ * `RecordedInputSource` like any other.
+ */
+export class SeatedInputSource implements InputSource {
+  private readonly log: InputEvent[] = []
+
+  constructor(private readonly seats: readonly InputSource[]) {
+    if (seats.length < 1 || seats.length > MAX_SEATS) {
+      fail("E_ARG_INVALID", {
+        detail: `a seated source takes one source per seat, 1 to ${MAX_SEATS} of them, and was given ${seats.length}`,
+      })
+    }
+  }
+
+  take(tick: number, seat: number): readonly InputEvent[] {
+    if (!Number.isInteger(seat) || seat < 0 || seat >= this.seats.length) {
+      fail("E_ARG_INVALID", {
+        tick,
+        detail: `seat ${String(seat)} has no source here: this source was given ${this.seats.length}, one for each seat the session has`,
+      })
+    }
+    let acting: readonly InputEvent[] = EMPTY
+    for (let other = 0; other < this.seats.length; other++) {
+      const events = (this.seats[other] as InputSource).take(tick, seat)
+      if (other === seat) {
+        acting = events
+      } else if (events.length > 0) {
+        fail("E_INPUT_SEAT", {
+          tick,
+          detail: `seat ${other} sent ${(events[0] as InputEvent).code} for tick ${tick}, which is seat ${seat}'s turn`,
+        })
+      }
+    }
+    for (const event of acting) this.log.push(event)
+    return acting
+  }
+
+  /** Moves every seat's source past everything before `tick`. */
+  seek(tick: number): void {
+    for (const source of this.seats) source.seek?.(tick)
+  }
+
+  /** The merged log: every input handed to the session, in order. */
+  recorded(): readonly InputEvent[] {
+    return this.log
+  }
+}
+
+/**
+ * Inputs that arrive over a network, from the page of a seat this page does
+ * not play, or from a server relaying a whole run to somebody watching it.
+ *
+ * `append` adds inputs as they arrive. They come sorted by tick, across one
+ * append and the next, each is held to the manifest's declared inputs by the
+ * same check the live queue and `checkInputs` run, and none may land on a
+ * tick the sender has already confirmed. `confirm(throughTick)` records that
+ * the sender has sent everything up to and including that tick.
+ *
+ * `take(tick)` for a tick past `confirmedThrough` throws
+ * `E_INPUT_NOT_CONFIRMED`: inputs for it may still be on their way, so a
+ * host holds its loop before that tick rather than running it on a guess. An
+ * input for a tick the reader moved past without taking from the feed, which
+ * is a tick it ran as a seat the feed does not carry, is `E_INPUT_SEAT` at
+ * that input's tick when the reader next takes.
+ */
+export class RemoteInputFeed implements InputSource {
+  private readonly events: InputEvent[] = []
+  private cursor = 0
+  private confirmed = -1
+
+  /** @param inputs the manifest's declared inputs */
+  constructor(private readonly inputs: Inputs) {}
+
+  /**
+   * Adds inputs the sender sent. All of them are checked before any is kept,
+   * so a refused append leaves the feed as it was.
+   *
+   * @throws E_INPUT_UNSORTED, E_INPUT_RANGE or E_INPUT_UNDECLARED
+   */
+  append(events: readonly InputEvent[]): void {
+    validateInputLog(events)
+    const first = events[0]
+    if (first === undefined) return
+    if (first.tick <= this.confirmed) {
+      fail("E_INPUT_RANGE", {
+        tick: first.tick,
+        detail: `an input at tick ${first.tick} reaches back to a tick the sender confirmed, through ${this.confirmed}`,
+      })
+    }
+    const last = this.events[this.events.length - 1]
+    if (last !== undefined && first.tick < last.tick) {
+      fail("E_INPUT_UNSORTED", {
+        tick: first.tick,
+        detail: `an input at tick ${first.tick} arrived after one at tick ${last.tick}`,
+      })
+    }
+    for (let i = 0; i < events.length; i++) {
+      const event = events[i] as InputEvent
+      checkDeclaredInput(
+        this.inputs,
+        event.code,
+        event.value,
+        `input ${i}: `,
+        event.tick,
+      )
+    }
+    for (const { tick, code, value } of events) {
+      this.events.push({ tick, code, value })
+    }
+  }
+
+  /**
+   * Records that the sender has sent every input up to and including
+   * `throughTick`. Confirming a tick already confirmed changes nothing.
+   *
+   * @throws E_ARG_INVALID for a tick that is not a whole number, or one
+   *   before what was already confirmed
+   */
+  confirm(throughTick: number): void {
+    if (!Number.isInteger(throughTick) || throughTick < this.confirmed) {
+      fail("E_ARG_INVALID", {
+        detail: `confirm takes a whole number no lower than the tick already confirmed, ${this.confirmed}, got ${String(throughTick)}`,
+      })
+    }
+    this.confirmed = throughTick
+  }
+
+  /** The last tick the sender has confirmed, or -1 before the first. */
+  get confirmedThrough(): number {
+    return this.confirmed
+  }
+
+  take(tick: number): readonly InputEvent[] {
+    if (tick > this.confirmed) {
+      fail("E_INPUT_NOT_CONFIRMED", {
+        tick,
+        detail: `the feed is confirmed through tick ${this.confirmed}`,
+      })
+    }
+    const next = this.events[this.cursor]
+    if (next !== undefined && next.tick < tick) {
+      fail("E_INPUT_SEAT", {
+        tick: next.tick,
+        detail: `the feed holds ${next.code} for tick ${next.tick}, and the reader ran that tick without it, as the turn of a seat the feed does not carry`,
+      })
+    }
+    const start = this.cursor
+    while (
+      this.cursor < this.events.length &&
+      (this.events[this.cursor] as InputEvent).tick === tick
+    ) {
+      this.cursor++
+    }
+    return start === this.cursor ? EMPTY : this.events.slice(start, this.cursor)
+  }
+
+  /** Skips everything before `tick`, for a session resumed from a snapshot. */
+  seek(tick: number): void {
+    while (
+      this.cursor < this.events.length &&
+      (this.events[this.cursor] as InputEvent).tick < tick
+    ) {
+      this.cursor++
+    }
   }
 }
 

@@ -11,6 +11,7 @@ import {
   type GameModule,
   hashCanonical,
   type InputEvent,
+  type InputSource,
   isClockworkError,
   isStartPack,
   logicPacks,
@@ -19,8 +20,10 @@ import {
   type PlainValue,
   RecordedInputSource,
   runSession,
+  SeatedInputSource,
   Session,
   type SessionResult,
+  seatsOf,
   servedConfig,
   withShims,
 } from "../../index.js"
@@ -122,6 +125,7 @@ export async function runOnce(
     maxTicks: options.maxTicks ?? CHECK_WINDOW_TICKS,
     checkpointEvery: CHECKPOINT_EVERY,
     counters: countersOf(subject.manifest),
+    seats: seatsOf(subject.manifest),
     ...sessionPacks(subject),
     ...(options.shims === undefined ? {} : { shims: options.shims }),
   })
@@ -161,6 +165,7 @@ export async function runOnDemand(
     maxTicks: options.maxTicks ?? CHECK_WINDOW_TICKS,
     checkpointEvery: CHECKPOINT_EVERY,
     counters: countersOf(subject.manifest),
+    seats: seatsOf(subject.manifest),
     assets: subject.manifest.assets ?? [],
     packs: PackSet.verify(subject.manifest.assets, start),
   })
@@ -178,6 +183,76 @@ export async function runOnDemand(
     if (!session.step()) break
   }
   return { result: session.result(), impure }
+}
+
+/**
+ * A run of a game with `seat()`, played the way a match server plays one:
+ * each seat's own inputs through a `SeatedInputSource`.
+ *
+ * The first pass plays the log as one merged log and splits it by the seat
+ * whose turn each tick was, asking `seat()` a second time every
+ * `CHECKPOINT_EVERY` ticks with the state hashed either side of the call.
+ * The second plays each seat's share from its own source through a seated
+ * source, which refuses with `E_INPUT_SEAT` an input on a tick that is not
+ * its seat's turn there. Both passes have to reach the same states. When
+ * none is refused, the seated source's merged log is the first pass's log
+ * by construction, since each share holds only the ticks its seat took.
+ */
+export async function runSeated(
+  subject: Subject,
+  options: RunOptions,
+): Promise<{
+  readonly merged: SessionResult
+  readonly seated: SessionResult
+  readonly impure: number | null
+}> {
+  const seats = seatsOf(subject.manifest)
+  const module = options.module ?? (await subject.load({ fresh: true }))
+  const whole = new RecordedInputSource(options.inputs)
+  const shares: InputEvent[][] = Array.from({ length: seats }, () => [])
+  const splitting: InputSource = {
+    take(tick, seat) {
+      const events = whole.take(tick)
+      for (const event of events) shares[seat]?.push(event)
+      return events
+    },
+  }
+  const session = new Session({
+    module,
+    seed: options.seed,
+    config: configOf(subject),
+    inputs: splitting,
+    maxTicks: options.maxTicks ?? CHECK_WINDOW_TICKS,
+    checkpointEvery: CHECKPOINT_EVERY,
+    counters: countersOf(subject.manifest),
+    seats,
+    ...sessionPacks(subject),
+  })
+  let impure: number | null = null
+  for (;;) {
+    if (impure === null && session.tick % CHECKPOINT_EVERY === 0) {
+      const before = hashCanonical(module.snapshot())
+      withShims(() => module.seat?.())
+      if (hashCanonical(module.snapshot()) !== before) impure = session.tick
+    }
+    if (!session.step()) break
+  }
+  const merged = session.result()
+
+  const seated = runSession({
+    module: await subject.load({ fresh: true }),
+    seed: options.seed,
+    config: configOf(subject),
+    inputs: new SeatedInputSource(
+      shares.map((share) => new RecordedInputSource(share)),
+    ),
+    maxTicks: options.maxTicks ?? CHECK_WINDOW_TICKS,
+    checkpointEvery: CHECKPOINT_EVERY,
+    counters: countersOf(subject.manifest),
+    seats,
+    ...sessionPacks(subject),
+  })
+  return { merged, seated, impure }
 }
 
 /**

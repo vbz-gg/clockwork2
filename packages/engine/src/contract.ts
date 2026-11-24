@@ -136,6 +136,21 @@ export interface GameModule<TView = unknown, TConfig = PlainValue> {
    * demand packs.
    */
   packsNeeded?(): readonly string[]
+
+  /**
+   * The seat whose inputs the next tick reads, as a pure function of state:
+   * a whole number from 0 to one below the manifest's `session.seats`.
+   *
+   * The kernel calls it exactly when it calls `packsNeeded()`: once after
+   * `init`, once after `restore` and once after every tick, in every host.
+   * One tick reads one seat's inputs, and an input carries no seat, so a log
+   * merged from every seat replays as any other log does. When the answer
+   * changes, every input the seat that stopped was holding counts as
+   * released: the host records no release for it, so `tick` lets go of it
+   * itself. Required when `session.seats` is above 1; a one-seat game leaves
+   * it out.
+   */
+  seat?(): number
 }
 
 /**

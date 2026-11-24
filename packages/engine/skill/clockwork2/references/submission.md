@@ -38,8 +38,14 @@ the manifest, and `manifestHash` covers the manifest.
 
 `hostStats` is what the browser's loop did: how many frames, the most ticks
 one frame ran, and `droppedMs`, the real time that produced no ticks, which
-includes time spent waiting for a pack. A replay ignores it. A platform reads
-it to tell a slow phone or a slow download from a cheat.
+includes time spent waiting for a pack and not time spent waiting for
+another seat's turn. A replay ignores it. A platform reads it to tell a slow
+phone or a slow download from a cheat.
+
+A run several players took turns in has one recording, whose `inputs` is the
+merged log of every seat's inputs. An input carries no seat, so it replays
+like any other; the replay passes `seats: seatsOf(manifest)` to the session,
+and `seats.md` covers the rest.
 
 Checkpoints are evidence rather than input. A replay does not read them; it
 produces its own and compares. Their only job is to localise a divergence to

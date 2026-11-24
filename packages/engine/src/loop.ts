@@ -25,7 +25,7 @@ import { type CounterDeclaration, CounterTracker } from "./counters.js"
 import { ClockworkError, fail } from "./errors.js"
 import { hashCanonical } from "./hash/canonical.js"
 import type { InputSource } from "./inputs.js"
-import type { AssetDeclaration } from "./manifest/types.js"
+import { type AssetDeclaration, MAX_SEATS } from "./manifest/types.js"
 import {
   checkedPack,
   decodeJsonPack,
@@ -71,6 +71,12 @@ export interface SessionOptions<TView = unknown, TConfig = PlainValue> {
   readonly checkpointEvery?: number
   /** Declared counters, checked as the run goes. */
   readonly counters?: readonly CounterDeclaration[]
+  /**
+   * The manifest's `session.seats`, which `seatsOf(manifest)` reads: how many
+   * seats take turns in this run. Left out, 1. With more than one, the game
+   * must implement `seat()`, and every answer it gives must be below this.
+   */
+  readonly seats?: number
   /** Set false only in a test that is measuring the cost of the traps. */
   readonly shims?: boolean
   readonly onCheckpoint?: (checkpoint: Checkpoint) => void
@@ -149,6 +155,10 @@ export class Session<TView = unknown, TConfig = PlainValue> {
   private readable: ReadonlySet<string>
   /** Which of the game's calls is running, while one that may read is. */
   private reading: Reading | null = null
+  /** How many seats take turns in this run. */
+  private readonly seats: number
+  /** What `seat()` said for the next tick, or 0 for a game without it. */
+  private acting = 0
 
   /**
    * What the game reads its packs through. `init` receives it; the same
@@ -165,6 +175,23 @@ export class Session<TView = unknown, TConfig = PlainValue> {
     ) {
       fail("E_ARG_INVALID", {
         detail: `maxTicks must be a positive whole number when it is given, got ${options.maxTicks}`,
+      })
+    }
+
+    this.seats = options.seats ?? 1
+    if (
+      !Number.isInteger(this.seats) ||
+      this.seats < 1 ||
+      this.seats > MAX_SEATS
+    ) {
+      fail("E_ARG_INVALID", {
+        detail: `seats must be a whole number from 1 to ${MAX_SEATS}, got ${String(options.seats)}`,
+      })
+    }
+    if (this.seats > 1 && options.module.seat === undefined) {
+      fail("E_SEAT_INVALID", {
+        tick: 0,
+        detail: `the manifest declares ${this.seats} seats, and the game has no seat() to say whose turn a tick is`,
       })
     }
 
@@ -213,7 +240,39 @@ export class Session<TView = unknown, TConfig = PlainValue> {
     // A checkpoint at the starting tick pins the state a run began from, so a
     // divergence in setup is told apart from one in the first second of play.
     this.maybeCheckpoint(this.ticksRun, true)
+    this.askNext()
+  }
+
+  /**
+   * Asks the game what the next tick needs: the packs it will read and the
+   * seat whose inputs it reads. Both are asked once here and nowhere else,
+   * after `init`, after `restore` and after every tick, so how often a game
+   * is asked never depends on the host.
+   */
+  private askNext(): void {
     this.askPacksNeeded()
+    this.askSeat()
+  }
+
+  /** Asks the game whose turn the next tick is. */
+  private askSeat(): void {
+    const { module } = this.options
+    const ask = module.seat
+    if (ask === undefined) return
+    const tick = this.ticksRun
+    const seat = this.guarded(() => ask.call(module) as unknown)
+    if (
+      typeof seat !== "number" ||
+      !Number.isInteger(seat) ||
+      seat < 0 ||
+      seat >= this.seats
+    ) {
+      fail("E_SEAT_INVALID", {
+        tick,
+        detail: `seat() answered ${String(seat)}, and this run's seats are 0 to ${this.seats - 1}`,
+      })
+    }
+    this.acting = seat
   }
 
   /**
@@ -395,6 +454,14 @@ export class Session<TView = unknown, TConfig = PlainValue> {
     return !this.over
   }
 
+  /**
+   * The seat whose inputs the next tick reads: what the game's `seat()`
+   * answered after the last tick, or 0 for a game without one.
+   */
+  get seat(): number {
+    return this.acting
+  }
+
   get checkpoints(): readonly Checkpoint[] {
     return this.collected
   }
@@ -430,7 +497,7 @@ export class Session<TView = unknown, TConfig = PlainValue> {
     }
     this.handOver(tick)
 
-    const events = inputs.take(tick)
+    const events = inputs.take(tick, this.acting)
     this.calling("tick", () => {
       const returned = module.tick(events) as unknown
       if (isThenable(returned)) {
@@ -477,7 +544,7 @@ export class Session<TView = unknown, TConfig = PlainValue> {
       this.maybeCheckpoint(this.ticksRun, true)
       return false
     }
-    this.askPacksNeeded()
+    this.askNext()
     return true
   }
 

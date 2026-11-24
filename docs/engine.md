@@ -22,6 +22,7 @@ Contents:
 - [Sound and other effects](#sound-and-other-effects)
 - [Data packs](#data-packs)
 - [Recording and replay](#recording-and-replay)
+- [Seats and turns](#seats-and-turns)
 - [The manifest](#the-manifest)
 - [Conformance](#conformance)
 - [Embedding a game](#embedding-a-game)
@@ -160,9 +161,9 @@ instead of from a keyboard.
 
 ## Writing a game
 
-A game is a module with eight methods, and a ninth for a game that reads data
-packs. Nothing else is required, and nothing about the shape of your state is
-prescribed.
+A game is a module with eight methods, a ninth for a game that reads data
+packs and a tenth for a game whose players take turns. Nothing else is
+required, and nothing about the shape of your state is prescribed.
 
 ```ts
 interface GameModule<TView, TConfig> {
@@ -177,6 +178,7 @@ interface GameModule<TView, TConfig> {
   isOver(): boolean
   effects(): readonly Effect[]
   packsNeeded?(): readonly string[]
+  seat?(): number
 }
 ```
 
@@ -207,6 +209,10 @@ host drains them. See [Sound and other effects](#sound-and-other-effects).
 
 `packsNeeded` names the demand packs the next tick will read. Leave it out
 when there are none.
+
+`seat` names the player whose inputs the next tick reads, in a game whose
+players take turns. Leave it out of a game with one player. See
+[Seats and turns](#seats-and-turns).
 
 Here is a whole small game. Three lanes, rocks coming towards the player, one
 mote to collect; move sideways, survive.
@@ -936,7 +942,7 @@ connection, and the replay would take the other one.
 | a tick | yes | the ones `packsNeeded` named before it |
 | anywhere else | no | no |
 
-"Anywhere else" means `view`, `snapshot`, `score`, `isOver` and
+"Anywhere else" means `view`, `snapshot`, `score`, `isOver`, `seat` and
 `packsNeeded` itself, and the reason is that hosts call them at different
 times: a page calls `view` before every step, a worker after its steps, and a
 server replay never. A read there is `E_PACK_NOT_REQUESTED`. What the
@@ -1069,7 +1075,8 @@ those need different answers. `droppedMs` is not an integer - the accumulator
 drops a fraction of a millisecond at a time and this is their sum, so a stalled
 tab reports something like `299916.6666666667`. Time the loop spent holding
 for a data pack is counted there too, because it is also real time that
-produced no ticks.
+produced no ticks. Time spent waiting for another seat's inputs is not; see
+[Seats and turns](#seats-and-turns).
 
 It is `null` on a version 1 recording, which is the only reason it is nullable
 rather than absent: `Recording` has to remain a `PlainValue`, and an optional
@@ -1096,7 +1103,9 @@ that list only when a field's meaning changed rather than when one was added.
 To replay one:
 
 ```ts
-import { decodeRecording, RecordedInputSource, runSession } from "@clockwork2/engine"
+import {
+  decodeRecording, PackSet, RecordedInputSource, runSession, seatsOf,
+} from "@clockwork2/engine"
 
 const recording = decodeRecording(text)
 const result = runSession({
@@ -1107,6 +1116,7 @@ const result = runSession({
   maxTicks: Math.max(recording.endTick, 1),
   checkpointEvery: recording.tickHz,
   counters: MANIFEST.counters,
+  seats: seatsOf(MANIFEST),
   assets: MANIFEST.assets ?? [],
   packs: PackSet.lazy(MANIFEST.assets, packBytes),
 })
@@ -1121,12 +1131,166 @@ bytes, and `PackSet.lazy` checks each one only when the run first needs it.
 A replay that leaves out a pack the run read stops with `E_PACK_NOT_DELIVERED`
 at the tick that needed it.
 
+`seats` is how many players took turns in the run, which `seatsOf` reads
+from the manifest: 1 for a game that declares none. A session given fewer
+than the game uses stops at the first tick whose `seat()` names one it does
+not have.
+
 `compareToRecording` then reports whether the checkpoints, the end tick and the
 counters agree, and where the first disagreement was.
 
 This repository proves the round trip end to end: a session played in Chromium
 with real key events is written to disk, replayed under Bun and under Node, and
 all three agree line for line.
+
+## Seats and turns
+
+Some games have several players taking turns in one run: two players
+alternating shots at a pool table, four at a board game. Each player's page
+runs the whole simulation, the players' inputs together form one recording,
+and the recording replays like any other. The engine calls each player a
+seat.
+
+### Declaring seats
+
+A game declares how many seats a run has in its manifest, from 1 to 8:
+
+```ts
+session: { tickHz: 60, hasEnding: true, seats: 2 },
+```
+
+Left out, a run has one seat, and a one-seat game is exactly a game without
+turns: same manifest hash, same recordings, nothing on this page applies to
+it. `capabilities.multiplayer` stays `false` whatever `seats` says, because
+it means two players acting at the same time, which the engine does not do.
+
+### Whose turn it is
+
+A game with more than one seat implements `seat()`, which answers the seat
+whose inputs the next tick reads, from 0 to one below `seats`, as a pure
+function of state:
+
+```ts
+seat(): number {
+  return this.turn
+}
+```
+
+The kernel asks it exactly when it asks `packsNeeded()`: once after `init`,
+once after `restore` and once after every tick, in every host, under the
+same traps. How often it is asked never depends on the host, so a `seat()`
+with a side effect would diverge between hosts only if the count did. The
+answer is `Session.seat`, and the session hands it to its input source with
+each tick: `take(tick, seat)`. A game with several seats and no `seat()` is
+refused when the session is built, and an answer outside the seats stops the
+run at that tick, both with `E_SEAT_INVALID`.
+
+One tick reads one seat's inputs, and an input carries no seat. `tick()`
+receives its inputs exactly as it does in a one-seat game and knows whose
+they are because it knows whose turn it is. A merged log of every seat's
+inputs is therefore an ordinary log: it replays through `RecordedInputSource`
+as any recording does, and the recording format did not change.
+
+### Turns end what was held
+
+When the acting seat changes, every input the seat that stopped was holding
+counts as released. The game lets go of it in `tick()` at the turn change,
+and the host records no release for it. A page whose player held a key as
+their turn ended would otherwise record the release on the next tick, which
+is another seat's, and a server refuses that.
+
+### Pages that take turns
+
+A page that plays a seat tells `GameHost` which seat it plays and where the
+other seats' inputs come from:
+
+```ts
+const remote = new RemoteInputFeed(MANIFEST.inputs)
+const host = new GameHost({
+  ...rest,
+  seats: {
+    local: 1,
+    remote,
+    onLocalInputs: (events, throughTick) => send({ events, throughTick }),
+  },
+})
+// For each message from the other page, or from a server:
+remote.append(message.events)
+remote.confirm(message.throughTick)
+```
+
+Before each tick the host asks whose turn it is. On the local seat's turn
+the tick reads the live queue, as in any page. On another seat's turn the
+live queue is paused, the releases the device helpers make when it pauses
+are dropped along with anything pending, and the tick reads the feed. If the
+feed is not confirmed through that tick yet, the loop holds, as it holds for
+a missing data pack: no tick runs, no time goes to the accumulator, and
+`FrameInfo.waitingForSeat` names the seat it is waiting for. Unlike a pack
+hold, the time is not counted in `droppedMs`. In a game of turns most of a
+run can be spent waiting for another player, and `droppedMs` exists to tell a
+slow device from a cheat, which waiting says nothing about.
+
+A page following another seat's turn may run ahead of its own clock. When
+the feed is confirmed past the next tick, a frame runs confirmed ticks up to
+`DEFAULT_MAX_CATCHUP_TICKS`, five, even when the accumulator owes fewer. A
+page that fell behind, because the network stalled or the tab was hidden,
+gains four ticks a frame at 60 frames a second until it is level with the
+sender, rather than staying behind by the length of every stall it ever had.
+On the local seat's turn ticks run at the clock's pace, as they always do.
+
+After each frame that ran a tick, `onLocalInputs` hands the page the local
+inputs recorded since the last call and the last tick the page has run. That
+tick is final for the local seat whoever's turn it was, because the local
+seat records nothing on another seat's ticks, so the page sends both and the
+receiving pages confirm it. `host.recording()` is the merged log, every
+input every tick took, local and remote.
+
+A page given `local: null` watches: it has no live queue, reads every tick
+from its feed and follows the whole run. A server relaying the merged log to
+it is the usual source.
+
+`GameHost` refuses `seats` for a one-seat game and requires it for a live run
+of a game with more. A replay of a seated run reads the recording's merged
+log as `inputs`, like any replay, and takes no `seats`. The worker host runs
+one-seat games only, and refuses a manifest with more.
+
+### The server's side
+
+A match server holds one `RemoteInputFeed` per seat and plays them through a
+`SeatedInputSource`:
+
+```ts
+const feeds = [new RemoteInputFeed(inputs), new RemoteInputFeed(inputs)]
+const source = new SeatedInputSource(feeds)
+const session = new Session({ ...rest, inputs: source, seats: 2 })
+```
+
+Each tick it takes from every seat's source, hands the session the acting
+seat's inputs, and refuses an input any other seat's source holds for that
+tick with `E_INPUT_SEAT`, at that tick. Whose turn a tick is comes from the
+game's `seat()` and never from the sender, so a seat cannot act on another
+seat's turn by claiming it was theirs. `source.recorded()` is the merged log
+of everything it handed the session.
+
+A feed holds what arrives to the same rules the live queue and
+`checkInputs` hold an input to, by the same per-input check: a declared
+name and a value in its range (`E_INPUT_UNDECLARED`). Inputs come sorted by
+tick, across appends as within one (`E_INPUT_UNSORTED`), and never on a
+tick the sender already confirmed (`E_INPUT_RANGE`). A refused append keeps
+none of its inputs. `take` for a tick past `confirmedThrough` throws
+`E_INPUT_NOT_CONFIRMED`, because inputs for it may still be on their way. An
+input for a tick its reader ran without the feed, on the reader's own turn,
+is `E_INPUT_SEAT` when the reader next takes.
+
+### What the checks do
+
+The `determinism` check runs a game that has `seat()` twice more on the first
+seed's bot log. The first run splits the log by the seat whose turn each
+tick was, and asks `seat()` an extra time every 60 ticks with the state
+hashed either side of the call; a change is reported as
+`E_DETERMINISM_DIVERGED` naming `seat()`. The second plays each seat's share
+back through a `SeatedInputSource`. Both have to reach the states the plain
+runs reached. A one-seat game runs neither, so its report does not change.
 
 ## The manifest
 
@@ -1145,6 +1309,7 @@ not have to run it first.
   session: {
     tickHz: 60,                 // 30, 60 or 120
     hasEnding: true,            // describes the game; nothing reads or checks it
+    seats: 2,                   // optional, 1 to 8: players taking turns
   },
 
   inputs: {                     // what the game records, by name and range
@@ -1255,7 +1420,7 @@ mistyped `--rank` runs nothing rather than the every-game set.
 
 | # | Check | What it does |
 | --- | --- | --- |
-| 1 | determinism | Runs the same seed, config and inputs repeatedly, in the same process and in freshly evaluated modules, against idle, chaos and bot input logs, and reports where each run ended; a game with `packsNeeded` runs once more with each demand pack handed over only when named |
+| 1 | determinism | Runs the same seed, config and inputs repeatedly, in the same process and in freshly evaluated modules, against idle, chaos and bot input logs, and reports where each run ended; a game with `packsNeeded` runs once more with each demand pack handed over only when named, and a game with `seat()` twice more, its log split by seat and played back through a seated source |
 | 2 | headless | `init` plus 600 ticks with no `window`, `document`, WebGL, `AudioContext` or `fetch` |
 | 3 | banned-apis | Static scan of the import graph, plus the runtime traps |
 | 4 | no-async | No `await`, `async` or `.then`; hashes state, drains microtasks, hashes again |
@@ -1393,6 +1558,10 @@ needed pack with no loader to fetch it, rather than a hold that never ends.
 Anything a loader settles after the session ended is ignored. A platform that
 closes a session it has stopped hearing from has to allow for the longest
 hold.
+
+A live session of a game whose players take turns also takes `seats`: the
+seat the page plays and a feed for the others, described under
+[Seats and turns](#seats-and-turns).
 
 A live session has no step limit: it runs until the game ends it or `stop` is
 called. `maxTicks` on the host is for a replay, which passes
@@ -1586,6 +1755,27 @@ case instead of testing for it.
 **The set of readable packs is recomputed each tick, not accumulated.** An
 accumulated set depends on everything the run named before, which a snapshot
 does not carry, so a restored session could read less than the run it resumed.
+
+**An input carries no seat.** The seat whose inputs a tick reads is the
+game's answer from `seat()`, a function of state, so it needs no field on an
+input. A field the sender filled in would be one more thing a server has to
+check against that answer, and a log with it would need a new recording
+version that nothing else wants. Without it the merged log of a seated run is
+an ordinary log, and every tool that replays a recording replays it.
+
+**A turn's held inputs end with it.** The other choice was to let a press
+carry over, recorded as released on the next seat's first tick. That puts an
+input from one seat on another seat's tick, which is exactly what a server
+has to refuse, and it makes the game's reading of a held key depend on
+whether the page that held it saw the turn change in time. Ending the hold
+in the game's own state at the turn change is a function of state, the same
+on every page.
+
+**Waiting for a seat is not dropped time.** A page holding for another
+player's inputs is doing what a game of turns is for, and on a long match
+that wait is most of the run. Counting it in `droppedMs`, as a pack hold is
+counted, would bury the measurement a platform reads to tell a slow device
+from a cheat.
 
 **`packsNeeded` runs once per tick, everywhere.** A host that holds asks what is
 missing as often as it likes, and gets the answer the kernel already has. If

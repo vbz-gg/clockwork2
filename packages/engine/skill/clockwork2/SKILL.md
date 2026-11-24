@@ -84,7 +84,9 @@ from one.
 A game implements `GameModule`: `init`, `tick`, `view`, `snapshot`, `restore`,
 `score`, `isOver`, `effects`. A game that reads data it ships as files also
 implements `packsNeeded`, and `init` hands it the reader; `references/assets.md`
-covers both. The full signatures are in `references/kernel-api.md`, which is
+covers both. A game whose players take turns declares `session.seats` and
+implements `seat()`, which says whose turn each tick is;
+`references/seats.md` covers that. The full signatures are in `references/kernel-api.md`, which is
 generated from the type declarations.
 
 ## The nine rules
@@ -266,6 +268,9 @@ The two that account for most failures:
 - `references/manifest-schema.md` - every manifest field and what it decides.
 - `references/inputs.md` - declaring inputs, choosing what to record, and the
   device helpers.
+- `references/seats.md` - players who take turns in one run: `seats`,
+  `seat()`, the page that follows another seat's turn, and the server that
+  merges their inputs.
 - `references/adapters.md` - canvas2d, three, pixi, `NodeSet`, effects,
   worker mode.
 - `references/assets.md` - declaring, hashing and loading files, and the data

@@ -109,6 +109,36 @@ describe("the conforming fixture with data packs", () => {
   }, 60_000)
 })
 
+describe("the conforming fixture with two seats", () => {
+  test("passes every check, and is played once more through a seated source", async () => {
+    const subject = await loadSubject(join(FIXTURES, "seats"))
+    const report = await validate(subject, {
+      set: "every-game",
+      seeds: ["t1", "t2"],
+    })
+    const failures = report.outcomes.filter((o) => !o.ok && !o.skipped)
+    expect(
+      failures.map(
+        (o) => `${o.check}: ${o.findings.map((f) => f.detail).join("; ")}`,
+      ),
+    ).toEqual([])
+    // Three runs of three logs for each of two seeds, and the two seated
+    // runs: the log split by seat, then each seat's share played back.
+    const determinism = report.outcomes.find((o) => o.check === "determinism")
+    expect(determinism?.note).toBe("20 runs compared")
+  }, 30_000)
+
+  test("a one-seat game is not played through one, so its count is what it was", async () => {
+    const subject = await loadSubject(join(FIXTURES, "conforming"))
+    const report = await validate(subject, {
+      set: "every-game",
+      seeds: ["t1", "t2"],
+      only: ["determinism"],
+    })
+    expect(report.outcomes[0]?.note).toBe("18 runs compared")
+  }, 30_000)
+})
+
 describe("each non-conformant fixture reports its own code", () => {
   const CASES: Array<[fixture: string, expected: ErrorCode[]]> = [
     // Both layers fire: the static scan sees the call, the runtime trap sees
@@ -135,6 +165,14 @@ describe("each non-conformant fixture reports its own code", () => {
     ["pack-missing", ["E_PACK_NOT_DELIVERED", "E_BUDGET_EXCEEDED"]],
     ["pack-hash-mismatch", ["E_PACK_HASH_MISMATCH", "E_BUDGET_EXCEEDED"]],
     ["pack-too-large", ["E_PACK_TOO_LARGE", "E_BUDGET_EXCEEDED"]],
+    // Seats. A game that cannot say whose turn a tick is, or names a seat
+    // the run does not have, fails every check that runs it with the
+    // kernel's code. A seat() that changes state agrees with itself run to
+    // run, and the extra call the determinism check makes is what shows it;
+    // the restore check sees it too, because a resumed run asks once fewer.
+    ["seat-missing", ["E_SEAT_INVALID"]],
+    ["seat-out-of-range", ["E_SEAT_INVALID"]],
+    ["seat-impure", ["E_DETERMINISM_DIVERGED", "E_RESTORE_MISMATCH"]],
   ]
 
   for (const [fixture, expected] of CASES) {
