@@ -139,7 +139,7 @@ CI runs four things that matter more than the rest.
 
 The cross-engine sweep builds one probe bundle and runs those exact bytes under
 Bun (JavaScriptCore), Node (V8), Chromium, Firefox (SpiderMonkey) and WebKit,
-comparing 24 vector groups as hex bit patterns. 300,000 `dmath` evaluations and
+comparing 28 vector groups as hex bit patterns. 320,000 `dmath` evaluations and
 100,000 PRNG draws produce identical digests on all five.
 
 The frame-rate suite replays one input log at 240, 144, 60, 30, 20 and 5 Hz,

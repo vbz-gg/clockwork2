@@ -443,6 +443,7 @@ result:
 | `Math.hypot` | 35.7% |
 | `Math.pow` | 9.8% |
 | `Math.exp` | 9.5% |
+| `Math.cbrt` | 8.3% |
 | `Math.acos` | 7.7% |
 | `Math.asin` | 5.8% |
 | `Math.tan` | 3.6% |
@@ -465,6 +466,7 @@ dmath.sin(x)
 dmath.atan2(y, x)
 dmath.pow(base, exponent)
 dmath.ipow(base, 3)      // integer exponent, exact
+dmath.cbrt(volume)       // cube root
 dmath.wrapAngle(angle)
 ```
 
@@ -473,6 +475,14 @@ including the Payne-Hanek argument reduction that keeps `sin` correct for a
 large accumulated angle. They are written from exactly specified operations
 only, so they give the same bits everywhere. Golden vectors pin them, and the
 vectors are compared across engines on every CI run.
+
+`dmath.cbrt` is netlib's `s_cbrt.c`. It estimates the root by dividing the
+exponent bits by three as an integer, refines that to about 23 bits with a
+rational step, chops it to 20 bits and finishes with one Newton step, all in
+double precision. Against an exact BigInt reference its largest error over
+80,000 inputs, subnormals included, was 0.664 ulp, inside the 0.667 fdlibm
+states. It returns an exact cube's root exactly: all 208,063 integers whose
+cube fits in 53 bits come back as themselves.
 
 `Math.pow` and the `**` operator are banned outright rather than replaced
 quietly, because an exponent that happens to be an integer has an exact answer
@@ -526,8 +536,8 @@ toBitsHex(inf - inf)        // FFF8000000000000 on x86, 7FF8000000000000 on arm6
 toBitsHex(Number.NaN)       // 7FF8000000000000 on both: the literal is not computed
 ```
 
-Of the 1212 NaN-producing golden vectors, 1074 differ between an Apple Silicon
-Mac and an x86 Linux runner. The other 138 propagate a NaN that arrived as an
+Of the 1213 NaN-producing golden vectors, 1074 differ between an Apple Silicon
+Mac and an x86 Linux runner. The other 139 propagate a NaN that arrived as an
 argument, and a propagated NaN keeps the sign it came with.
 
 `bun run test:engines` cannot see any of this, because it runs all five engines

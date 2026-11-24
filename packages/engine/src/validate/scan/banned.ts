@@ -51,7 +51,7 @@ export const BANNED_MEMBERS: ReadonlyMap<string, string> = new Map([
   ["Math.log2", "use dmath.log2"],
   ["Math.log10", "use dmath.log10"],
   ["Math.log1p", "not specified"],
-  ["Math.cbrt", "not specified"],
+  ["Math.cbrt", "use dmath.cbrt"],
   ["Math.hypot", "use dmath.hypot"],
   ["Math.sinh", "not specified"],
   ["Math.cosh", "not specified"],

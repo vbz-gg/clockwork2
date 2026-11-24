@@ -98,6 +98,29 @@ function quarterTurns(): number[] {
   return out
 }
 
+/**
+ * Where cbrt branches: the subnormal seam at high word 0x00100000, and the top
+ * of the finite range below 0x7ff00000. Exact cubes are here too, since fdlibm
+ * returns their roots exactly and a regression would show first on them.
+ */
+function cbrtSeams(): number[] {
+  const out: number[] = []
+  for (const hw of [
+    0x00000000, 0x000fffff, 0x00100000, 0x00100001, 0x7fefffff,
+  ]) {
+    for (const low of ["00000001", "80000000", "FFFFFFFF"]) {
+      const hex = hw.toString(16).padStart(8, "0")
+      const value = fromBitsHex(hex + low)
+      out.push(value, -value)
+    }
+  }
+  for (const root of [3, 10, 0.1, 1.5, 1e-100, 123456]) {
+    const cube = root * root * root
+    out.push(cube, -cube)
+  }
+  return out
+}
+
 interface Unary {
   readonly name: string
   readonly fn: (x: number) => number
@@ -116,6 +139,7 @@ const UNARY: readonly Unary[] = [
   { name: "log", fn: dmath.log, domain: [1e-300, 1e300] },
   { name: "log2", fn: dmath.log2, domain: [1e-300, 1e300] },
   { name: "log10", fn: dmath.log10, domain: [1e-300, 1e300] },
+  { name: "cbrt", fn: dmath.cbrt, domain: [-1e6, 1e6], extra: cbrtSeams() },
   { name: "wrapAngle", fn: dmath.wrapAngle, domain: [-1e9, 1e9] },
 ]
 

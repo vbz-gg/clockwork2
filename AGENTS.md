@@ -281,8 +281,8 @@ deliberate act. Say why in the commit body.
 leaves a NaN's sign and payload to the implementation, and the hardware
 differs: an invalid operation yields the negative quiet NaN
 `0xFFF8000000000000` on x86 and the positive `0x7FF8000000000000` on arm64.
-1074 of the 1212 NaN-producing golden vectors differ between an Apple Silicon
-Mac and an x86 Linux runner; the other 138 propagate a NaN that arrived as an
+1074 of the 1213 NaN-producing golden vectors differ between an Apple Silicon
+Mac and an x86 Linux runner; the other 139 propagate a NaN that arrived as an
 argument, which keeps its sign on both. So the golden comparison asserts that
 a NaN result *is* a NaN and never which one, and `bun run test:engines` cannot
 catch this because it runs every engine on one machine.

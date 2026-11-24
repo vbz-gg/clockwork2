@@ -8,7 +8,14 @@
  */
 
 import { describe, expect, test } from "bun:test"
-import { nextUp, toBitsHex, ulpDistance } from "../../src/bits"
+import {
+  fromBitsHex,
+  nextDown,
+  nextUp,
+  toBits,
+  toBitsHex,
+  ulpDistance,
+} from "../../src/bits"
 import * as dmath from "../../src/dmath/index"
 
 function lcg(seed: number): () => number {
@@ -152,6 +159,114 @@ describe("exponential and logarithmic identities", () => {
         `log2(2^${k})`,
       ).toBe(true)
     }
+  })
+})
+
+/** A positive finite double as an exact `m * 2^e`. */
+function exactParts(x: number): { m: bigint; e: bigint } {
+  const bits = toBits(x)
+  const exponent = (bits >> 52n) & 0x7ffn
+  const fraction = bits & 0xfffffffffffffn
+  if (exponent === 0n) return { m: fraction, e: -1074n }
+  return { m: fraction | (1n << 52n), e: exponent - 1075n }
+}
+
+/** The sign of y^3 - x, computed exactly, for positive finite y and x. */
+function compareCube(y: number, x: number): number {
+  const a = exactParts(y)
+  const b = exactParts(x)
+  let left = a.m * a.m * a.m
+  let right = b.m
+  const leftExp = 3n * a.e
+  if (leftExp > b.e) left <<= leftExp - b.e
+  else right <<= b.e - leftExp
+  return left === right ? 0 : left > right ? 1 : -1
+}
+
+describe("cube root", () => {
+  test("an exact cube's root comes back exactly", () => {
+    // Every integer whose cube is exact in a double, both signs, and a run of
+    // binary fractions. fdlibm's last step is a Newton correction from above,
+    // so a constant one digit off shows here as a root one ulp out.
+    for (let n = 1; n * n * n <= 2 ** 53; n++) {
+      const cube = n * n * n
+      if (dmath.cbrt(cube) !== n || dmath.cbrt(-cube) !== -n) {
+        throw new Error(`cbrt(${cube}) is ${dmath.cbrt(cube)}, not ${n}`)
+      }
+    }
+    for (let n = 1; n < 100_000; n++) {
+      const root = n / 1024
+      expect(dmath.cbrt(root * root * root)).toBe(root)
+    }
+    expect(dmath.cbrt(27)).toBe(3)
+    expect(dmath.cbrt(0.125)).toBe(0.5)
+    expect(dmath.cbrt(-1000)).toBe(-10)
+  })
+
+  test("the exact root lies between the result's neighbours", () => {
+    // Checked against mathematics with no rounding anywhere: the cubes are
+    // BigInt. A result under one ulp from the true root has a neighbour on
+    // each side of it, so nextDown(y)^3 < x < nextUp(y)^3. The draw is over
+    // bit patterns, which reaches every exponent and the subnormals.
+    const random = lcg(0xc0be)
+    let checked = 0
+    for (let i = 0; i < 20_000; i++) {
+      const hi = Math.floor(random() * 0x7ff00000)
+      const lo = Math.floor(random() * 4294967296)
+      const x = fromBitsHex(
+        hi.toString(16).padStart(8, "0") + lo.toString(16).padStart(8, "0"),
+      )
+      if (x === 0) continue
+      const y = dmath.cbrt(x)
+      expect(compareCube(nextDown(y), x), `below cbrt(${x})`).toBe(-1)
+      expect(compareCube(nextUp(y), x), `above cbrt(${x})`).toBe(1)
+      checked++
+    }
+    expect(checked).toBeGreaterThan(19_000)
+  })
+
+  test("cbrt is odd, bit for bit", () => {
+    const random = lcg(0x0dd)
+    for (let i = 0; i < 20_000; i++) {
+      const x = (random() - 0.5) * 2e6
+      expect(toBitsHex(dmath.cbrt(-x))).toBe(toBitsHex(-dmath.cbrt(x)))
+    }
+    expect(Object.is(dmath.cbrt(-0), -0)).toBe(true)
+    expect(Object.is(dmath.cbrt(0), 0)).toBe(true)
+    expect(dmath.cbrt(Number.NEGATIVE_INFINITY)).toBe(Number.NEGATIVE_INFINITY)
+    expect(dmath.cbrt(Number.POSITIVE_INFINITY)).toBe(Number.POSITIVE_INFINITY)
+    // A NaN is a NaN. Which one is the processor's business; see AGENTS.md.
+    expect(Number.isNaN(dmath.cbrt(Number.NaN))).toBe(true)
+  })
+
+  test("multiplying by 8 doubles the root exactly", () => {
+    // The first step divides the exponent by three as an integer, so x and
+    // 8x take estimates exactly a factor of two apart, and every later step
+    // scales with them. A wrong bias or a wrong shift breaks this first.
+    const random = lcg(0x8888)
+    for (let i = 0; i < 20_000; i++) {
+      const x =
+        (random() + 0.5) * dmath.exp2i(Math.floor((random() - 0.5) * 2000))
+      if (x < 2.2250738585072014e-308 || x * 8 === Number.POSITIVE_INFINITY) {
+        continue
+      }
+      expect(toBitsHex(dmath.cbrt(8 * x)), `x=${x}`).toBe(
+        toBitsHex(2 * dmath.cbrt(x)),
+      )
+    }
+  })
+
+  test("the subnormal branch meets the normal one without a step", () => {
+    // fdlibm scales a subnormal by 2^54 before its first estimate. Walking
+    // across the seam in single ulps must never move the root backwards.
+    let x = fromBitsHex("000FFFFFFFFFFE00")
+    for (let i = 0; i < 1024; i++) {
+      const next = nextUp(x)
+      expect(dmath.cbrt(next) >= dmath.cbrt(x), `cbrt at ${x}`).toBe(true)
+      x = next
+    }
+    expect(x > 2.2250738585072014e-308).toBe(true)
+    expect(toBitsHex(dmath.cbrt(Number.MIN_VALUE))).toBe("2990000000000000")
   })
 })
 
